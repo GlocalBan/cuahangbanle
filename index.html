@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#17243d" />
+    <meta
+      name="description"
+      content="RetailFlow — quản lý cửa hàng, bán hàng, tồn kho và hóa đơn."
+    />
+    <title>RetailFlow · Quản lý cửa hàng</title>
+    <link rel="stylesheet" href="styles.css" />
+    <script defer src="src/domain/config.js"></script>
+    <script defer src="src/domain/calculations.js"></script>
+    <script defer src="src/domain/seed.js"></script>
+    <script defer src="src/domain/backup.js"></script>
+    <script defer src="src/domain/auth.js"></script>
+    <script defer src="src/domain/sales.js"></script>
+    <script defer src="src/domain/inventory.js"></script>
+    <script defer src="src/domain/returns.js"></script>
+    <script defer src="src/domain/catalog.js"></script>
+    <script defer src="src/domain/purchases.js"></script>
+    <script defer src="src/domain/settings.js"></script>
+    <script defer src="src/domain/store.js"></script>
+    <script defer src="src/core/context.js"></script>
+    <script defer src="src/shared/ui.js"></script>
+    <script defer src="src/shared/exports.js"></script>
+    <script defer src="src/shared/charts.js"></script>
+    <script defer src="src/layout/shell.js"></script>
+    <script defer src="src/features/auth.js"></script>
+    <script defer src="src/features/dashboard.js"></script>
+    <script defer src="src/features/pos.js"></script>
+    <script defer src="src/features/payments.js"></script>
+    <script defer src="src/features/orders.js"></script>
+    <script defer src="src/features/products.js"></script>
+    <script defer src="src/features/catalog.js"></script>
+    <script defer src="src/features/inventory.js"></script>
+    <script defer src="src/features/purchases.js"></script>
+    <script defer src="src/features/returns.js"></script>
+    <script defer src="src/features/reports.js"></script>
+    <script defer src="src/features/branches.js"></script>
+    <script defer src="src/features/settings.js"></script>
+    <script defer src="src/events/actions/navigation.js"></script>
+    <script defer src="src/events/actions/sales.js"></script>
+    <script defer src="src/events/actions/catalog.js"></script>
+    <script defer src="src/events/actions/inventory.js"></script>
+    <script defer src="src/events/actions/returns.js"></script>
+    <script defer src="src/events/actions/settings.js"></script>
+    <script defer src="src/events/actions/orders.js"></script>
+    <script defer src="src/events/clicks.js"></script>
+    <script defer src="src/events/forms.js"></script>
+    <script defer src="src/events/inputs.js"></script>
+    <script defer src="src/events/keyboard.js"></script>
+    <script defer src="app.js"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <dialog id="modal" aria-labelledby="modal-title"></dialog>
+    <div id="toasts" class="toasts" aria-live="polite"></div>
+    <div id="print-area"></div>
+    <input id="restore-file" type="file" accept="application/json,.json" hidden />
+    <noscript>Bạn cần bật JavaScript để sử dụng RetailFlow.</noscript>
+  </body>
+</html>

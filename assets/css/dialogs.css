@@ -1,0 +1,331 @@
+.login {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  background: #fff;
+}
+.login-story {
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 90% 20%, #263f73 0, transparent 56%), #13223c;
+  padding: 10vh 12%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  color: #fff;
+}
+.login-story:before,
+.login-story:after {
+  content: '';
+  position: absolute;
+  width: 650px;
+  height: 650px;
+  border: 1px solid #ffffff05;
+  border-radius: 120px;
+  transform: rotate(35deg);
+  top: -480px;
+  right: -320px;
+}
+.login-story:after {
+  top: auto;
+  bottom: -470px;
+  right: 0;
+}
+.login-story .logo {
+  margin-bottom: 42px;
+}
+.login-story h1 {
+  font-size: 37px;
+  letter-spacing: -1.5px;
+  line-height: 1.45;
+}
+.login-story h1 span {
+  color: #7ed9d0;
+}
+.login-story > p {
+  font-size: 12px;
+  color: #93a3bf;
+  line-height: 1.9;
+  margin-top: 18px;
+  max-width: 360px;
+}
+.login-preview {
+  background: #ffffff07;
+  border: 1px solid #ffffff0b;
+  border-radius: 14px;
+  transform: rotate(-4deg);
+  padding: 20px;
+  margin-top: 50px;
+  max-width: 400px;
+  box-shadow: 0 16px 40px #07142630;
+}
+.login-preview svg {
+  height: 60px;
+  width: 100%;
+  margin-top: 15px;
+}
+.login-form-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+.login-form {
+  width: 340px;
+  max-width: 100%;
+}
+.login-form .logo {
+  margin-bottom: 42px;
+}
+.login-form .logo strong {
+  color: #263754;
+}
+.login-form .logo small {
+  color: #a0adbe;
+}
+.login-form h2 {
+  font-size: 27px;
+  letter-spacing: -1px;
+  margin-bottom: 7px;
+}
+.login-form > p {
+  font-size: 11px;
+  color: #99a3b4;
+  line-height: 1.9;
+}
+.login-form form {
+  display: grid;
+  gap: 19px;
+  margin-top: 32px;
+}
+.login-form .btn {
+  min-height: 43px;
+}
+.login-hint {
+  font-size: 10px;
+  line-height: 1.9;
+  color: #8396b2;
+  background: #f2f7fe;
+  padding: 12px 14px;
+  border-radius: 7px;
+  margin-top: 19px;
+}
+.login-footer {
+  color: #b2b9c7;
+  text-align: center;
+  font-size: 9px;
+  margin-top: 30px;
+}
+dialog {
+  padding: 0;
+  border: 1px solid #e7e9f2;
+  border-radius: 13px;
+  width: 560px;
+  max-width: calc(100vw - 28px);
+  max-height: 90vh;
+  color: #26344d;
+  box-shadow: 0 20px 100px #14213e33;
+}
+dialog.wide-modal {
+  width: 800px;
+}
+dialog::backdrop {
+  background: #14213c70;
+  backdrop-filter: blur(3px);
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 21px 23px;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 2;
+}
+.modal-header h2 {
+  font-size: 16px;
+}
+.modal-content {
+  padding: 22px 23px;
+}
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+  padding: 17px 23px;
+  border-top: 1px solid var(--line);
+  background: #fafbfe;
+  border-radius: 0 0 13px 13px;
+}
+.modal-content .table-wrap {
+  padding: 0;
+}
+.payment-total {
+  text-align: center;
+  background: #f7f6ff;
+  border: 1px solid #eeebff;
+  border-radius: 9px;
+  padding: 20px;
+  margin-bottom: 20px;
+  color: #8a83b0;
+  font-size: 10px;
+}
+.payment-total b {
+  display: block;
+  color: #544cac;
+  font-size: 30px;
+  margin-top: 7px;
+  letter-spacing: -1px;
+}
+.payment-methods {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+  margin-bottom: 20px;
+}
+.payment-methods button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  padding: 17px 5px;
+  border: 1px solid #e4e8f2;
+  background: #fff;
+  color: #8e99ae;
+  border-radius: 8px;
+  font-size: 10px;
+}
+.payment-methods button.active {
+  background: #f2f0ff;
+  border-color: #8177d9;
+  color: #6257b4;
+}
+.cash-quick {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+.cash-quick button {
+  flex: 1;
+  font-size: 10px;
+  padding: 9px 6px;
+  border-radius: 5px;
+  background: #f9faff;
+  border: 1px solid #e8ecf5;
+  color: #7c88a2;
+}
+.numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+  margin-top: 12px;
+}
+.numpad button {
+  padding: 10px;
+  border: 1px solid #e6eaf3;
+  background: #fafbfe;
+  color: #606f89;
+  border-radius: 6px;
+  font-size: 15px;
+}
+.receipt {
+  font-size: 11px;
+  color: #4a5871;
+  line-height: 1.9;
+}
+.receipt-head {
+  text-align: center;
+  padding-bottom: 20px;
+}
+.receipt-head h2 {
+  font-size: 21px;
+  color: #273650;
+}
+.receipt-head h3 {
+  font-size: 14px;
+  letter-spacing: 1px;
+  margin: 18px 0 4px;
+}
+.receipt table {
+  font-size: 10px;
+  white-space: normal;
+}
+.receipt td,
+.receipt th {
+  padding: 10px 6px;
+}
+.receipt-total {
+  display: grid;
+  gap: 8px;
+  margin-top: 17px;
+  border-top: 1px dashed #dfe4ee;
+  padding-top: 14px;
+}
+.receipt-total .grand {
+  font-size: 16px;
+  color: #35425d;
+  font-weight: 700;
+}
+.receipt-foot {
+  text-align: center;
+  font-size: 10px;
+  color: #97a0b2;
+  margin-top: 23px;
+}
+.toasts {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 100;
+  display: grid;
+  gap: 9px;
+  max-width: 400px;
+}
+.toast {
+  padding: 15px 19px;
+  background: #fff;
+  box-shadow: 0 5px 35px #1b2d4c1f;
+  border: 1px solid #e9edf4;
+  border-left: 3px solid #1baf91;
+  border-radius: 7px;
+  font-size: 11px;
+  color: #53637c;
+  line-height: 1.8;
+  animation: toast-in 0.2s ease;
+}
+.toast.error {
+  border-left-color: #d46a7e;
+}
+.login-form .error-text:empty {
+  display: none;
+}
+#print-area {
+  display: none;
+}
+.numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+}
+.numpad button {
+  padding: 13px;
+  background: #f8f9fc;
+  color: #5c6982;
+  border: 1px solid #e5e9f2;
+  border-radius: 7px;
+}
+dialog {
+  border: 1px solid #e7eaf1;
+  border-radius: 12px;
+  padding: 0;
+  box-shadow: 0 30px 110px #10274440;
+  max-height: 90vh;
+  color: #28354b;
+}
+dialog::backdrop {
+  background: #101d37a1;
+  backdrop-filter: blur(3px);
+}
