@@ -36,6 +36,7 @@ function purchasesView() {
         'box',
       ],
     ]) +
+    restockSuggestionsHTML() +
     `<section class="panel"><div class="panel-head"><h2>Danh sách phiếu nhập</h2></div><div class="table-tools">${filterInput('purchases', 'Tìm mã phiếu, nhà cung cấp…')}${filterSelect('status', [['', 'Tất cả trạng thái'], ...['draft', 'pending', 'received', 'cancelled'].map((x) => [x, statusLabels[x][0]])])}</div>${table(
       ['Mã phiếu', 'Nhà cung cấp', 'Ngày lập', 'Số mặt hàng', 'Tổng tiền', 'Trạng thái', ''],
       p.items.map(
@@ -46,20 +47,23 @@ function purchasesView() {
   );
 }
 
-function purchaseModal() {
+function purchaseModal(productId = '') {
   store.require('purchases');
   purchaseLines = [];
   modalContext = { type: 'purchase' };
   const suppliers = store.data.suppliers.filter((s) => s.active);
+  const chosen = store.data.products.find((p) => p.id === productId && p.active);
+  if (productId && (!chosen || !suppliers.some((s) => s.id === chosen.supplierId)))
+    throw new Error('Mặt hàng hoặc nhà cung cấp không còn hoạt động.');
   showModal(
     'Tạo phiếu nhập hàng',
     `<form id="purchase-form"><div class="modal-content stack">${selectField(
       'Nhà cung cấp',
       'supplierId',
       suppliers.map((s) => [s.id, s.name]),
-      suppliers[0]?.id,
+      chosen?.supplierId || suppliers[0]?.id,
       'id="purchase-supplier" required',
-    )}<div class="form-grid">${selectField('Sản phẩm', 'productId', [], '', 'id="purchase-product"', true)}${field('Số lượng nhập', 'qty', 1, 'number', 'id="purchase-qty" min="1" step="1"')}${field('Đơn giá nhập (₫)', 'price', 0, 'number', 'id="purchase-price" min="0" step="1"')}</div>${action('purchase-line-add', 'Thêm mặt hàng', 'plus', 'small')}<div id="purchase-lines"></div>${textField('Ghi chú', 'note')}${selectField(
+    )}<div id="purchase-restock-suggestions"></div><div class="form-grid">${selectField('Sản phẩm', 'productId', [], '', 'id="purchase-product"', true)}${field('Số lượng nhập', 'qty', 1, 'number', 'id="purchase-qty" min="1" step="1"')}${field('Đơn giá nhập (₫)', 'price', 0, 'number', 'id="purchase-price" min="0" step="1"')}</div>${action('purchase-line-add', 'Thêm mặt hàng', 'plus', 'small')}<div id="purchase-lines"></div>${textField('Ghi chú', 'note')}${selectField(
       'Trạng thái lập phiếu',
       'status',
       [
@@ -71,6 +75,7 @@ function purchaseModal() {
     true,
   );
   updatePurchaseOptions();
+  if (chosen) addSuggestedPurchase(chosen.id);
 }
 
 function updatePurchaseOptions() {
@@ -90,10 +95,11 @@ function renderPurchaseLines() {
       ['Mặt hàng', 'SL', 'Đơn giá', 'Thành tiền', ''],
       purchaseLines.map(
         (i, index) =>
-          `<tr><td>${e(i.name)}</td><td>${i.qty}</td><td>${money(i.price)}</td><td>${money(i.price * i.qty)}</td><td>${ib('purchase-line-delete', 'trash', 'Xóa mặt hàng', `data-index="${index}"`)}</td></tr>`,
+          `<tr><td>${e(i.name)}</td><td><input class="purchase-line-input" type="number" min="1" step="1" required value="${i.qty}" data-purchase-field="qty" data-index="${index}" aria-label="Số lượng nhập ${e(i.name)}"></td><td><input class="purchase-line-input purchase-line-price" type="number" min="0" step="1" required value="${i.price}" data-purchase-field="price" data-index="${index}" aria-label="Giá nhập ${e(i.name)}"></td><td>${money(i.price * i.qty)}</td><td>${ib('purchase-line-delete', 'trash', 'Xóa mặt hàng', `data-index="${index}"`)}</td></tr>`,
       ),
     ) +
     `<div class="right mt16"><strong>Tổng nhập: ${money(purchaseLines.reduce((s, i) => s + i.qty * i.price, 0))}</strong></div>`;
+  renderSupplierRestockSuggestions();
 }
 
 function purchaseDetail(purchaseId) {

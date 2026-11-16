@@ -1,0 +1,103 @@
+.customer-lookup {
+  margin-bottom: 15px;
+}
+.customer-search-field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.customer-search-field > .icon {
+  position: absolute;
+  top: 11px;
+  left: 10px;
+  width: 16px;
+  height: 16px;
+  color: #9aa6b9;
+}
+.customer-search-field input {
+  padding-left: 33px;
+  font-size: 11px;
+}
+.customer-lookup .cart-customer {
+  margin-bottom: 8px;
+}
+.customer-lookup .cart-customer > .icon-btn {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+.customer-phone-results {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 5px);
+  z-index: 10;
+  background: white;
+  border: 1px solid #e7e4f5;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px #1f2e4924;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 5px;
+}
+.customer-phone-results[hidden] {
+  display: none;
+}
+.customer-phone-results button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  text-align: left;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  border-radius: 5px;
+  background: white;
+  padding: 10px;
+  color: #4b5c78;
+}
+.customer-phone-results button:hover,
+.customer-phone-results button[aria-selected='true'] {
+  background: #f1efff;
+  color: var(--primary);
+}
+.customer-phone-results strong {
+  font-size: 12px;
+  display: block;
+}
+.customer-phone-results small {
+  font-size: 10px;
+  display: block;
+  margin-top: 4px;
+}
+.customer-phone-results > .sub {
+  padding: 5px 8px;
+}
+.customer-phone-status {
+  font-size: 9px;
+  line-height: 1.8;
+}
+.customer-selected {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f0f8f5;
+  color: #27846f;
+  padding: 9px 10px;
+  border-radius: 6px;
+}
+.customer-selected > span {
+  flex: 1;
+}
+.customer-selected strong,
+.customer-selected small {
+  display: block;
+}
+.customer-selected small {
+  font-size: 9px;
+  margin-top: 2px;
+}
+.customer-selected .icon-btn {
+  width: 24px;
+  height: 24px;
+  background: transparent;
+}

@@ -7,6 +7,13 @@ document.addEventListener('input', (event) => {
   }
   if (el.id === 'global-search') globalSearch(el.value);
   if (el.id === 'cash-input') updateCash();
+  if (el.id === 'customer-phone-search') {
+    try {
+      searchCustomerPhone(el);
+    } catch (error) {
+      notify(error.message, true);
+    }
+  }
 });
 document.addEventListener('change', async (event) => {
   const el = event.target;
@@ -24,10 +31,27 @@ document.addEventListener('change', async (event) => {
       });
     }
     if (el.id === 'cart-note') changeDraft((d) => (d.note = el.value));
-    if (el.id === 'cart-customer') changeDraft((d) => (d.customerId = el.value));
     if (el.id === 'purchase-supplier') updatePurchaseOptions();
     if (el.id === 'purchase-product')
       $('#purchase-price').value = store.data.products.find((p) => p.id === el.value)?.cost || 0;
+    if (el.dataset.purchaseField) {
+      const key = el.dataset.purchaseField,
+        line = purchaseLines[Number(el.dataset.index)];
+      if (!line || !['qty', 'price'].includes(key))
+        throw new Error('Mặt hàng không còn trong phiếu.');
+      const value = Number(el.value),
+        minimum = key === 'qty' ? 1 : 0;
+      if (!el.value.trim() || !Number.isSafeInteger(value) || value < minimum) {
+        el.value = line[key];
+        throw new Error(
+          key === 'qty'
+            ? 'Số lượng nhập phải là số nguyên lớn hơn 0.'
+            : 'Giá nhập phải là số nguyên không âm.',
+        );
+      }
+      line[key] = value;
+      renderPurchaseLines();
+    }
     if (el.id === 'report-period') {
       reportDays = Number(el.value);
       render();

@@ -223,6 +223,15 @@ async function main() {
       `!!store.user && store.data.orders.length===31 && store.data.products[0].stock===125`,
       'reload preserves session, invoices, inventory',
     );
+    await require('./purchasing-customer.browser.cjs')({
+      evaluate,
+      click,
+      fill,
+      submit,
+      check,
+      command,
+      screenshot,
+    });
     await command('Emulation.setDeviceMetricsOverride', {
       width: 390,
       height: 844,

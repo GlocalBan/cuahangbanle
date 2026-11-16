@@ -1,0 +1,88 @@
+.restock-panel {
+  margin-bottom: 22px;
+}
+.purchase-line-input {
+  width: 75px;
+  min-width: 65px;
+  padding: 7px 8px;
+  font-size: 11px;
+}
+.purchase-line-price {
+  width: 110px;
+}
+.restock-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 13px;
+  padding: 0 20px;
+  max-height: 460px;
+  overflow-y: auto;
+}
+.restock-card {
+  border: 1px solid #eeebf7;
+  border-radius: 8px;
+  background: #fcfbff;
+  padding: 16px;
+}
+.restock-card h3 {
+  font-size: 11px;
+  line-height: 1.7;
+}
+.restock-card .product-thumb {
+  flex-shrink: 0;
+}
+.restock-card .sub {
+  font-size: 10px;
+}
+.restock-levels {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 15px 0 8px;
+  font-size: 10px;
+  color: #8e99ad;
+}
+.restock-recommended {
+  margin: 9px 0 15px;
+  font-size: 10px;
+  color: #786db6;
+}
+.restock-explanation {
+  padding: 10px 20px 17px;
+}
+.supplier-restock-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+  max-height: 205px;
+  overflow-y: auto;
+}
+.supplier-restock-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #f8f6ff;
+  border: 1px solid #eae5fa;
+  border-radius: 6px;
+  text-align: left;
+  color: #7166b0;
+}
+.supplier-restock-item:hover:not(:disabled) {
+  background: #efebff;
+}
+.supplier-restock-item strong,
+.supplier-restock-item small {
+  display: block;
+  font-size: 10px;
+  line-height: 1.8;
+}
+.supplier-restock-item small {
+  font-size: 9px;
+  color: #929bad;
+}
+.supplier-restock-item > span:last-child {
+  white-space: nowrap;
+  font-weight: 600;
+}

@@ -22,12 +22,14 @@ Cần Node.js. Chạy ứng dụng không cần cài thư viện. `npm install` 
 
 - Tổng quan: thống kê thực từ dữ liệu, biểu đồ doanh thu 7/30 ngày, thanh toán, đơn mới và cảnh báo tồn thấp.
 - POS: tìm sản phẩm không dấu, lọc danh mục, nhập/quét mã vạch USB, tăng giảm số lượng, giảm giá, thuế, chọn khách, ghi chú.
+- Tìm khách theo số điện thoại tại POS: gợi ý cập nhật theo từng chữ số, tự ẩn khi không còn số khớp, chọn bằng chuột hoặc phím mũi tên/Enter; sửa số sẽ bỏ khách đã chọn để tránh gắn nhầm hóa đơn.
 - Đơn tạm: lưu tối đa 5 đơn; mở lại, xóa và lưu qua lần tải lại trang.
 - Ba phương thức thanh toán: **tiền mặt, chuyển khoản, thẻ ngân hàng**. Tiền mặt có tính tiền thừa và bàn phím số; chuyển khoản/thẻ lưu mã tham chiếu và xác nhận thủ công.
 - Hóa đơn: tự động lưu sau thanh toán; tìm kiếm, lọc trạng thái/phương thức/ngày, phân trang, tải HTML, in/lưu PDF qua trình duyệt, xuất CSV.
 - Trả hàng: tra hóa đơn gốc, chọn số lượng từng sản phẩm, lý do, quản trị phê duyệt/từ chối, hoàn tiền theo giá trị đã trả sau giảm giá/thuế; ngăn trả vượt hoặc hoàn trùng.
 - Kho: cập nhật sau bán hàng, nhận hàng và trả hàng; kiểm kê thực đếm có lý do, xem lịch sử biến động.
 - Nhập hàng: phiếu nhiều sản phẩm theo nhà cung cấp; nháp, chờ nhận, xác nhận nhập kho, hủy phiếu; chỉ cộng kho một lần khi xác nhận.
+- Gợi ý nhập hàng: liệt kê mặt hàng bằng hoặc dưới ngưỡng tồn tối thiểu, chọn để mở phiếu với đúng nhà cung cấp và thêm sẵn mặt hàng; gợi ý bổ sung lên 2 lần ngưỡng tối thiểu sau khi trừ hàng chờ nhận. Có thể chỉnh số lượng và đơn giá ngay trên phiếu, thêm nhanh các mặt hàng sắp hết cùng đối tác.
 - Danh mục: thêm/sửa sản phẩm, khách hàng, nhà cung cấp; trạng thái hoạt động; mã vạch, điện thoại và tên đăng nhập không trùng.
 - Nhân viên: tài khoản, mật khẩu, khóa tài khoản, phân quyền quản trị/thu ngân/kho.
 - Báo cáo: doanh thu gộp, tiền hoàn, doanh thu thuần, phương thức thanh toán, danh mục bán chạy, kỳ 1/7/30/90 ngày và CSV.

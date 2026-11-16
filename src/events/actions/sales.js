@@ -1,5 +1,12 @@
 function handleSalesAction(a) {
   switch (a.action) {
+    case 'customer-select':
+      selectPhoneCustomer(a.id);
+      break;
+
+    case 'customer-clear':
+      clearPhoneCustomer();
+      break;
     case 'category':
       activeCategory = a.category;
       render();

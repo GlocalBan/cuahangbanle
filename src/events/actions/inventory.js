@@ -15,6 +15,14 @@ function handleInventoryAction(a) {
       purchaseModal();
       break;
 
+    case 'purchase-restock':
+      purchaseModal(a.id);
+      break;
+
+    case 'purchase-add-suggestion':
+      addSuggestedPurchase(a.id);
+      break;
+
     case 'purchase-detail':
       purchaseDetail(a.id);
       break;
