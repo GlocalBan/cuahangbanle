@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { Store, KEY, clone, validateBackup } = require('../store');
-const { totals, calculateDiscounts } = require('../src/domain/calculations.js');
+const { totals, calculateDiscounts, calculateProfitAndLoss } = require('../src/domain/calculations.js');
 function fixture() {
   const map = new Map();
   const storage = { getItem: (k) => map.get(k) || null, setItem: (k, v) => map.set(k, v) };
@@ -446,4 +446,141 @@ test('sales checkout strictly blocks expired products and partial payments', () 
   assert.equal(order.received, t.total);
   assert.equal(order.change, 0);
 });
+
+test('3-step inventory audit supports practical resolutions and expired write-off', () => {
+  const { s } = fixture();
+  const p = s.data.products[0];
+  const initialStock = p.stock;
+  const cost = p.costPrice || p.cost;
+
+  // Audit with staff compensation resolution
+  const audit1 = s.audit(
+    [
+      {
+        id: p.id,
+        actual: initialStock - 5,
+        resolution: 'staff_compensation',
+        responsibleStaff: 'Nguyễn Văn Thu Ngân',
+      },
+    ],
+    'Kiểm kê mất hàng ca tối',
+  );
+  assert.equal(s.data.products[0].stock, initialStock - 5);
+  assert.equal(audit1.items[0].resolution, 'staff_compensation');
+  assert.equal(audit1.items[0].responsibleStaff, 'Nguyễn Văn Thu Ngân');
+  assert.equal(audit1.items[0].diffValue, 5 * cost);
+
+  // auditExpiredProducts finds all expired items and zeros their stock
+  const expiredBefore = s.data.products.filter(
+    (x) => s.getExpiryInfo(x.expiryDate).status === 'expired' && x.stock > 0,
+  );
+  assert.ok(expiredBefore.length > 0, 'Có sản phẩm hết hạn còn tồn kho');
+
+  const expAudit = s.auditExpiredProducts();
+  assert.equal(expAudit.status, 'resolved');
+  assert.equal(expAudit.items.length, expiredBefore.length);
+  assert.ok(expAudit.items.every((i) => i.actual === 0 && i.resolution === 'damage_writeoff'));
+
+  // All expired items now have stock 0
+  const expiredAfter = s.data.products.filter(
+    (x) => s.getExpiryInfo(x.expiryDate).status === 'expired' && x.stock > 0,
+  );
+  assert.equal(expiredAfter.length, 0, 'Không còn sản phẩm hết hạn nào có tồn kho');
+
+  // Second call throws because no expired items remain in stock
+  assert.throws(() => s.auditExpiredProducts(), /Không có sản phẩm hết hạn/);
+});
+
+test('two-way purchase workflow handles negotiation and partial GRN receipt', () => {
+  const { s } = fixture();
+  const p = s.data.products.find((prod) => prod.supplierId === 'NCC001');
+  const initialStock = p.stock;
+
+  // 1. Store creates PO with status sent_to_supplier
+  const po = s.createPurchase('NCC001', [{ id: p.id, qty: 20, price: 50000 }], 'Đặt hàng tuần 48', 'sent_to_supplier');
+  assert.equal(po.status, 'sent_to_supplier');
+  assert.equal(s.data.products.find((x) => x.id === p.id).stock, initialStock, 'Chưa thay đổi kho');
+
+  // 2. Supplier responds: only has 15 items, confirmed cost 52,000, new expiry and batch
+  s.supplierRespond(po.id, {
+    lines: [
+      {
+        id: p.id,
+        confirmedQty: 15,
+        confirmedCost: 52000,
+        expiryDate: '2027-06-30',
+        batchCode: 'LO-NCC-NEW',
+        note: 'Kho chỉ còn 15 thùng',
+      },
+    ],
+    supplierNote: 'Giao đợt 1 vào sáng thứ Hai',
+  });
+  assert.equal(po.status, 'supplier_responded');
+  assert.equal(po.items[0].confirmedQty, 15);
+  assert.equal(po.items[0].confirmedCost, 52000);
+  assert.equal(po.items[0].expiryDate, '2027-06-30');
+
+  // 3. Store approves supplier response
+  s.approveSupplierResponse(po.id, 'Đồng ý nhận 15 thùng với giá 52.000đ');
+  assert.equal(po.status, 'store_approved');
+
+  // 4. Warehouse receives GRN: accepts 13, rejects 2 damaged
+  s.confirmPurchaseReceipt(po.id, {
+    lines: [{ id: p.id, acceptedQty: 13, rejectedQty: 2 }],
+    receiverNote: 'Nhận 13 thùng nguyên vẹn, 2 thùng bẹp góc trả lại tài xế',
+  });
+  assert.equal(po.status, 'received');
+  const updatedProd = s.data.products.find((x) => x.id === p.id);
+  assert.equal(updatedProd.stock, initialStock + 13, 'Chỉ 13 thùng đạt chuẩn được cộng vào kho');
+  assert.equal(updatedProd.costPrice, 52000, 'Giá vốn được cập nhật theo giá NCC chốt');
+  assert.equal(updatedProd.cost, 52000);
+  assert.equal(updatedProd.expiryDate, '2027-06-30');
+  assert.equal(updatedProd.batchCode, 'LO-NCC-NEW');
+  assert.equal(po.total, 13 * 52000, 'Tổng tiền thanh toán chỉ tính trên hàng đạt chuẩn');
+});
+
+test('return condition classification correctly routes goods to salable stock vs damagedStock', () => {
+  const { s } = fixture();
+  const o = s.data.orders[0];
+  const item = o.items[0];
+  const prod = s.data.products.find((p) => p.id === item.id);
+  const initialStock = prod.stock;
+  const initialDamaged = prod.damagedStock || 0;
+
+  // 1. Defective / damaged return: does NOT add to salable stock, increments damagedStock
+  const retDamaged = s.createReturn(o.id, [{ id: item.id, qty: 1 }], 'Hàng bẹp vỡ khi mở hộp', 'damaged_or_expired');
+  assert.equal(retDamaged.restock, false);
+  assert.equal(retDamaged.returnCondition, 'damaged_or_expired');
+  s.resolveReturn(retDamaged.id, true);
+
+  assert.equal(prod.stock, initialStock, 'Hàng hỏng không được cộng vào kho bán');
+  assert.equal(prod.damagedStock, initialDamaged + 1, 'Hàng hỏng được đưa vào damagedStock chờ hủy');
+
+  // 2. Good condition return: restocks into salable stock
+  const retGood = s.createReturn(o.id, [{ id: item.id, qty: 1 }], 'Khách đổi ý muốn mua loại khác', 'good_restock');
+  assert.equal(retGood.restock, true);
+  assert.equal(retGood.returnCondition, 'good_restock');
+  s.resolveReturn(retGood.id, true);
+
+  assert.equal(prod.stock, initialStock + 1, 'Hàng nguyên tem được cộng lại kho bán lẻ');
+});
+
+test('P&L financial reporting calculates revenue, COGS, shrinkage loss, and net profit', () => {
+  const { s } = fixture();
+  const pnl = calculateProfitAndLoss(s.data, 90);
+
+  assert.ok(typeof pnl.grossRevenue === 'number' && pnl.grossRevenue > 0, 'Có grossRevenue');
+  assert.ok(typeof pnl.totalDiscounts === 'number', 'Có totalDiscounts');
+  assert.ok(typeof pnl.refunds === 'number', 'Có refunds');
+  assert.ok(typeof pnl.netRevenue === 'number' && pnl.netRevenue > 0, 'Có netRevenue');
+  assert.equal(pnl.netRevenue, Math.max(0, pnl.grossRevenue - pnl.totalDiscounts - pnl.refunds));
+
+  assert.ok(typeof pnl.cogs === 'number' && pnl.cogs > 0, 'Có cogs');
+  assert.equal(pnl.grossProfit, pnl.netRevenue - pnl.cogs);
+
+  assert.ok(typeof pnl.totalLoss === 'number', 'Có totalLoss');
+  assert.ok(typeof pnl.staffCompensation === 'number', 'Có staffCompensation');
+  assert.equal(pnl.netProfit, pnl.grossProfit - pnl.totalLoss + pnl.staffCompensation);
+});
+
 

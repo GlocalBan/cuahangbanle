@@ -140,13 +140,26 @@
     s.purchases.forEach((p) => {
       assert(
         supplierIds.has(p.supplierId) &&
-          ['draft', 'pending', 'received', 'cancelled'].includes(p.status),
+          [
+            'draft',
+            'pending',
+            'sent_to_supplier',
+            'supplier_responded',
+            'store_approved',
+            'received',
+            'cancelled',
+          ].includes(p.status),
         'Phiếu nhập không hợp lệ.',
       );
       validItems(p.items);
       integer(p.total, 'Tổng tiền nhập');
+      const expectedTotal1 = p.items.reduce((a, i) => a + i.qty * i.price, 0);
+      const expectedTotal2 = p.items.reduce(
+        (a, i) => a + (i.acceptedQty !== undefined ? i.acceptedQty : i.qty) * (i.confirmedCost || i.price),
+        0,
+      );
       assert(
-        p.total === p.items.reduce((a, i) => a + i.qty * i.price, 0),
+        p.total === expectedTotal1 || p.total === expectedTotal2,
         'Tổng phiếu nhập không khớp.',
       );
     });

@@ -11,6 +11,19 @@ function handleInventoryAction(a) {
       auditModal();
       break;
 
+    case 'audit-expired-products': {
+      confirmation(
+        'Lập phiếu kiểm kê hủy hàng hết hạn?',
+        'Toàn bộ sản phẩm đã hết hạn sử dụng còn tồn kho sẽ được đưa về 0, chuyển vào chi phí hao hụt và ghi nhận biên bản hủy hàng CVS.',
+        () => {
+          const auditRec = store.auditExpiredProducts();
+          render();
+          notify(`Đã lập biên bản hủy ${auditRec.items.length} mặt hàng hết hạn (${auditRec.id})!`);
+        },
+      );
+      break;
+    }
+
     case 'purchase-new':
       purchaseModal();
       break;
@@ -47,10 +60,33 @@ function handleInventoryAction(a) {
       break;
 
     case 'purchase-send':
-      store.purchaseStatus(a.id, 'pending');
+      store.purchaseStatus(a.id, 'sent_to_supplier');
       purchaseDetail(a.id);
       render();
-      notify('Đã gửi phiếu chờ nhận hàng.');
+      notify('Đã gửi đơn đặt hàng tới NCC.');
+      break;
+
+    case 'open-supplier-response':
+      supplierResponseModal(a.id);
+      break;
+
+    case 'approve-supplier-response': {
+      const pid = a.id;
+      confirmation(
+        'Duyệt phản hồi từ Nhà cung cấp?',
+        'Đơn hàng sẽ chuyển sang trạng thái sẵn sàng để nhân viên kho kiểm nhận GRN.',
+        () => {
+          store.approveSupplierResponse(pid);
+          render();
+          purchaseDetail(pid);
+          notify('Đã phê duyệt phản hồi từ NCC.');
+        },
+      );
+      break;
+    }
+
+    case 'open-purchase-receipt':
+      purchaseReceiptModal(a.id);
       break;
 
     case 'purchase-receive': {

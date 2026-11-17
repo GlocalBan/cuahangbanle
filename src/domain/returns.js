@@ -6,6 +6,7 @@
     typeof module !== 'undefined' && module.exports ? require('./calculations.js') : scope.Retail;
   const { validateBackup } =
     typeof module !== 'undefined' && module.exports ? require('./backup.js') : scope.Retail;
+
   const methods = {
     available(orderId, productId, excludeReturnId = '') {
       const o = this.data.orders.find((o) => o.id === orderId),
@@ -16,6 +17,7 @@
         .reduce((s, r) => s + (r.items.find((i) => i.id === productId)?.qty || 0), 0);
       return i.qty - i.returnedQty - reserved;
     },
+
     createReturn(orderId, selections, reason, restock) {
       this.require('returns');
       const o = this.data.orders.find((o) => o.id === orderId);
@@ -29,6 +31,7 @@
         new Set(selections.map((i) => i.id)).size === selections.length,
         'Sản phẩm trả bị trùng.',
       );
+
       const items = selections.map((s) => {
         const i = o.items.find((i) => i.id === s.id);
         assert(i, 'Sản phẩm không có trong hóa đơn.');
@@ -39,6 +42,13 @@
         );
         return { id: i.id, name: i.name, price: i.price, qty };
       });
+
+      const returnCondition =
+        restock === false || restock === 'damaged_or_expired'
+          ? 'damaged_or_expired'
+          : 'good_restock';
+      const shouldRestock = returnCondition === 'good_restock';
+
       return this.commit('Tạo yêu cầu trả hàng', o.id, () => {
         const r = {
           id: id('DT'),
@@ -46,7 +56,8 @@
           time: now(),
           items,
           reason: reason.trim(),
-          restock: !!restock,
+          restock: shouldRestock,
+          returnCondition,
           status: 'pending',
           amount: 0,
           actor: this.user.name,
@@ -56,6 +67,7 @@
         return r;
       });
     },
+
     resolveReturn(returnId, approved) {
       this.admin();
       return this.commit(approved ? 'Duyệt hoàn tiền' : 'Từ chối trả hàng', returnId, () => {
@@ -81,18 +93,29 @@
             amount += value;
             item.refund = value;
             original.returnedQty += item.qty;
-            if (r.restock) this.move(item.id, item.qty, 'Nhận lại hàng trả', r.id);
+
+            if (r.restock) {
+              this.move(item.id, item.qty, 'Nhận lại hàng trả', r.id);
+            } else {
+              const prod = this.data.products.find((p) => p.id === item.id);
+              if (prod) {
+                prod.damagedStock = (prod.damagedStock || 0) + item.qty;
+              }
+            }
           });
           r.amount = amount;
           r.status = 'approved';
           o.status = o.items.every((i) => i.returnedQty === i.qty) ? 'refunded' : 'partial';
-        } else r.status = 'rejected';
+        } else {
+          r.status = 'rejected';
+        }
         r.resolvedAt = now();
         r.approver = this.user.name;
         return r;
       });
     },
   };
+
   if (typeof module !== 'undefined' && module.exports) module.exports = methods;
   else (scope.Retail.storeModules || (scope.Retail.storeModules = {})).returns = methods;
 })(globalThis);

@@ -13,7 +13,7 @@ function returnsView() {
     heading(
       'BÁN HÀNG / ĐỔI TRẢ',
       'Đổi trả & hoàn tiền',
-      'Tra cứu hóa đơn gốc, kiểm tra số lượng và xử lý yêu cầu trả hàng.',
+      'Quy trình đổi trả CVS: Phân loại hàng nguyên tem nhập lại kho và hàng lỗi/hết date đưa vào kho chờ hủy.',
       action('return-new', 'Tạo yêu cầu đổi trả', 'plus', 'primary'),
     ) +
     stats([
@@ -38,12 +38,15 @@ function returnsView() {
       ],
     ]) +
     `<section class="panel"><div class="panel-head"><h2>Lịch sử yêu cầu trả hàng</h2></div><div class="table-tools">${filterInput('returns', 'Tìm mã phiếu, hóa đơn gốc, lý do…')}${filterSelect('status', [['', 'Tất cả trạng thái'], ...['pending', 'approved', 'rejected'].map((x) => [x, statusLabels[x][0]])])}</div>${table(
-      ['Mã phiếu', 'Hóa đơn gốc', 'Ngày tạo', 'Lý do', 'Tiền đã hoàn', 'Trạng thái', ''],
-      p.items.map(
-        (r) =>
-          `<tr><td class="name">${e(r.id)}</td><td>${e(r.orderId)}</td><td>${date(r.time)}</td><td>${e(r.reason)}</td><td class="money">${money(r.amount)}</td><td>${status(r.status)}</td><td>${action('return-detail', 'Xem', '', 'small', `data-id="${e(r.id)}"`)}</td></tr>`,
-      ),
-    )}${p.foot}<div class="panel-body"><div class="note yellow">Yêu cầu chờ duyệt chưa hoàn tiền và chưa cộng tồn kho. Hàng còn bán được mới nhập lại kho. Để đổi sang sản phẩm khác, hoàn trả hóa đơn cũ rồi tạo đơn bán mới.</div></div></section>`
+      ['Mã phiếu', 'Hóa đơn gốc', 'Ngày tạo', 'Lý do', 'Tình trạng hàng', 'Tiền hoàn', 'Trạng thái', ''],
+      p.items.map((item) => {
+        const isDamaged = item.returnCondition === 'damaged_or_expired' || item.restock === false;
+        const condBadge = isDamaged
+          ? '<span class="badge red">Hàng lỗi/Chờ hủy</span>'
+          : '<span class="badge green">Nguyên tem (Nhập kho)</span>';
+        return `<tr><td class="name">${e(item.id)}</td><td>${e(item.orderId)}</td><td>${date(item.time)}</td><td>${e(item.reason)}</td><td>${condBadge}</td><td class="money">${money(item.amount)}</td><td>${status(item.status)}</td><td>${action('return-detail', 'Xem', '', 'small', `data-id="${e(item.id)}"`)}</td></tr>`;
+      }),
+    )}${p.foot}<div class="panel-body"><div class="note yellow">Yêu cầu chờ duyệt chưa hoàn tiền và chưa cập nhật kho. Hàng nguyên vẹn mới được cộng lại vào tồn kho bán; hàng hỏng hoặc hết hạn sẽ được ghi nhận vào kho chờ hủy và tính vào chi phí hao hụt P&L.</div></div></section>`
   );
 }
 
@@ -52,7 +55,7 @@ function returnModal(orderId = '') {
   modalContext = { type: 'return', orderId };
   showModal(
     'Tạo yêu cầu trả hàng',
-    `<form id="return-form"><div class="modal-content stack"><div class="row"><input id="return-order-search" name="orderId" placeholder="Nhập mã hóa đơn gốc…" value="${e(orderId)}" required aria-label="Mã hóa đơn gốc">${action('return-search', 'Tra cứu', 'search')}</div><div id="return-items"></div>${textField('Lý do trả hàng', 'reason')}<label class="check-label"><input type="checkbox" name="restock" checked><span>Hàng còn nguyên vẹn, có thể nhập lại kho để bán tiếp.</span></label>${formError()}<div class="note">Chọn số lượng cần trả. Giá trị hoàn tiền được tính theo số tiền thực trả trên hóa đơn sau giảm giá và thuế.</div></div>${foot('Gửi yêu cầu trả hàng')}</form>`,
+    `<form id="return-form"><div class="modal-content stack"><div class="row"><input id="return-order-search" name="orderId" placeholder="Nhập mã hóa đơn gốc…" value="${e(orderId)}" required aria-label="Mã hóa đơn gốc">${action('return-search', 'Tra cứu', 'search')}</div><div id="return-items"></div>${textField('Lý do trả hàng', 'reason')}<div class="field full"><span>Phân loại tình trạng hàng trả:</span><div class="row gap16 mt8"><label class="check-label"><input type="radio" name="restock" value="good_restock" checked> <span><strong>Nguyên vẹn:</strong> Đủ điều kiện nhập lại kho bán</span></label><label class="check-label"><input type="radio" name="restock" value="damaged_or_expired"> <span><strong>Lỗi / Hết date / Hư hỏng:</strong> Chuyển kho chờ hủy (không nhập lại kho bán)</span></label></div></div>${formError()}<div class="note">Chọn số lượng cần trả. Giá trị hoàn tiền được tính theo số tiền thực trả trên hóa đơn sau giảm giá và thuế.</div></div>${foot('Gửi yêu cầu trả hàng')}</form>`,
     true,
   );
   if (orderId) searchReturn();
@@ -87,6 +90,7 @@ function returnDetail(returnId) {
       Math.floor((i.paidTotal * i.returnedQty) / i.qty)
     );
   }, 0);
+  const isDamaged = r.returnCondition === 'damaged_or_expired' || r.restock === false;
   showModal(
     'Chi tiết yêu cầu trả hàng',
     `<div class="modal-content"><div class="detail-grid"><div><small>Mã phiếu</small><strong>${e(r.id)}</strong></div><div><small>Hóa đơn gốc</small><strong>${e(r.orderId)}</strong></div><div><small>Khách hàng</small><strong>${e(o.customer)}</strong></div><div><small>Trạng thái</small>${status(r.status)}</div></div>${table(
@@ -94,7 +98,7 @@ function returnDetail(returnId) {
       r.items.map(
         (i) => `<tr><td>${e(i.name)}</td><td>${i.qty}</td><td>${money(i.price)}</td></tr>`,
       ),
-    )}<div class="stack mt16"><p><strong>${r.status === 'approved' ? 'Đã hoàn tiền' : 'Dự kiến hoàn'}: ${money(r.status === 'approved' ? r.amount : estimate)}</strong></p><p class="sub">Lý do: ${e(r.reason)}<br>Hàng trả: ${r.restock ? 'Đủ điều kiện nhập lại kho' : 'Không nhập lại kho'}<br>Phương thức hoàn: ${METHODS[r.payment]}<br>Người tạo: ${e(r.actor)} · ${date(r.time)}${r.resolvedAt ? `<br>Xử lý bởi ${e(r.approver)} · ${date(r.resolvedAt)}` : ''}</p>${r.status === 'pending' ? '<div class="note yellow">Trước khi phê duyệt, kiểm tra hàng thực nhận và thực hiện hoàn tiền cho khách bằng phương thức gốc. Ứng dụng ghi nhận kết quả thủ công.</div>' : ''}</div></div><div class="modal-footer">${action('order-detail', 'Xem hóa đơn gốc', 'receipt', '', `data-id="${e(o.id)}"`)}${r.status === 'pending' && store.user.role === 'ADMIN' ? action('return-reject', 'Từ chối', '', 'danger', `data-id="${e(r.id)}"`) + action('return-approve', 'Xác nhận đã hoàn tiền', 'check', 'teal', `data-id="${e(r.id)}"`) : ''}</div>`,
+    )}<div class="stack mt16"><p><strong>${r.status === 'approved' ? 'Đã hoàn tiền' : 'Dự kiến hoàn'}: ${money(r.status === 'approved' ? r.amount : estimate)}</strong></p><p class="sub">Lý do: ${e(r.reason)}<br>Phân loại hàng trả: <strong>${isDamaged ? 'Hàng hỏng / hết date (Kho chờ hủy - Không cộng tồn bán)' : 'Hàng nguyên tem (Cộng lại kho bán)'}</strong><br>Phương thức hoàn: ${METHODS[r.payment]}<br>Người tạo: ${e(r.actor)} · ${date(r.time)}${r.resolvedAt ? `<br>Xử lý bởi ${e(r.approver)} · ${date(r.resolvedAt)}` : ''}</p>${r.status === 'pending' ? '<div class="note yellow">Trước khi phê duyệt, kiểm tra hàng thực nhận và thực hiện hoàn tiền cho khách bằng phương thức gốc. Ứng dụng ghi nhận kết quả thủ công.</div>' : ''}</div></div><div class="modal-footer">${action('order-detail', 'Xem hóa đơn gốc', 'receipt', '', `data-id="${e(o.id)}"`)}${r.status === 'pending' && store.user.role === 'ADMIN' ? action('return-reject', 'Từ chối', '', 'danger', `data-id="${e(r.id)}"`) + action('return-approve', 'Xác nhận đã hoàn tiền', 'check', 'teal', `data-id="${e(r.id)}"`) : ''}</div>`,
     true,
   );
 }
