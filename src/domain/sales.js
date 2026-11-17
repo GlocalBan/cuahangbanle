@@ -6,6 +6,7 @@
     typeof module !== 'undefined' && module.exports ? require('./calculations.js') : scope.Retail;
   const { validateBackup } =
     typeof module !== 'undefined' && module.exports ? require('./backup.js') : scope.Retail;
+
   const methods = {
     saveDraft(draft) {
       this.require('pos');
@@ -14,6 +15,7 @@
         this.data.draft = clone(draft);
       });
     },
+
     hold() {
       this.require('pos');
       assert(this.data.draft.items.length, 'Chọn sản phẩm trước khi lưu đơn.');
@@ -25,6 +27,7 @@
         return held;
       });
     },
+
     clearDraft() {
       this.data.draft = {
         items: [],
@@ -36,6 +39,7 @@
         demographic: 'Không ghi nhận',
       };
     },
+
     restoreHeld(heldId) {
       this.require('pos');
       assert(
@@ -49,12 +53,14 @@
         this.data.held = this.data.held.filter((x) => x.id !== heldId);
       });
     },
+
     deleteHeld(heldId) {
       this.require('pos');
       this.commit('Xóa đơn tạm', heldId, () => {
         this.data.held = this.data.held.filter((x) => x.id !== heldId);
       });
     },
+
     checkout({ payment, received = 0, paymentRef = '', confirmed = false }) {
       this.require('pos');
       assert(METHODS[payment], 'Phương thức thanh toán không hợp lệ.');
@@ -67,6 +73,7 @@
         voucher,
         products: this.data.products,
       });
+
       if (payment === 'cash') {
         received = integer(received, 'Tiền khách đưa');
         assert(
@@ -78,6 +85,7 @@
         assert(paymentRef.trim(), 'Nhập mã tham chiếu giao dịch.');
         received = t.total;
       }
+
       return this.commit('Thanh toán đơn hàng', METHODS[payment], () => {
         const items = d.items.map((i) => {
           const p = this.data.products.find((p) => p.id === i.id);
@@ -89,8 +97,50 @@
           integer(i.qty, 'Số lượng', 1);
           assert(p.stock >= i.qty, `${p.name} chỉ còn ${p.stock} sản phẩm.`);
           assert(i.price === p.price, `Giá ${p.name} đã thay đổi. Hãy xóa và chọn lại sản phẩm.`);
-          return { ...clone(i), cost: p.cost, category: p.category, returnedQty: 0 };
+
+          // Bán hàng theo FEFO (First-Expired, First-Out)
+          const batchAllocations = [];
+          if (Array.isArray(p.batches) && p.batches.length > 0) {
+            // Sắp xếp các lô còn hạn theo HSD tăng dần
+            const activeBatches = p.batches
+              .filter((b) => b.status === 'active' && (b.remainingQty || 0) > 0)
+              .sort((a, b) => (a.expiryDate || '').localeCompare(b.expiryDate || ''));
+
+            let needed = i.qty;
+            for (const b of activeBatches) {
+              const take = Math.min(b.remainingQty, needed);
+              b.remainingQty -= take;
+              needed -= take;
+              if (b.remainingQty === 0) b.status = 'depleted';
+              batchAllocations.push({
+                batchId: b.id,
+                batchCode: b.batchCode,
+                qty: take,
+                costPrice: b.costPrice,
+                expiryDate: b.expiryDate,
+              });
+              if (needed === 0) break;
+            }
+
+            // Cập nhật lô FEFO hiện hành
+            const nextActiveBatch = p.batches.find((b) => b.status === 'active' && b.remainingQty > 0);
+            if (nextActiveBatch) {
+              p.expiryDate = nextActiveBatch.expiryDate;
+              p.batchCode = nextActiveBatch.batchCode;
+              p.costPrice = nextActiveBatch.costPrice;
+              p.cost = nextActiveBatch.costPrice;
+            }
+          }
+
+          return {
+            ...clone(i),
+            cost: p.cost,
+            category: p.category,
+            returnedQty: 0,
+            batchAllocations,
+          };
         });
+
         // Integer allocation preserves the invoice total, including discounts and tax.
         let allocated = 0;
         items.forEach((i, index) => {
@@ -100,8 +150,10 @@
               : Math.floor((t.total * (i.price * i.qty)) / Math.max(t.subtotal, 1));
           allocated += i.paidTotal;
         });
+
         const customer = this.data.customers.find((c) => c.id === d.customerId);
         assert(!d.customerId || customer?.active, 'Khách hàng không còn hoạt động.');
+
         const order = {
           id: id('HD'),
           time: now(),
@@ -125,6 +177,7 @@
           store: clone(this.data.settings),
           branchId: 'CN001',
         };
+
         items.forEach((i) => this.move(i.id, -i.qty, 'Bán hàng', order.id));
         this.data.orders.unshift(order);
         this.clearDraft();
@@ -132,6 +185,7 @@
       });
     },
   };
+
   if (typeof module !== 'undefined' && module.exports) module.exports = methods;
   else (scope.Retail.storeModules || (scope.Retail.storeModules = {})).sales = methods;
 })(globalThis);

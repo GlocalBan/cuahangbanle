@@ -155,6 +155,15 @@ document.addEventListener('submit', (event) => {
         notify(`Đã thêm ${p.name}`);
         break;
       }
+      case 'import-csv-form': {
+        const content = v.csvContent || '';
+        if (!content.trim()) throw new Error('Vui lòng dán hoặc tải nội dung CSV.');
+        const res = store.importReferenceCatalogCsv(content);
+        closeModal();
+        render();
+        notify(`Đã nạp thành công đối chứng CSV (${res.updatedCount} cập nhật, ${res.addedCount} thêm mới)!`);
+        break;
+      }
     }
   } catch (error) {
     const target = $('#form-error', form) || $('#login-error', form);

@@ -641,4 +641,209 @@ test('P&L financial reporting calculates revenue, COGS, shrinkage loss, and net 
   assert.equal(pnl.netProfit, pnl.grossProfit - pnl.totalLoss + pnl.staffCompensation);
 });
 
+// ==============================================================================
+// PHASE 4 ENHANCEMENT TESTS: PRODUCT+BATCH FEFO, EAN-13, CSV IMPORT & PROTECTION
+// ==============================================================================
+
+test('Test 1: all seed products pass EAN-13 check-digit validation and have unique GTIN', () => {
+  const { s } = fixture();
+  const products = s.data.products;
+  assert.ok(products.length >= 80, 'Có tối thiểu 80 sản phẩm');
+
+  const gtins = products.map((p) => p.gtin);
+  assert.equal(new Set(gtins).size, products.length, '100% mã GTIN là duy nhất (0 cặp trùng GTIN)');
+
+  products.forEach((p) => {
+    assert.ok(p.gtin, `Sản phẩm ${p.id} phải có GTIN`);
+    assert.equal(p.gtin.length, 13, `GTIN ${p.gtin} phải đủ 13 chữ số`);
+    assert.equal(
+      s.isValidEan13(p.gtin),
+      true,
+      `GTIN ${p.gtin} của sản phẩm ${p.name} (${p.id}) phải chuẩn EAN-13 check-digit`,
+    );
+  });
+});
+
+test('Test 2: no duplicate product names or SKUs and all referenced packshot images have unique MD5', () => {
+  const { s } = fixture();
+  const fs = require('fs');
+  const path = require('path');
+  const crypto = require('crypto');
+
+  const products = s.data.products;
+  const names = products.map((p) => p.name.trim().toLowerCase());
+  const ids = products.map((p) => p.id);
+
+  assert.equal(new Set(names).size, products.length, '0 cặp sản phẩm nào trùng tên trong catalog');
+  assert.equal(new Set(ids).size, products.length, '0 cặp SKU nào trùng mã');
+
+  // Kiểm tra tính duy nhất của MD5 các file ảnh packshot
+  const imgDir = path.resolve(__dirname, '../assets/images/products');
+  if (fs.existsSync(imgDir)) {
+    const files = fs.readdirSync(imgDir).filter((f) => /\.(jpg|png|webp)$/i.test(f));
+    const hashes = {};
+    files.forEach((f) => {
+      const buf = fs.readFileSync(path.join(imgDir, f));
+      const hash = crypto.createHash('md5').update(buf).digest('hex');
+      (hashes[hash] = hashes[hash] || []).push(f);
+    });
+    const dupGroups = Object.entries(hashes).filter(([, group]) => group.length > 1);
+    assert.equal(dupGroups.length, 0, '100% file ảnh packshot thương mại có MD5 duy nhất (0 cặp trùng MD5)');
+  }
+});
+
+test('Test 3: FEFO sales allocation deducts from earliest-expiry batch first and new purchases preserve legacy batches', () => {
+  const { s } = fixture();
+  const p = s.data.products[0];
+
+  // Chuẩn bị 2 lô hàng cho sản phẩm: Lô A (HSD 2027-01-01, 5 SP), Lô B (HSD 2027-06-01, 10 SP)
+  p.batches = [
+    {
+      id: 'BAT-TEST-001',
+      productId: p.id,
+      batchCode: 'LO-FEFO-01',
+      mfgDate: '2026-01-01',
+      expiryDate: '2027-01-01',
+      costPrice: 20000,
+      initialQty: 5,
+      remainingQty: 5,
+      status: 'active',
+    },
+    {
+      id: 'BAT-TEST-002',
+      productId: p.id,
+      batchCode: 'LO-FEFO-02',
+      mfgDate: '2026-06-01',
+      expiryDate: '2027-06-01',
+      costPrice: 22000,
+      initialQty: 10,
+      remainingQty: 10,
+      status: 'active',
+    },
+  ];
+  p.stock = 15;
+
+  // Bán 7 sản phẩm: FEFO phải trừ hết 5 từ Lô A và 2 từ Lô B
+  s.saveDraft({
+    items: [{ id: p.id, name: p.name, price: p.price, qty: 7 }],
+    discount: 0,
+    customerId: '',
+    note: 'Test FEFO',
+    demographic: 'Không ghi nhận',
+  });
+  const o = s.checkout({ payment: 'cash', received: 7 * p.price });
+  assert.equal(o.status, 'completed');
+
+  const batchA = p.batches.find((b) => b.id === 'BAT-TEST-001');
+  const batchB = p.batches.find((b) => b.id === 'BAT-TEST-002');
+  assert.equal(batchA.remainingQty, 0, 'Lô A hết hạn sớm hơn bị trừ hết trước');
+  assert.equal(batchA.status, 'depleted', 'Lô A chuyển trạng thái depleted');
+  assert.equal(batchB.remainingQty, 8, 'Lô B chỉ bị trừ phần còn thiếu (2 SP)');
+  assert.equal(p.stock, 8, 'Tồn kho tổng còn 8');
+
+  // Kiểm tra batchAllocations trong hóa đơn lưu đúng vết
+  const checkoutItem = o.items.find((i) => i.id === p.id);
+  assert.ok(Array.isArray(checkoutItem.batchAllocations), 'Hóa đơn lưu chi tiết phân bổ lô');
+  assert.equal(checkoutItem.batchAllocations.length, 2);
+  assert.equal(checkoutItem.batchAllocations[0].batchCode, 'LO-FEFO-01');
+  assert.equal(checkoutItem.batchAllocations[0].qty, 5);
+  assert.equal(checkoutItem.batchAllocations[1].batchCode, 'LO-FEFO-02');
+  assert.equal(checkoutItem.batchAllocations[1].qty, 2);
+
+  // Nhập thêm hàng: tạo lô mới không được ghi đè HSD của Lô B
+  const purchase = s.createPurchase(p.supplierId, [{ id: p.id, qty: 20, price: 21000 }], 'Nhập lô C');
+  s.supplierRespond(purchase.id, {
+    lines: [{ id: p.id, confirmedQty: 20, confirmedCost: 21000, expiryDate: '2028-01-01', batchCode: 'LO-FEFO-03' }],
+  });
+  s.approveSupplierResponse(purchase.id);
+  s.confirmPurchaseReceipt(purchase.id);
+
+  assert.equal(batchB.expiryDate, '2027-06-01', 'HSD của lô cũ không bị ghi đè');
+  assert.equal(p.batches.length, 3, 'Tạo thành công lô mới thứ 3');
+  assert.equal(p.stock, 28, 'Tồn kho tăng đúng 20 đơn vị');
+});
+
+test('Test 4: sweepExpiredBatches quarantines expired batches into damagedStock and excludes from salable stock', () => {
+  const { s } = fixture();
+  const p = s.data.products[1];
+
+  // Giả lập 1 lô đã hết hạn
+  p.batches = [
+    {
+      id: 'BAT-EXP-01',
+      productId: p.id,
+      batchCode: 'LO-EXPIRED',
+      mfgDate: '2024-01-01',
+      expiryDate: '2025-01-01',
+      costPrice: p.costPrice,
+      initialQty: 10,
+      remainingQty: 10,
+      status: 'active',
+    },
+    {
+      id: 'BAT-VALID-01',
+      productId: p.id,
+      batchCode: 'LO-VALID',
+      mfgDate: '2026-01-01',
+      expiryDate: '2027-12-31',
+      costPrice: p.costPrice,
+      initialQty: 25,
+      remainingQty: 25,
+      status: 'active',
+    },
+  ];
+  p.stock = 35;
+  p.damagedStock = 0;
+
+  // Thực hiện quét lô hết hạn
+  const res = s.sweepExpiredBatches(new Date('2026-11-17'));
+  assert.ok(res.quarantinedBatchesCount >= 1, 'Đã phát hiện và cách ly lô hết hạn');
+
+  const expBatch = p.batches.find((b) => b.id === 'BAT-EXP-01');
+  assert.equal(expBatch.status, 'expired_quarantined', 'Lô hết hạn chuyển sang expired_quarantined');
+  assert.equal(p.stock, 25, 'Tồn kho khả dụng loại trừ hoàn toàn 10 đơn vị hết hạn');
+  assert.equal(p.damagedStock, 10, 'Hàng hết hạn được đưa vào kho cách ly damagedStock');
+});
+
+test('Test 5: autoMigrate preserves user-customized fields and syncSeedCatalog requires admin authorization', () => {
+  const { s } = fixture();
+
+  // 1. autoMigrate bảo vệ dữ liệu người dùng
+  const oldData = {
+    schema: 1,
+    products: [
+      {
+        id: 'SP001',
+        barcode: '8935000000001',
+        name: 'Sữa Tươi Đặc Biệt Của Cửa Hàng',
+        price: 99000,
+        costPrice: 50000,
+        stock: 77,
+        category: 'Sữa & Đồ uống',
+        active: true,
+      },
+    ],
+    promotions: [],
+    vouchers: [],
+  };
+
+  const migrated = s.autoMigrate(oldData);
+  const p1 = migrated.products.find((x) => x.id === 'SP001');
+  assert.equal(p1.name, 'Sữa Tươi Đặc Biệt Của Cửa Hàng', 'Giữ nguyên tên do người dùng sửa');
+  assert.equal(p1.price, 99000, 'Giữ nguyên giá bán do người dùng sửa');
+  assert.equal(p1.costPrice, 50000, 'Giữ nguyên giá vốn');
+  assert.equal(p1.stock, 77, 'Giữ nguyên tồn kho người dùng');
+  assert.ok(p1.gtin, 'Được backfill trường gtin mới');
+  assert.ok(p1.brand, 'Được backfill brand');
+
+  // 2. syncSeedCatalog chặn người dùng không phải ADMIN
+  s.login('nhanvien', '123456'); // CASHIER
+  assert.throws(() => s.syncSeedCatalog(), /không có quyền|quản trị viên/i);
+
+  s.login('admin', '123456'); // ADMIN
+  const count = s.syncSeedCatalog();
+  assert.ok(count >= 80, 'ADMIN đồng bộ thành công');
+});
+
+
 

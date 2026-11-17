@@ -65,6 +65,7 @@
               ? integer(resp.confirmedCost, 'Giá vốn xác nhận', 0)
               : item.price;
           if (resp.expiryDate) item.expiryDate = String(resp.expiryDate).trim();
+          if (resp.mfgDate) item.mfgDate = String(resp.mfgDate).trim();
           if (resp.batchCode) item.batchCode = String(resp.batchCode).trim();
           if (resp.note) item.supplierNote = String(resp.note).trim();
         });
@@ -128,6 +129,34 @@
             prod.cost = prod.costPrice = defaultCost;
             if (i.expiryDate) prod.expiryDate = i.expiryDate;
             if (i.batchCode) prod.batchCode = i.batchCode;
+
+            // TẠO LÔ HÀNG MỚI (BATCH) — TUYỆT ĐỐI KHÔNG GHI ĐÈ HSD CỦA LÔ CŨ
+            const newBatchCode =
+              i.batchCode ||
+              `LO-${now().slice(0, 10).replace(/-/g, '')}-${prod.id.replace('SP', '')}`;
+            const newExpiry =
+              i.expiryDate ||
+              prod.expiryDate ||
+              new Date(Date.now() + 180 * 86400000).toISOString().slice(0, 10);
+            const newMfg = i.mfgDate || now().slice(0, 10);
+
+            const newBatch = {
+              id: id('BAT'),
+              productId: prod.id,
+              batchCode: newBatchCode,
+              mfgDate: newMfg,
+              expiryDate: newExpiry,
+              costPrice: defaultCost,
+              initialQty: accepted,
+              remainingQty: accepted,
+              status: 'active',
+              receivedAt: now(),
+              supplierId: p.supplierId,
+            };
+
+            if (!Array.isArray(prod.batches)) prod.batches = [];
+            prod.batches.push(newBatch);
+            if (this.data.batches) this.data.batches.push(newBatch);
           }
         });
 

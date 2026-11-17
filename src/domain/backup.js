@@ -4,10 +4,13 @@
     typeof module !== 'undefined' && module.exports ? require('./config.js') : scope.Retail;
   const { totals } =
     typeof module !== 'undefined' && module.exports ? require('./calculations.js') : scope.Retail;
+
   function validateBackup(s) {
     assert(s && s.schema === 1, 'Tệp sao lưu không đúng định dạng RetailFlow v1.');
     if (!Array.isArray(s.promotions)) s.promotions = [];
     if (!Array.isArray(s.vouchers)) s.vouchers = [];
+    if (!Array.isArray(s.batches)) s.batches = [];
+
     for (const key of [
       'products',
       'customers',
@@ -43,9 +46,12 @@
       'Cấu hình cửa hàng không hợp lệ.',
     );
     integer(s.settings.taxRate, 'Thuế suất', 0, 100);
+
     const productIds = new Set(s.products.map((p) => p.id));
     const supplierIds = new Set(s.suppliers.map((p) => p.id));
     const barcodes = new Set();
+    const batchIdSet = new Set();
+
     s.products.forEach((p) => {
       assert(
         typeof p.name === 'string' &&
@@ -64,6 +70,20 @@
       integer(p.minStock, 'Ngưỡng tồn');
       assert(typeof p.barcode === 'string' && !barcodes.has(p.barcode), 'Mã vạch bị trùng.');
       barcodes.add(p.barcode);
+
+      // Extended fields with backward compatibility
+      if (p.gtin === undefined) p.gtin = p.barcode;
+      if (p.brand === undefined) p.brand = p.name.split(' ')[0] || 'Generic';
+      if (p.packSize === undefined) p.packSize = '1 đơn vị';
+      if (p.unit === undefined) p.unit = 'cái';
+      if (p.categoryL1 === undefined) p.categoryL1 = 'Tiêu dùng';
+      if (p.categoryL2 === undefined) p.categoryL2 = p.category;
+      if (p.categoryL3 === undefined) p.categoryL3 = p.category;
+      if (p.vatRate === undefined) p.vatRate = 10;
+      if (p.nearExpiryDays === undefined) p.nearExpiryDays = 20;
+      if (p.nearExpiryDiscountPercent === undefined) p.nearExpiryDiscountPercent = 25;
+      if (p.referenceSource === undefined) p.referenceSource = { status: 'seed_placeholder' };
+
       if (p.batchCode === undefined) p.batchCode = `LO-${p.id || 'BATCH'}`;
       if (p.imageUrl === undefined) p.imageUrl = '';
       if (p.damagedStock === undefined) p.damagedStock = 0;
@@ -78,7 +98,39 @@
       assert(typeof p.imageUrl === 'string', 'Đường dẫn ảnh không hợp lệ.');
       assert(typeof p.mfgDate === 'string' && !isNaN(Date.parse(p.mfgDate)), 'Ngày sản xuất không hợp lệ.');
       assert(typeof p.expiryDate === 'string' && !isNaN(Date.parse(p.expiryDate)), 'Hạn sử dụng không hợp lệ.');
+
+      // Batch collection per product
+      if (!Array.isArray(p.batches) || p.batches.length === 0) {
+        p.batches = [
+          {
+            id: `BAT-${p.id}-001`,
+            productId: p.id,
+            batchCode: p.batchCode,
+            mfgDate: p.mfgDate,
+            expiryDate: p.expiryDate,
+            costPrice: p.costPrice,
+            initialQty: p.stock + (p.damagedStock || 0),
+            remainingQty: p.stock,
+            status: 'active',
+            receivedAt: p.createdAt || new Date().toISOString(),
+            supplierId: p.supplierId,
+          },
+        ];
+      }
+      p.batches.forEach((b) => {
+        if (!b.id) b.id = `BAT-${p.id}-${Math.random().toString(36).slice(2, 6)}`;
+        if (b.remainingQty === undefined) b.remainingQty = p.stock;
+        if (b.status === undefined) b.status = 'active';
+        batchIdSet.add(b.id);
+      });
     });
+
+    // Sync root s.batches
+    const allBatches = s.products.flatMap((p) => p.batches || []);
+    if (!Array.isArray(s.batches) || s.batches.length === 0) {
+      s.batches = allBatches;
+    }
+
     s.staff.forEach((u) =>
       assert(
         typeof u.username === 'string' &&
