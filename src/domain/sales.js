@@ -30,6 +30,8 @@
         items: [],
         customerId: '',
         discount: 0,
+        promotionId: null,
+        voucherId: null,
         note: '',
         demographic: 'Không ghi nhận',
       };
@@ -58,10 +60,19 @@
       assert(METHODS[payment], 'Phương thức thanh toán không hợp lệ.');
       const d = this.data.draft;
       assert(d.items.length, 'Giỏ hàng đang trống.');
-      const t = totals(d.items, d.discount, this.data.settings.taxRate);
+      const promotion = this.data.promotions?.find((p) => p.id === d.promotionId && p.active) || null;
+      const voucher = this.data.vouchers?.find((v) => v.id === d.voucherId && v.active) || null;
+      const t = totals(d.items, d.discount, this.data.settings.taxRate, {
+        promotion,
+        voucher,
+        products: this.data.products,
+      });
       if (payment === 'cash') {
         received = integer(received, 'Tiền khách đưa');
-        assert(received >= t.total, 'Tiền khách đưa chưa đủ thanh toán.');
+        assert(
+          received >= t.total,
+          'Tiền khách đưa chưa đủ thanh toán. Không cho phép thanh toán một phần. Khách hàng phải thanh toán đủ 100% giá trị hóa đơn trong 1 lần.',
+        );
       } else {
         assert(confirmed, 'Cần xác nhận đã nhận tiền qua chuyển khoản hoặc máy POS.');
         assert(paymentRef.trim(), 'Nhập mã tham chiếu giao dịch.');
@@ -71,6 +82,10 @@
         const items = d.items.map((i) => {
           const p = this.data.products.find((p) => p.id === i.id);
           assert(p && p.active, `Sản phẩm ${i.name} đã ngừng bán.`);
+          const exp = this.getExpiryInfo ? this.getExpiryInfo(p.expiryDate) : null;
+          if (exp && exp.status === 'expired') {
+            throw new Error(`Sản phẩm ${p.name} đã hết hạn sử dụng. Không thể thanh toán.`);
+          }
           integer(i.qty, 'Số lượng', 1);
           assert(p.stock >= i.qty, `${p.name} chỉ còn ${p.stock} sản phẩm.`);
           assert(i.price === p.price, `Giá ${p.name} đã thay đổi. Hãy xóa và chọn lại sản phẩm.`);
@@ -92,6 +107,10 @@
           time: now(),
           items,
           ...t,
+          promotionId: promotion?.id || null,
+          promotionCode: promotion?.code || '',
+          voucherId: voucher?.id || null,
+          voucherCode: voucher?.code || '',
           customerId: customer?.id || '',
           customer: customer?.name || 'Khách lẻ',
           payment,

@@ -2,6 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { Store, KEY, clone, validateBackup } = require('../store');
+const { totals, calculateDiscounts } = require('../src/domain/calculations.js');
 function fixture() {
   const map = new Map();
   const storage = { getItem: (k) => map.get(k) || null, setItem: (k, v) => map.set(k, v) };
@@ -347,3 +348,102 @@ test('backup restore backfills legacy data and maintains valid schema', () => {
   assert.ok(validated.products[0].expiryDate, 'expiryDate được tự động bổ sung');
   assert.ok(validated.products[0].mfgDate, 'mfgDate được tự động bổ sung');
 });
+
+test('toggleNearDatePromo and applyAllNearDatePromo manage near-expiry items correctly', () => {
+  const { s } = fixture();
+  const nearItem = s.data.products.find((p) => s.getExpiryInfo(p.expiryDate).status === 'near_expiry');
+  const validItem = s.data.products.find((p) => s.getExpiryInfo(p.expiryDate).status === 'valid');
+  assert.ok(nearItem, 'Có sản phẩm cận date');
+
+  // Valid item cannot be toggled into near-date promo
+  assert.throws(() => s.toggleNearDatePromo(validItem.id), /không nằm trong diện cận date/);
+
+  // Toggle nearItem
+  const initialStatus = !!nearItem.inNearExpiryPromo;
+  const toggled = s.toggleNearDatePromo(nearItem.id);
+  assert.equal(toggled.inNearExpiryPromo, !initialStatus);
+
+  // Apply all near date promo
+  const count = s.applyAllNearDatePromo();
+  assert.ok(count > 0, 'Đã áp dụng CTKM cho các sản phẩm cận date');
+  const allNear = s.data.products.filter((p) => s.getExpiryInfo(p.expiryDate).status === 'near_expiry');
+  assert.ok(allNear.every((p) => p.inNearExpiryPromo === true));
+});
+
+test('dual-stream discount engine calculates promotion and voucher discounts correctly', () => {
+  const { s } = fixture();
+
+  const validProd = s.data.products.find((p) => s.getExpiryInfo(p.expiryDate).status === 'valid');
+  const nearProd = s.data.products.find((p) => s.getExpiryInfo(p.expiryDate).status === 'near_expiry');
+  nearProd.inNearExpiryPromo = true;
+
+  const items = [
+    { id: validProd.id, name: validProd.name, price: 100000, qty: 2 }, // 200,000đ
+    { id: nearProd.id, name: nearProd.name, price: 50000, qty: 1 },    // 50,000đ (near date)
+  ];
+
+  const promoNearDate = (s.data.promotions || []).find((p) => p.id === 'promo-neardate');
+  const voucher30k = (s.data.vouchers || []).find((v) => v.id === 'vouch-app30k');
+
+  // Test discount calculation
+  const disc = calculateDiscounts(items, 10000, {
+    promotion: promoNearDate,
+    voucher: voucher30k,
+    products: s.data.products,
+  });
+
+  // promoNearDate is 35% on near-date items (50,000 * 35% = 17,500)
+  assert.equal(disc.promotionDiscount, 17500);
+  // voucher30k is 30,000 on orders >= 200,000
+  assert.equal(disc.voucherDiscount, 30000);
+  assert.equal(disc.manualDiscount, 10000);
+  assert.equal(disc.totalDiscount, 57500);
+
+  // Test totals
+  const t = totals(items, 10000, s.data.settings.taxRate, {
+    promotion: promoNearDate,
+    voucher: voucher30k,
+    products: s.data.products,
+  });
+  assert.equal(t.subtotal, 250000);
+  assert.equal(t.promotionDiscount, 17500);
+  assert.equal(t.voucherDiscount, 30000);
+  assert.equal(t.discount, 57500);
+  const taxable = 250000 - 57500;
+  const expectedTax = Math.round((taxable * s.data.settings.taxRate) / 100);
+  assert.equal(t.tax, expectedTax);
+  assert.equal(t.total, taxable + expectedTax);
+});
+
+test('sales checkout strictly blocks expired products and partial payments', () => {
+  const { s } = fixture();
+  const expiredProd = s.data.products.find((p) => s.getExpiryInfo(p.expiryDate).status === 'expired');
+  const validProd = s.data.products.find((p) => s.getExpiryInfo(p.expiryDate).status === 'valid');
+  assert.ok(expiredProd, 'Có sản phẩm hết hạn');
+
+  // Try checkout with expired product
+  s.saveDraft({
+    items: [{ id: expiredProd.id, name: expiredProd.name, price: expiredProd.price, qty: 1 }],
+    discount: 0,
+    note: '',
+  });
+  assert.throws(() => s.checkout({ payment: 'cash', received: expiredProd.price * 2 }), /đã hết hạn sử dụng/);
+
+  // Valid draft but underpaid
+  s.saveDraft({
+    items: [{ id: validProd.id, name: validProd.name, price: validProd.price, qty: 1 }],
+    discount: 0,
+    note: '',
+  });
+  const t = totals(s.data.draft.items, 0, s.data.settings.taxRate);
+
+  // Partial payment throws
+  assert.throws(() => s.checkout({ payment: 'cash', received: t.total - 1 }), /chưa đủ/);
+
+  // Full single payment succeeds
+  const order = s.checkout({ payment: 'cash', received: t.total });
+  assert.equal(order.status, 'completed');
+  assert.equal(order.received, t.total);
+  assert.equal(order.change, 0);
+});
+

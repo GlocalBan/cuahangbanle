@@ -44,7 +44,7 @@ function productsView() {
         'clock',
       ],
     ]) +
-    `<section class="panel"><div class="panel-head"><h2>Danh sách sản phẩm</h2><span class="sub">${s.products.length} mặt hàng</span></div><div class="table-tools wrap">${filterInput('products', 'Tìm tên, mã sản phẩm, mã vạch, mã lô…')}${filterSelect('category', [['', 'Tất cả danh mục'], ...categories.map((c) => [c, c])])}${filterSelect(
+    `<section class="panel"><div class="panel-head"><h2>Danh sách sản phẩm</h2><div class="row gap8 align-center"><span class="sub">${s.products.length} mặt hàng</span>${nearCount > 0 ? `<button type="button" class="btn warning small" data-action="apply-all-neardate-promo">${icon('clock')} Đưa tất cả SP Cận Date vào CTKM (-35%)</button>` : ''}</div></div><div class="table-tools wrap">${filterInput('products', 'Tìm tên, mã sản phẩm, mã vạch, mã lô…')}${filterSelect('category', [['', 'Tất cả danh mục'], ...categories.map((c) => [c, c])])}${filterSelect(
       'expiry',
       [
         ['', 'Tất cả HSD'],
@@ -62,8 +62,14 @@ function productsView() {
     )}</div>${table(
       ['Sản phẩm', 'Mã sản phẩm', 'Danh mục', 'Giá bán', 'Tồn kho', 'Hạn sử dụng (HSD)', 'Trạng thái', ''],
       p.items.map(
-        (item) =>
-          `<tr><td class="name"><div class="product-cell"><div class="product-thumb">${productImage(item, 'product-thumb-img')}</div><div><div><strong>${e(item.name)}</strong></div><div class="sub">${e(item.barcode)}${item.batchCode ? ` · Lô: ${e(item.batchCode)}` : ''}</div></div></div></td><td>${e(item.id)}</td><td>${e(item.category)}</td><td class="money name">${money(item.price)}</td><td class="${item.stock <= item.minStock ? 'negative' : ''}">${item.stock} ${item.stock <= item.minStock ? '<span class="badge yellow">Thấp</span>' : ''}</td><td><div class="expiry-cell"><span class="sub">${item.expiryDate || 'N/A'}</span><div>${expiryBadge(item.expiryDate)}</div></div></td><td>${item.active ? badge('Đang bán') : badge('Ngừng bán', 'gray')}</td><td>${store.user.role === 'ADMIN' ? ibEntity('products', item.id) : ''}</td></tr>`,
+        (item) => {
+          const exp = getExpiryInfo ? getExpiryInfo(item.expiryDate) : { status: 'valid' };
+          const promoBtn = exp.status === 'near_expiry'
+            ? `<button type="button" class="btn ${item.inNearExpiryPromo ? 'teal' : 'warning'} small" data-action="toggle-neardate-promo" data-id="${e(item.id)}" title="Bật/tắt CTKM Xả Cận Date -35%">${item.inNearExpiryPromo ? 'Đã trong CTKM (-35%)' : 'Đưa vào CTKM (-35%)'}</button>`
+            : '';
+          const promoTag = item.inNearExpiryPromo ? '<span class="badge teal">CTKM -35%</span>' : '';
+          return `<tr><td class="name"><div class="product-cell"><div class="product-thumb">${productImage(item, 'product-thumb-img')}</div><div><div><strong>${e(item.name)}</strong> ${promoTag}</div><div class="sub">${e(item.barcode)}${item.batchCode ? ` · Lô: ${e(item.batchCode)}` : ''}</div></div></div></td><td>${e(item.id)}</td><td>${e(item.category)}</td><td class="money name">${money(item.price)}</td><td class="${item.stock <= item.minStock ? 'negative' : ''}">${item.stock} ${item.stock <= item.minStock ? '<span class="badge yellow">Thấp</span>' : ''}</td><td><div class="expiry-cell"><span class="sub">${item.expiryDate || 'N/A'}</span><div>${expiryBadge(item.expiryDate)}</div></div></td><td>${item.active ? badge('Đang bán') : badge('Ngừng bán', 'gray')}</td><td><div class="row gap8 align-center justify-end">${promoBtn}${store.user.role === 'ADMIN' ? ibEntity('products', item.id) : ''}</div></td></tr>`;
+        },
       ),
     )}${p.foot}</section>`
   );

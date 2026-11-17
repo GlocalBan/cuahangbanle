@@ -7,6 +7,17 @@ document.addEventListener('input', (event) => {
   }
   if (el.id === 'global-search') globalSearch(el.value);
   if (el.id === 'cash-input') updateCash();
+  if (el.dataset.input === 'cart-direct-qty') {
+    const qty = Math.max(1, Number(el.value) || 1);
+    const prod = store.data.products.find((p) => p.id === el.dataset.id);
+    const max = prod ? prod.stock : 999;
+    const finalQty = Math.min(max, qty);
+    el.value = finalQty;
+    changeDraft((d) => {
+      const item = d.items.find((i) => i.id === el.dataset.id);
+      if (item) item.qty = finalQty;
+    });
+  }
   if (el.id === 'customer-phone-search') {
     try {
       searchCustomerPhone(el);
@@ -22,6 +33,11 @@ document.addEventListener('change', async (event) => {
       filters[el.dataset.filter] = el.value;
       pagination = {};
       render();
+    }
+    if (el.id === 'promo-select') {
+      changeDraft((d) => {
+        d.promotionId = el.value || null;
+      });
     }
     if (el.id === 'cart-discount') {
       const value = Number(el.value);

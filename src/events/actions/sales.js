@@ -12,9 +12,66 @@ function handleSalesAction(a) {
       render();
       break;
 
-    case 'add-cart':
-      addCart(a.id);
+    case 'pos-card-qty-step': {
+      const input = document.querySelector(`input[data-input="pos-card-qty"][data-id="${a.id}"]`);
+      if (input) {
+        const val = (Number(input.value) || 1) + Number(a.step || 1);
+        const max = Number(input.max) || 999;
+        input.value = Math.max(1, Math.min(max, val));
+      }
       break;
+    }
+
+    case 'pos-card-quick-qty': {
+      const input = document.querySelector(`input[data-input="pos-card-qty"][data-id="${a.id}"]`);
+      if (input) {
+        const val = Number(a.qty) || 1;
+        const max = Number(input.max) || 999;
+        input.value = Math.max(1, Math.min(max, val));
+      }
+      break;
+    }
+
+    case 'add-to-cart':
+    case 'add-cart': {
+      const input = document.querySelector(`input[data-input="pos-card-qty"][data-id="${a.id}"]`);
+      const qty = input ? Math.max(1, Number(input.value) || 1) : 1;
+      addCart(a.id, qty);
+      break;
+    }
+
+    case 'select-promo':
+      changeDraft((d) => {
+        d.promotionId = a.id || null;
+      });
+      break;
+
+    case 'apply-voucher':
+      changeDraft((d) => {
+        d.voucherId = a.id;
+      });
+      notify('Đã áp dụng App Voucher!');
+      break;
+
+    case 'remove-voucher':
+      changeDraft((d) => {
+        d.voucherId = null;
+      });
+      notify('Đã bỏ mã voucher.');
+      break;
+
+    case 'toggle-neardate-promo':
+      store.toggleNearDatePromo(a.id);
+      render();
+      notify('Đã cập nhật trạng thái CTKM cận date.');
+      break;
+
+    case 'apply-all-neardate-promo': {
+      const count = store.applyAllNearDatePromo();
+      render();
+      notify(`Đã đưa ${count} sản phẩm cận date vào CTKM -35%!`);
+      break;
+    }
 
     case 'cart-qty':
       addCart(a.id, Number(a.delta));
@@ -89,6 +146,7 @@ function handleSalesAction(a) {
       checkoutModal(a.method);
       break;
 
+    case 'quick-cash-amount':
     case 'quick-cash':
       $('#cash-input').value = a.amount;
       updateCash();

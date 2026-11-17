@@ -130,6 +130,59 @@
         return record;
       });
     },
+    toggleNearDatePromo(productId) {
+      this.require('products');
+      return this.commit('Cập nhật khuyến mãi cận date', productId, () => {
+        const p = this.data.products.find((x) => x.id === productId);
+        assert(p, 'Sản phẩm không tồn tại.');
+        const exp = getExpiryInfo(p.expiryDate);
+        assert(exp.status === 'near_expiry', 'Sản phẩm không nằm trong diện cận date.');
+        p.inNearExpiryPromo = !p.inNearExpiryPromo;
+        let promo = this.data.promotions?.find((pr) => pr.id === 'promo-neardate');
+        if (promo) {
+          if (!Array.isArray(promo.productIds)) promo.productIds = [];
+          if (p.inNearExpiryPromo) {
+            if (!promo.productIds.includes(p.id)) promo.productIds.push(p.id);
+          } else {
+            promo.productIds = promo.productIds.filter((id) => id !== p.id);
+          }
+        }
+        return p;
+      });
+    },
+    applyAllNearDatePromo() {
+      this.require('products');
+      return this.commit('Áp dụng xả kho toàn bộ cận date', 'Tất cả SP cận date', () => {
+        let count = 0;
+        let promo = this.data.promotions?.find((pr) => pr.id === 'promo-neardate');
+        if (!promo) {
+          promo = {
+            id: 'promo-neardate',
+            code: 'XACANDATE35',
+            name: 'Flash Sale Xả Kho Cận Date (-35%)',
+            type: 'percent',
+            value: 35,
+            minOrderAmount: 0,
+            maxDiscount: 500000,
+            nearExpiryOnly: true,
+            productIds: [],
+            active: true,
+          };
+          if (!this.data.promotions) this.data.promotions = [];
+          this.data.promotions.push(promo);
+        }
+        if (!Array.isArray(promo.productIds)) promo.productIds = [];
+        this.data.products.forEach((p) => {
+          const exp = getExpiryInfo(p.expiryDate);
+          if (exp.status === 'near_expiry') {
+            p.inNearExpiryPromo = true;
+            if (!promo.productIds.includes(p.id)) promo.productIds.push(p.id);
+            count++;
+          }
+        });
+        return count;
+      });
+    },
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = { ...methods, getExpiryInfo };
   else {
