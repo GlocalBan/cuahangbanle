@@ -129,6 +129,7 @@
       const shelfLife = r[7] ?? 365;
       const expiryDate = dateOffset(expiryOffset);
       const mfgDate = dateOffset(expiryOffset - shelfLife);
+      const isNear = expiryOffset > 0 && expiryOffset <= 30;
       return {
         id: `SP${String(i + 1).padStart(3, '0')}`,
         barcode: `8935000${String(i + 1).padStart(6, '0')}`,
@@ -146,7 +147,7 @@
         expiryDate,
         imageUrl: r[8] || '',
         damagedStock: 0,
-        inNearExpiryPromo: false,
+        inNearExpiryPromo: isNear,
         active: true,
         createdAt: now(),
       };
@@ -234,19 +235,21 @@
         {
           id: 'promo-neardate',
           code: 'XACANDATE35',
-          name: 'Flash Sale Xả Kho Cận Date (-35%)',
+          name: 'Xả Kho Hàng Cận Date - Giảm 35%',
+          badgeText: '-35% XẢ CẬN DATE',
           type: 'percent',
           value: 35,
           minOrderAmount: 0,
           maxDiscount: 500000,
           nearExpiryOnly: true,
-          productIds: [],
+          productIds: products.filter((p) => p.inNearExpiryPromo).map((p) => p.id),
           active: true,
         },
         {
           id: 'promo-cuoituan',
           code: 'CUOITUAN10',
-          name: 'Giảm 10% Cuối Tuần (Đơn từ 150k)',
+          name: 'Ưu Đãi Cuối Tuần - Giảm 10%',
+          badgeText: '-10% CUỐI TUẦN',
           type: 'percent',
           value: 10,
           minOrderAmount: 150000,
@@ -258,7 +261,8 @@
         {
           id: 'promo-combo',
           code: 'COMBO25K',
-          name: 'Giảm 25.000đ Đơn từ 250k',
+          name: 'Combo Tiện Lợi - Giảm 25.000đ',
+          badgeText: '-25K COMBO',
           type: 'fixed',
           value: 25000,
           minOrderAmount: 250000,
@@ -268,13 +272,14 @@
           active: true,
         },
         {
-          id: 'promo-cvs15',
-          code: 'CVS15',
-          name: 'Ưu đãi CVS Mùa Hè (-15%)',
+          id: 'promo-fmcg',
+          code: 'TIEUDUNG15',
+          name: 'Tuần Lễ Hàng Tiêu Dùng - Giảm 15%',
+          badgeText: '-15% FMCG',
           type: 'percent',
           value: 15,
           minOrderAmount: 300000,
-          maxDiscount: 60000,
+          maxDiscount: 80000,
           nearExpiryOnly: false,
           productIds: [],
           active: true,

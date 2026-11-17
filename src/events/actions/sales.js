@@ -40,12 +40,14 @@ function handleSalesAction(a) {
       break;
     }
 
+    case 'select-pos-promotion':
     case 'select-promo':
       changeDraft((d) => {
         d.promotionId = a.id || null;
       });
       break;
 
+    case 'select-pos-voucher':
     case 'apply-voucher':
       changeDraft((d) => {
         d.voucherId = a.id;

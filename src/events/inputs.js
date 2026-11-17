@@ -34,7 +34,7 @@ document.addEventListener('change', async (event) => {
       pagination = {};
       render();
     }
-    if (el.id === 'promo-select') {
+    if (el.id === 'promo-select' || el.dataset.input === 'pos-select-promotion') {
       changeDraft((d) => {
         d.promotionId = el.value || null;
       });

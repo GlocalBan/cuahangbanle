@@ -38,9 +38,9 @@ function posView() {
       const exp = getExpiryInfo ? getExpiryInfo(p.expiryDate) : { status: 'valid' };
       const isExpired = exp.status === 'expired';
       const mallBadge = '<span class="mall-tag">Chính Hãng</span>';
-      const promoRibbon = p.inNearExpiryPromo ? '<span class="promo-ribbon">-35% CẬN DATE</span>' : '';
+      const promoRibbon = p.inNearExpiryPromo ? '<span class="promo-ribbon">-35% XẢ CẬN DATE</span>' : '';
       const expBadge = isExpired
-        ? '<div class="expired-overlay"><span>ĐÃ HẾT HẠN</span></div>'
+        ? '<div class="expired-overlay"><span>ĐÃ HẾT HẠN - NGỪNG BÁN</span></div>'
         : exp.status === 'near_expiry'
         ? `<span class="pos-exp-badge badge yellow">Cận ${exp.daysRemaining}d</span>`
         : '';
@@ -66,7 +66,7 @@ function posView() {
           </div>
           ${stockBar}
           ${isExpired
-            ? `<div class="pos-card-footer"><button type="button" class="btn small disabled wide" disabled>${icon('close')} Đã hết hạn</button></div>`
+            ? `<div class="pos-card-footer"><button type="button" class="btn small disabled wide" disabled>${icon('close')} ĐÃ HẾT HẠN - NGỪNG BÁN</button></div>`
             : `
               <div class="pos-card-stepper-wrap">
                 <div class="pos-card-stepper">
@@ -81,7 +81,7 @@ function posView() {
                 </div>
               </div>
               <div class="pos-card-footer">
-                <button type="button" class="btn primary small wide add-btn" data-action="add-cart" data-id="${e(p.id)}">${icon('cart')} Thêm vào giỏ</button>
+                <button type="button" class="btn primary small wide add-btn" data-action="add-cart" data-action-alt="add-to-cart" data-id="${e(p.id)}">${icon('cart')} Thêm vào giỏ</button>
               </div>
             `}
         </div>
@@ -89,10 +89,10 @@ function posView() {
     }).join('') || `<div class="full">${empty('Không tìm thấy sản phẩm', 'Thử từ khóa hoặc danh mục khác.', 'search')}</div>`}</div></section><section class="panel cart-panel"><div class="panel-head"><div><h2>Đơn hàng hiện tại</h2><p class="sub">${d.items.reduce((s, i) => s + i.qty, 0)} sản phẩm trong giỏ</p></div>${action('clear-cart', 'Xóa giỏ', '', 'danger small', d.items.length ? '' : 'disabled')}</div><div class="cart-body">${customerLookupHTML()}<div class="cart-items">${d.items.length ? d.items.map((i) => {
       const prod = s.products.find((p) => p.id === i.id);
       return `<div class="cart-item"><div class="product-thumb">${productImage(i, 'cart-thumb-img')}</div><div class="cart-item-info"><strong>${e(i.name)}</strong><small class="muted">${money(i.price)}</small><div class="row gap8" style="margin-top:8px">${action('cart-qty', '−', '', 'small', `data-id="${e(i.id)}" data-delta="-1"`)}<input type="number" class="cart-direct-input" min="1" max="${prod?.stock || 999}" value="${i.qty}" data-input="cart-direct-qty" data-id="${e(i.id)}"><b style="display:none">${i.qty}</b>${action('cart-qty', '+', '', 'small', `data-id="${e(i.id)}" data-delta="1"`)}</div></div><div class="right"><strong class="money">${money(i.qty * i.price)}</strong>${ib('remove-cart', 'close', 'Bỏ sản phẩm', `data-id="${e(i.id)}"`)}</div></div>`;
-    }).join('') : empty('Chưa có sản phẩm trong giỏ', 'Chọn sản phẩm bên trái để bắt đầu.', 'cart')}</div><div class="promo-section"><label class="section-label"><span>${icon('clock')} Chương trình Khuyến mãi (CTKM)</span></label><select id="promo-select" class="promo-dropdown" data-action="select-promo"><option value="">-- Không áp dụng CTKM --</option>${(s.promotions || []).map((pr) => `<option value="${e(pr.id)}" ${d.promotionId === pr.id ? 'selected' : ''}>${e(pr.name)} ${pr.nearExpiryOnly ? '(Flash sale cận date)' : ''}</option>`).join('')}</select>${promo && t.promotionDiscount > 0 ? `<div class="applied-tag green"><span>Đã giảm CTKM:</span><strong>-${money(t.promotionDiscount)}</strong></div>` : ''}</div><div class="voucher-section"><label class="section-label"><span>${icon('card')} Ví App Voucher (${(s.vouchers || []).length} mã)</span></label><div class="voucher-list">${(s.vouchers || []).map((v) => {
+    }).join('') : empty('Chưa có sản phẩm trong giỏ', 'Chọn sản phẩm bên trái để bắt đầu.', 'cart')}</div><div class="promo-section"><label class="section-label"><span>${icon('clock')} Chương trình Khuyến mãi (CTKM)</span></label><select id="promo-select" class="promo-dropdown" data-action="select-promo" data-input="pos-select-promotion"><option value="">-- Không áp dụng CTKM --</option>${(s.promotions || []).map((pr) => `<option value="${e(pr.id)}" ${d.promotionId === pr.id ? 'selected' : ''}>${e(pr.name)} ${pr.nearExpiryOnly ? '(Flash sale cận date)' : ''}</option>`).join('')}</select>${promo && t.promotionDiscount > 0 ? `<div class="applied-tag green"><span>Đã giảm CTKM:</span><strong>-${money(t.promotionDiscount)}</strong></div>` : ''}</div><div class="voucher-section"><label class="section-label"><span>${icon('card')} Ví App Voucher (${(s.vouchers || []).length} mã)</span></label><div class="voucher-list">${(s.vouchers || []).map((v) => {
       const eligible = t.subtotal >= v.minOrderAmount;
       const isSelected = d.voucherId === v.id;
-      return `<div class="voucher-ticket ${isSelected ? 'selected' : ''} ${eligible ? 'eligible' : 'locked'}"><div class="ticket-header"><strong class="ticket-code">${e(v.code)}</strong><span class="ticket-value">${v.type === 'percent' ? `-${v.value}%` : `-${money(v.value)}`}</span></div><div class="ticket-desc">${e(v.name)} · Đơn từ ${money(v.minOrderAmount)}</div><div class="ticket-footer">${isSelected ? '<button type="button" class="ticket-btn remove" data-action="remove-voucher">Đang dùng (Bỏ)</button>' : eligible ? `<button type="button" class="ticket-btn apply" data-action="apply-voucher" data-id="${e(v.id)}">Dùng ngay</button>` : `<span class="ticket-needed">Mua thêm ${money(v.minOrderAmount - t.subtotal)}</span>`}</div></div>`;
+      return `<div class="voucher-ticket ${isSelected ? 'selected' : ''} ${eligible ? 'eligible' : 'locked'}" data-input="pos-select-voucher" data-id="${e(v.id)}"><div class="ticket-header"><strong class="ticket-code">${e(v.code)}</strong><span class="ticket-value">${v.type === 'percent' ? `-${v.value}%` : `-${money(v.value)}`}</span></div><div class="ticket-desc">${e(v.name)} · Đơn từ ${money(v.minOrderAmount)}</div><div class="ticket-footer">${isSelected ? '<button type="button" class="ticket-btn remove" data-action="remove-voucher">Đang dùng (Bỏ)</button>' : eligible ? `<button type="button" class="ticket-btn apply" data-action="apply-voucher" data-action-alt="select-pos-voucher" data-id="${e(v.id)}">Dùng ngay</button>` : `<span class="ticket-needed">Mua thêm ${money(v.minOrderAmount - t.subtotal)}</span>`}</div></div>`;
     }).join('')}</div></div><div class="cart-summary"><div class="between"><span>Tạm tính</span><span class="money">${money(t.subtotal)}</span></div>${t.promotionDiscount ? `<div class="between positive"><span>Giảm giá CTKM</span><span class="money">-${money(t.promotionDiscount)}</span></div>` : ''}${t.voucherDiscount ? `<div class="between positive"><span>Giảm giá App Voucher</span><span class="money">-${money(t.voucherDiscount)}</span></div>` : ''}<div class="between"><label for="cart-discount">Giảm giá thêm (₫)</label><input id="cart-discount" type="number" min="0" max="${t.subtotal}" step="1" value="${d.discount}"></div><div class="between"><span>Thuế (${s.settings.taxRate}%)</span><span class="money">${money(t.tax)}</span></div></div><div class="mt16">${field('Ghi chú đơn hàng', 'cart-note', d.note, 'text', 'id="cart-note" placeholder="Ghi chú cho hóa đơn…"')}</div><div class="cart-total between"><span>Tổng thanh toán</span><span class="money">${money(t.total)}</span></div><div class="cart-actions">${action('hold', 'Lưu đơn', 'save', '', d.items.length ? '' : 'disabled')}${action('checkout', 'Thanh toán', 'card', 'teal', d.items.length ? '' : 'disabled')}</div><div class="cart-notice">${icon('shield')} Thanh toán được ghi nhận trên thiết bị</div></div><div class="held-banner"><span>${s.held.length} đơn tạm đang được lưu</span>${action('held-orders', 'Mở danh sách →', '', 'ghost small')}</div></section></div>`
   );
 }
@@ -133,6 +133,12 @@ function addCart(productId, delta = 1) {
         imageUrl: p.imageUrl,
         category: p.category,
       });
+    }
+    if ((p.inNearExpiryPromo || (exp && exp.status === 'near_expiry')) && !d.promotionId) {
+      const nearPromo = (store.data.promotions || []).find((pr) => pr.id === 'promo-neardate' && pr.active);
+      if (nearPromo) {
+        d.promotionId = nearPromo.id;
+      }
     }
   });
 }
