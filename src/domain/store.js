@@ -7,6 +7,7 @@
           ...require('./calculations.js'),
           ...require('./seed.js'),
           ...require('./backup.js'),
+          ...require('./catalog.js'),
         }
       : scope.Retail;
   const { KEY, clone, now, id, assert, seed, validateBackup } = api;
@@ -19,7 +20,7 @@
       try {
         raw = storage.getItem(KEY);
         this.data = raw ? validateBackup(JSON.parse(raw)) : seed();
-        if (!raw) storage.setItem(KEY, JSON.stringify(this.data));
+        storage.setItem(KEY, JSON.stringify(this.data));
       } catch (e) {
         this.loadError = `Không đọc hoặc lưu được dữ liệu: ${e.message}`;
         this.data = seed();

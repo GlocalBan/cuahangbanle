@@ -2,6 +2,8 @@ function dashboardView() {
   const s = store.data,
     today = periodData(1),
     low = s.products.filter((p) => p.active && p.stock <= p.minStock),
+    expired = s.products.filter((p) => p.active && getExpiryInfo && getExpiryInfo(p.expiryDate).status === 'expired'),
+    nearExpiry = s.products.filter((p) => p.active && getExpiryInfo && getExpiryInfo(p.expiryDate).status === 'near_expiry'),
     pending = s.purchases.filter((p) => p.status === 'pending'),
     refund = s.returns.filter((r) => r.status === 'pending');
   const methods = Object.keys(METHODS).map((m, i) => ({
@@ -47,8 +49,14 @@ function dashboardView() {
         'box',
       ],
       ['Sắp hết hàng', number(low.length), 'Cần bổ sung hàng hóa', 'bell'],
+      [
+        'Cận date / Hết hạn',
+        number(nearExpiry.length + expired.length),
+        `${expired.length} hết hạn · ${nearExpiry.length} cận date`,
+        'clock',
+      ],
     ]) +
-    `<div class="dashboard-grid"><section class="panel"><div class="panel-head"><div><h2>Xu hướng doanh thu</h2><p class="sub">Doanh thu gộp · ${chartDays} ngày gần nhất</p></div><div class="segmented">${[7, 30].map((n) => `<button class="${chartDays === n ? 'active' : ''}" data-action="chart-period" data-days="${n}">${n} ngày</button>`).join('')}</div></div><div class="panel-body">${lineChart(chartDays)}</div></section><section class="panel"><div class="panel-head"><div><h2>Cơ cấu thanh toán</h2><p class="sub">Theo doanh thu hôm nay</p></div>${icon('card')}</div><div class="panel-body"><div class="donut-wrap"><div class="donut" style="background:conic-gradient(${gradient})"><div class="donut-center"><b>${today.orders.length}</b><small>giao dịch</small></div></div><div class="legend">${methods.map((m) => `<div><i class="dot" style="color:${m.color}"></i>${m.label}<strong>${total ? Math.round((m.value / total) * 100) : 0}%</strong></div>`).join('')}</div></div></div></section></div><div class="dashboard-grid"><section class="panel"><div class="panel-head"><h2>Đơn hàng gần đây</h2>${action('navigate', 'Xem tất cả →', '', 'ghost small', 'data-page="orders"')}</div>${orderTable(s.orders.slice(0, 6), true)}</section><section class="panel"><div class="panel-head"><h2>Cần chú ý</h2><span class="badge yellow">${low.length + pending.length + refund.length} cần xử lý</span></div><div class="panel-body">${low
+    `<div class="dashboard-grid"><section class="panel"><div class="panel-head"><div><h2>Xu hướng doanh thu</h2><p class="sub">Doanh thu gộp · ${chartDays} ngày gần nhất</p></div><div class="segmented">${[7, 30].map((n) => `<button class="${chartDays === n ? 'active' : ''}" data-action="chart-period" data-days="${n}">${n} ngày</button>`).join('')}</div></div><div class="panel-body">${lineChart(chartDays)}</div></section><section class="panel"><div class="panel-head"><div><h2>Cơ cấu thanh toán</h2><p class="sub">Theo doanh thu hôm nay</p></div>${icon('card')}</div><div class="panel-body"><div class="donut-wrap"><div class="donut" style="background:conic-gradient(${gradient})"><div class="donut-center"><b>${today.orders.length}</b><small>giao dịch</small></div></div><div class="legend">${methods.map((m) => `<div><i class="dot" style="color:${m.color}"></i>${m.label}<strong>${total ? Math.round((m.value / total) * 100) : 0}%</strong></div>`).join('')}</div></div></div></section></div><div class="dashboard-grid"><section class="panel"><div class="panel-head"><h2>Đơn hàng gần đây</h2>${action('navigate', 'Xem tất cả →', '', 'ghost small', 'data-page="orders"')}</div>${orderTable(s.orders.slice(0, 6), true)}</section><section class="panel"><div class="panel-head"><h2>Cần chú ý</h2><span class="badge yellow">${low.length + pending.length + refund.length + expired.length + nearExpiry.length} cần xử lý</span></div><div class="panel-body">${expired.length ? `<div class="alert-item"><div class="stat-icon" style="background:#fff0f2;color:#d27386">${icon('close')}</div><div><strong>${expired.length} sản phẩm hết hạn</strong><small>Cần hủy hoặc đổi trả đối tác</small></div>${ib('navigate', 'arrow', 'Xem sản phẩm hết hạn', 'data-page="products"')}</div>` : ''}${nearExpiry.length ? `<div class="alert-item"><div class="stat-icon" style="background:#fff6e8;color:#bd963b">${icon('clock')}</div><div><strong>${nearExpiry.length} sản phẩm cận date</strong><small>Ưu tiên xả hàng hoặc áp dụng khuyến mãi</small></div>${ib('navigate', 'arrow', 'Xem sản phẩm cận date', 'data-page="products"')}</div>` : ''}${low
       .slice(0, 3)
       .map(
         (p) =>
@@ -56,6 +64,6 @@ function dashboardView() {
       )
       .join(
         '',
-      )}${pending.length ? `<div class="alert-item"><div class="stat-icon">${icon('truck')}</div><div><strong>${pending.length} phiếu nhập chờ nhận</strong><small>Kiểm tra và xác nhận nhập kho</small></div>${ib('navigate', 'arrow', 'Xem phiếu nhập', 'data-page="purchases"')}</div>` : ''}${refund.length ? `<div class="alert-item"><div class="stat-icon">${icon('return')}</div><div><strong>${refund.length} yêu cầu hoàn tiền</strong><small>Cần quản trị viên phê duyệt</small></div>${ib('navigate', 'arrow', 'Xem yêu cầu trả hàng', 'data-page="returns"')}</div>` : ''}${!low.length && !pending.length && !refund.length ? empty('Mọi thứ đang ổn', 'Chưa có công việc cần xử lý.', 'check') : ''}</div></section></div>`
+      )}${pending.length ? `<div class="alert-item"><div class="stat-icon">${icon('truck')}</div><div><strong>${pending.length} phiếu nhập chờ nhận</strong><small>Kiểm tra và xác nhận nhập kho</small></div>${ib('navigate', 'arrow', 'Xem phiếu nhập', 'data-page="purchases"')}</div>` : ''}${refund.length ? `<div class="alert-item"><div class="stat-icon">${icon('return')}</div><div><strong>${refund.length} yêu cầu hoàn tiền</strong><small>Cần quản trị viên phê duyệt</small></div>${ib('navigate', 'arrow', 'Xem yêu cầu trả hàng', 'data-page="returns"')}</div>` : ''}${!low.length && !pending.length && !refund.length && !expired.length && !nearExpiry.length ? empty('Mọi thứ đang ổn', 'Chưa có công việc cần xử lý.', 'check') : ''}</div></section></div>`
   );
 }

@@ -6,7 +6,35 @@
     typeof module !== 'undefined' && module.exports ? require('./calculations.js') : scope.Retail;
   const { validateBackup } =
     typeof module !== 'undefined' && module.exports ? require('./backup.js') : scope.Retail;
+
+  function getExpiryInfo(expiryDate, fromDate = new Date()) {
+    if (!expiryDate) {
+      return { status: 'valid', daysRemaining: 999, label: 'Còn hạn', color: 'green' };
+    }
+    const parts = String(expiryDate).slice(0, 10).split('-');
+    if (parts.length !== 3) {
+      return { status: 'valid', daysRemaining: 999, label: 'Còn hạn', color: 'green' };
+    }
+    const target = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    const ref = new Date(fromDate);
+    const today = new Date(ref.getFullYear(), ref.getMonth(), ref.getDate());
+    const diffDays = Math.round((target.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+    if (diffDays <= 0) {
+      return { status: 'expired', daysRemaining: diffDays, label: 'Hết hạn', color: 'red' };
+    }
+    if (diffDays <= 30) {
+      return {
+        status: 'near_expiry',
+        daysRemaining: diffDays,
+        label: `Cận date - còn ${diffDays} ngày`,
+        color: 'yellow',
+      };
+    }
+    return { status: 'valid', daysRemaining: diffDays, label: 'Còn hạn', color: 'green' };
+  }
+
   const methods = {
+    getExpiryInfo,
     upsert(type, values) {
       const permission = {
         products: 'products',
@@ -25,7 +53,8 @@
       v.name = v.name.trim();
       if (type === 'products') {
         v.price = integer(v.price, 'Giá bán');
-        v.cost = integer(v.cost, 'Giá vốn');
+        const costVal = v.costPrice !== undefined ? v.costPrice : v.cost;
+        v.cost = v.costPrice = integer(costVal, 'Giá vốn');
         v.minStock = integer(v.minStock, 'Ngưỡng cảnh báo');
         assert(v.category?.trim() && v.barcode?.trim(), 'Nhập danh mục và mã vạch.');
         assert(
@@ -38,6 +67,11 @@
           'Nhà cung cấp không hoạt động.',
         );
         v.barcode = v.barcode.trim();
+        if (v.batchCode !== undefined) v.batchCode = String(v.batchCode).trim();
+        if (v.imageUrl !== undefined) v.imageUrl = String(v.imageUrl).trim();
+        if (v.mfgDate && v.expiryDate) {
+          assert(v.expiryDate > v.mfgDate, 'Hạn sử dụng phải sau ngày sản xuất.');
+        }
         if (!existing) v.stock = integer(v.stock, 'Tồn đầu kỳ');
         else delete v.stock;
       }
@@ -97,6 +131,9 @@
       });
     },
   };
-  if (typeof module !== 'undefined' && module.exports) module.exports = methods;
-  else (scope.Retail.storeModules || (scope.Retail.storeModules = {})).catalog = methods;
+  if (typeof module !== 'undefined' && module.exports) module.exports = { ...methods, getExpiryInfo };
+  else {
+    (scope.Retail.storeModules || (scope.Retail.storeModules = {})).catalog = methods;
+    scope.Retail.getExpiryInfo = getExpiryInfo;
+  }
 })(globalThis);

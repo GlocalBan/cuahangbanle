@@ -46,11 +46,26 @@
       );
       assert(supplierIds.has(p.supplierId), 'Nhà cung cấp của sản phẩm không tồn tại.');
       integer(p.price, 'Giá bán');
+      if (p.cost === undefined && p.costPrice !== undefined) p.cost = p.costPrice;
+      if (p.costPrice === undefined && p.cost !== undefined) p.costPrice = p.cost;
       integer(p.cost, 'Giá vốn');
+      integer(p.costPrice, 'Giá vốn');
       integer(p.stock, 'Tồn kho');
       integer(p.minStock, 'Ngưỡng tồn');
       assert(typeof p.barcode === 'string' && !barcodes.has(p.barcode), 'Mã vạch bị trùng.');
       barcodes.add(p.barcode);
+      if (p.batchCode === undefined) p.batchCode = `LO-${p.id || 'BATCH'}`;
+      if (p.imageUrl === undefined) p.imageUrl = '';
+      if (p.mfgDate === undefined) p.mfgDate = new Date().toISOString().slice(0, 10);
+      if (p.expiryDate === undefined) {
+        const d = new Date();
+        d.setDate(d.getDate() + 180);
+        p.expiryDate = d.toISOString().slice(0, 10);
+      }
+      assert(typeof p.batchCode === 'string', 'Mã lô không hợp lệ.');
+      assert(typeof p.imageUrl === 'string', 'Đường dẫn ảnh không hợp lệ.');
+      assert(typeof p.mfgDate === 'string' && !isNaN(Date.parse(p.mfgDate)), 'Ngày sản xuất không hợp lệ.');
+      assert(typeof p.expiryDate === 'string' && !isNaN(Date.parse(p.expiryDate)), 'Hạn sử dụng không hợp lệ.');
     });
     s.staff.forEach((u) =>
       assert(

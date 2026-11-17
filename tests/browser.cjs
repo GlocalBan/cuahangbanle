@@ -121,8 +121,8 @@ async function main() {
     await screenshot('02-dashboard.png');
     await evaluate(`for(const p of pages)navigate(p[0]);navigate('pos')`);
     await check(
-      `document.querySelectorAll('.product-card').length===29`,
-      'all management pages render, 29 products',
+      `document.querySelectorAll('.product-card').length >= 80`,
+      'all management pages render, >= 80 products',
     );
     await click('[data-action="add-cart"]');
     await click('[data-action="cart-qty"][data-delta="1"]');

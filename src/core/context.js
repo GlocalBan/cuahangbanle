@@ -1,6 +1,6 @@
 /* Shared browser state and HTML helpers. Loaded before feature scripts. */
 'use strict';
-const { Store, totals, METHODS, ROLES, ACCESS, clone } = Retail;
+const { Store, totals, METHODS, ROLES, ACCESS, clone, getExpiryInfo } = Retail;
 const store = new Store(localStorage);
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -93,6 +93,18 @@ const empty = (
 ) => `<div class="empty">${icon(ico)}<strong>${label}</strong><div class="sub">${desc}</div></div>`;
 const badge = (label, color = 'green') =>
   `<span class="badge ${color}"><i class="dot"></i>${label}</span>`;
+const productImage = (p, cls = 'product-thumb-img', attrs = '') => {
+  const src = (p && p.imageUrl) ? e(p.imageUrl) : 'assets/images/products/default.jpg';
+  return `<img class="${cls}" src="${src}" alt="${e((p && p.name) || 'Sản phẩm')}" loading="lazy" onerror="this.onerror=null;this.src='assets/images/products/default.jpg'" ${attrs} />`;
+};
+const expiryBadge = (expiryDate, compact = false) => {
+  const info = getExpiryInfo ? getExpiryInfo(expiryDate) : { status: 'valid', label: 'Còn hạn', color: 'green' };
+  if (compact) {
+    if (info.status === 'valid') return '';
+    return `<span class="badge ${info.color} expiry-tag">${e(info.label)}</span>`;
+  }
+  return `<span class="badge ${info.color}"><i class="dot"></i>${e(info.label)}</span>`;
+};
 const statusLabels = {
   completed: ['Đã thanh toán', 'green'],
   partial: ['Đã trả một phần', 'yellow'],

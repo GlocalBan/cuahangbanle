@@ -156,13 +156,17 @@ function entityModal(type, recordId = '') {
   );
   if (type === 'products')
     fields =
+      (v.imageUrl || v.id
+        ? `<div class="full product-modal-preview"><div class="product-modal-img-wrap">${productImage(v, 'product-modal-img')}</div><div><strong style="font-size:13px">${e(v.name || 'Sản phẩm mới')}</strong><div class="sub" style="margin-top:4px">${v.barcode || 'Chưa có mã vạch'}${v.batchCode ? ` · Lô: ${e(v.batchCode)}` : ''} · ${expiryBadge(v.expiryDate)}</div></div></div>`
+        : '') +
       field('Tên sản phẩm', 'name', v.name || '', 'text', 'required maxlength="150"', true) +
       field('Mã vạch (duy nhất)', 'barcode', v.barcode || '', 'text', 'required maxlength="60"') +
+      field('Mã lô hàng (Batch Code)', 'batchCode', v.batchCode || '', 'text', 'maxlength="50" placeholder="VD: LO-2026-001"') +
       field('Biểu tượng sản phẩm', 'icon', v.icon || '📦', 'text', 'required maxlength="8"') +
       field(
         'Danh mục',
         'category',
-        v.category || 'Thực phẩm khô',
+        v.category || 'Sữa & Đồ uống',
         'text',
         'required list="category-options" maxlength="80"',
       ) +
@@ -174,7 +178,10 @@ function entityModal(type, recordId = '') {
         'required',
       ) +
       field('Giá bán (₫)', 'price', v.price ?? 0, 'number', 'required min="0" step="1"') +
-      field('Giá vốn (₫)', 'cost', v.cost ?? 0, 'number', 'required min="0" step="1"') +
+      field('Giá vốn (₫)', 'costPrice', v.costPrice ?? v.cost ?? 0, 'number', 'required min="0" step="1"') +
+      field('Ngày sản xuất (NSX)', 'mfgDate', v.mfgDate || '', 'date', '') +
+      field('Hạn sử dụng (HSD)', 'expiryDate', v.expiryDate || '', 'date', '') +
+      field('Đường dẫn ảnh sản phẩm (URL)', 'imageUrl', v.imageUrl || '', 'url', 'placeholder="https://..."', true) +
       field(
         'Ngưỡng tồn kho thấp',
         'minStock',

@@ -22,7 +22,7 @@ function draft(s, qty = 2, discount = 0) {
 }
 test('seed and persisted data survive schema validation', () => {
   const { s, storage } = fixture();
-  assert.equal(s.data.products.length, 29);
+  assert.ok(s.data.products.length >= 80, 'Dữ liệu mẫu có tối thiểu 80 sản phẩm');
   assert.equal(validateBackup(s.data), s.data);
   const reloaded = new Store(storage);
   assert.equal(reloaded.loadError, '');
@@ -205,4 +205,143 @@ test('branch proposals require active supplier coverage', () => {
   const b = s.createBranch({ name: 'CN mới', address: '123 ABC', area: 'TP. HCM' });
   assert.equal(b.status, 'proposed');
   assert.ok(b.supplierIds.length);
+});
+
+test('seed products satisfy extended schema, stock thresholds, and HSD test sets', () => {
+  const { s } = fixture();
+  assert.ok(s.data.products.length >= 80, 'Có ít nhất 80 sản phẩm');
+  for (const p of s.data.products) {
+    assert.ok(p.id, 'Có id');
+    assert.ok(p.barcode, 'Có barcode');
+    assert.ok(p.name, 'Có name');
+    assert.ok(p.category, 'Có category');
+    assert.ok(typeof p.price === 'number' && p.price > 0, 'Có price hợp lệ');
+    assert.ok(typeof p.cost === 'number' && p.cost > 0, 'Có cost hợp lệ');
+    assert.ok(typeof p.costPrice === 'number' && p.costPrice > 0, 'Có costPrice hợp lệ');
+    assert.equal(p.cost, p.costPrice, 'cost và costPrice đồng bộ');
+    assert.ok(p.stock > 0 && p.stock <= 300, `Tồn kho hợp lệ: ${p.stock}`);
+    assert.ok(p.batchCode, 'Có batchCode');
+    assert.ok(p.mfgDate && !isNaN(Date.parse(p.mfgDate)), 'Có mfgDate hợp lệ');
+    assert.ok(p.expiryDate && !isNaN(Date.parse(p.expiryDate)), 'Có expiryDate hợp lệ');
+    assert.ok(p.expiryDate > p.mfgDate, 'Hạn sử dụng lớn hơn ngày sản xuất');
+    assert.ok(typeof p.imageUrl === 'string', 'Có imageUrl');
+  }
+  const regularStock = s.data.products.filter((p) => p.stock > p.minStock);
+  assert.ok(regularStock.every((p) => p.stock >= 50 && p.stock <= 300), 'Mặt hàng thông thường có tồn kho 50-300');
+  const expired = s.data.products.filter((p) => s.getExpiryInfo(p.expiryDate).status === 'expired');
+  const nearExpiry = s.data.products.filter((p) => s.getExpiryInfo(p.expiryDate).status === 'near_expiry');
+  assert.equal(expired.length, 4, 'Đúng 4 sản phẩm hết hạn');
+  assert.ok(nearExpiry.length >= 10 && nearExpiry.length <= 15, 'Có 10-15 sản phẩm cận date');
+});
+
+test('getExpiryInfo accurately classifies expired, near_expiry and valid items with boundary dates', () => {
+  const { s } = fixture();
+  const today = new Date();
+  const fmt = (d) => d.toISOString().slice(0, 10);
+  const addDays = (days) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + days);
+    return fmt(d);
+  };
+
+  // Expired <= 0 days
+  const expPast = s.getExpiryInfo(addDays(-5));
+  assert.equal(expPast.status, 'expired');
+  assert.equal(expPast.label, 'Hết hạn');
+  assert.equal(expPast.color, 'red');
+
+  const expToday = s.getExpiryInfo(addDays(0));
+  assert.equal(expToday.status, 'expired');
+  assert.equal(expToday.label, 'Hết hạn');
+  assert.equal(expToday.color, 'red');
+
+  // Near expiry: 1 <= days <= 30
+  const near1 = s.getExpiryInfo(addDays(1));
+  assert.equal(near1.status, 'near_expiry');
+  assert.equal(near1.label, 'Cận date - còn 1 ngày');
+  assert.equal(near1.color, 'yellow');
+
+  const near15 = s.getExpiryInfo(addDays(15));
+  assert.equal(near15.status, 'near_expiry');
+  assert.equal(near15.daysRemaining, 15);
+  assert.equal(near15.label, 'Cận date - còn 15 ngày');
+
+  const near30 = s.getExpiryInfo(addDays(30));
+  assert.equal(near30.status, 'near_expiry');
+  assert.equal(near30.label, 'Cận date - còn 30 ngày');
+
+  // Valid: > 30 days
+  const valid31 = s.getExpiryInfo(addDays(31));
+  assert.equal(valid31.status, 'valid');
+  assert.equal(valid31.label, 'Còn hạn');
+  assert.equal(valid31.color, 'green');
+
+  const valid180 = s.getExpiryInfo(addDays(180));
+  assert.equal(valid180.status, 'valid');
+  assert.equal(valid180.label, 'Còn hạn');
+});
+
+test('product upsert enforces expiryDate > mfgDate and supports extended fields', () => {
+  const { s } = fixture();
+  // Invalid expiryDate <= mfgDate
+  assert.throws(
+    () =>
+      s.upsert('products', {
+        name: 'SP Hỏng Date',
+        barcode: '8939999999999',
+        category: 'Sữa & Đồ uống',
+        supplierId: 'NCC001',
+        price: 50000,
+        costPrice: 35000,
+        minStock: 10,
+        stock: 100,
+        icon: '🥛',
+        mfgDate: '2026-12-01',
+        expiryDate: '2026-11-01',
+      }),
+    /Hạn sử dụng phải sau ngày sản xuất/,
+  );
+
+  // Valid upsert
+  const created = s.upsert('products', {
+    name: 'SP Mới Chuẩn',
+    barcode: '8939999999998',
+    category: 'Sữa & Đồ uống',
+    supplierId: 'NCC001',
+    price: 50000,
+    costPrice: 35000,
+    minStock: 10,
+    stock: 100,
+    icon: '🥛',
+    batchCode: 'LO-TEST-001',
+    mfgDate: '2026-01-01',
+    expiryDate: '2026-12-31',
+    imageUrl: 'https://example.com/img.jpg',
+  });
+  assert.equal(created.name, 'SP Mới Chuẩn');
+  assert.equal(created.costPrice, 35000);
+  assert.equal(created.cost, 35000);
+  assert.equal(created.batchCode, 'LO-TEST-001');
+  assert.equal(created.imageUrl, 'https://example.com/img.jpg');
+});
+
+test('backup restore backfills legacy data and maintains valid schema', () => {
+  const { s } = fixture();
+  const legacyData = clone(s.data);
+  // Strip new fields from products to simulate legacy backup
+  legacyData.products = legacyData.products.slice(0, 10).map((p) => {
+    const copy = { ...p };
+    delete copy.costPrice;
+    delete copy.batchCode;
+    delete copy.mfgDate;
+    delete copy.expiryDate;
+    delete copy.imageUrl;
+    return copy;
+  });
+  // Make sure validateBackup upgrades legacy data without throwing
+  const validated = validateBackup(legacyData);
+  assert.ok(validated.products[0].costPrice, 'costPrice được tự động nâng cấp');
+  assert.ok(validated.products[0].batchCode, 'batchCode được tự động bổ sung');
+  assert.ok(validated.products[0].expiryDate, 'expiryDate được tự động bổ sung');
+  assert.ok(validated.products[0].mfgDate, 'mfgDate được tự động bổ sung');
 });
