@@ -6,6 +6,8 @@
     typeof module !== 'undefined' && module.exports ? require('./calculations.js') : scope.Retail;
   function validateBackup(s) {
     assert(s && s.schema === 1, 'Tệp sao lưu không đúng định dạng RetailFlow v1.');
+    if (!Array.isArray(s.promotions)) s.promotions = [];
+    if (!Array.isArray(s.vouchers)) s.vouchers = [];
     for (const key of [
       'products',
       'customers',
@@ -21,6 +23,14 @@
       'logs',
     ]) {
       assert(Array.isArray(s[key]), `Thiếu danh sách ${key}.`);
+      const keys = s[key].map((x) => x.id);
+      assert(
+        keys.every((x) => typeof x === 'string' && x.length > 0) &&
+          new Set(keys).size === keys.length,
+        `Mã trong ${key} không hợp lệ hoặc trùng.`,
+      );
+    }
+    for (const key of ['promotions', 'vouchers']) {
       const keys = s[key].map((x) => x.id);
       assert(
         keys.every((x) => typeof x === 'string' && x.length > 0) &&
@@ -56,6 +66,8 @@
       barcodes.add(p.barcode);
       if (p.batchCode === undefined) p.batchCode = `LO-${p.id || 'BATCH'}`;
       if (p.imageUrl === undefined) p.imageUrl = '';
+      if (p.damagedStock === undefined) p.damagedStock = 0;
+      if (p.inNearExpiryPromo === undefined) p.inNearExpiryPromo = false;
       if (p.mfgDate === undefined) p.mfgDate = new Date().toISOString().slice(0, 10);
       if (p.expiryDate === undefined) {
         const d = new Date();

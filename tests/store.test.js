@@ -224,7 +224,9 @@ test('seed products satisfy extended schema, stock thresholds, and HSD test sets
     assert.ok(p.mfgDate && !isNaN(Date.parse(p.mfgDate)), 'Có mfgDate hợp lệ');
     assert.ok(p.expiryDate && !isNaN(Date.parse(p.expiryDate)), 'Có expiryDate hợp lệ');
     assert.ok(p.expiryDate > p.mfgDate, 'Hạn sử dụng lớn hơn ngày sản xuất');
-    assert.ok(typeof p.imageUrl === 'string', 'Có imageUrl');
+    assert.ok(typeof p.imageUrl === 'string' && p.imageUrl.length > 5, 'Có imageUrl');
+    assert.ok(!p.imageUrl.includes('data:image/svg+xml') && !p.imageUrl.includes('<svg'), 'imageUrl không chứa svg');
+    assert.ok(/\.(jpg|jpeg|png|webp)($|\?)/i.test(p.imageUrl), 'imageUrl là ảnh chụp thương mại thật (.jpg/.webp/.png)');
   }
   const regularStock = s.data.products.filter((p) => p.stock > p.minStock);
   assert.ok(regularStock.every((p) => p.stock >= 50 && p.stock <= 300), 'Mặt hàng thông thường có tồn kho 50-300');
