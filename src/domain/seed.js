@@ -26,7 +26,7 @@
       ['Sữa chua uống Probi vi chất 130ml', 'Sữa & Đồ uống', 9000, 85, '🧃', 'NCC001', -3, 50, 'assets/images/products/yogurt_probi.jpg'], // Expired #1
       ['Sữa tươi tiệt trùng có đường 1L', 'Sữa & Đồ uống', 36000, 140, '🥛', 'NCC001', 4, 180, 'assets/images/products/milk_sweetened.jpg'], // Near #1
       ['Sữa tươi TH True Milk ít đường 1L', 'Sữa & Đồ uống', 38000, 125, '🥛', 'NCC001', 7, 180, 'assets/images/products/milk_th.jpg'], // Near #2
-      ['Sữa chua nha đam tự nhiên', 'Sữa & Đồ uống', 8500, 95, '🥣', 'NCC001', 2, 45, 'assets/images/products/yogurt_aloe.jpg'], // Near #3
+      ['Sữa chua nha đam tự nhiên', 'Sữa & Đồ uống', 8500, 95, '🥣', 'NCC001', 3, 45, 'assets/images/products/yogurt_aloe.jpg'], // Near #3
       ['Sữa đậu nành Fami nguyên chất 200ml', 'Sữa & Đồ uống', 5500, 220, '🧃', 'NCC001', 12, 180, 'assets/images/products/soy_milk.jpg'], // Near #4
       ['Trà xanh Không Độ 455ml', 'Sữa & Đồ uống', 12000, 175, '🍵', 'NCC003', 22, 365, 'assets/images/products/green_tea.jpg'], // Near #5
       ['Sữa đặc Ông Thọ đỏ lon 380g', 'Sữa & Đồ uống', 26000, 130, '🥫', 'NCC001', 240, 365, 'assets/images/products/condensed_milk.jpg'],
@@ -85,7 +85,7 @@
       ['Bánh que Pocky sô-cô-la 40g', 'Snack & Bánh kẹo', 14000, 175, '🥢', 'NCC002', 6, 365, 'assets/images/products/pocky_choco.jpg'],
       ['Kẹo dẻo Chupa Chups Panda 90g', 'Snack & Bánh kẹo', 16000, 195, '🍬', 'NCC002', 240, 365, 'assets/images/products/candy_chupa.jpg'],
       ['Kẹo sâm ngậm Ricola 40g', 'Snack & Bánh kẹo', 39000, 140, '🍬', 'NCC002', 360, 720, 'assets/images/products/candy_ricola.jpg'],
-      ['Hạt điều rang muối Bình Phước 250g', 'Snack & Bánh kẹo', 95000, 80, '🥜', 'NCC002', 28, 180, 'assets/images/products/cashews_salt.jpg'],
+      ['Hạt điều rang muối Bình Phước 250g', 'Snack & Bánh kẹo', 95000, 80, '🥜', 'NCC002', 24, 180, 'assets/images/products/cashews_salt.jpg'],
       ['Hạt hạnh nhân sấy mộc 200g', 'Snack & Bánh kẹo', 85000, 75, '🥜', 'NCC002', 180, 240, 'assets/images/products/almonds_roasted.jpg'],
       ['Khô gà lá chanh bơ tỏi 200g', 'Snack & Bánh kẹo', 48000, 90, '🍗', 'NCC002', 18, 120, 'assets/images/products/chicken_floss.jpg'],
       ['Khô bò miếng cay truyền thống 150g', 'Snack & Bánh kẹo', 92000, 70, '🥩', 'NCC002', 150, 180, 'assets/images/products/beef_jerky.jpg'],
@@ -94,7 +94,7 @@
       // Đồ ăn liền & Chế biến sẵn (Ready-to-Eat / Hot Food)
       ['Bánh Mì Que Pate Peak', 'Đồ ăn liền & Chế biến sẵn', 19000, 70, '🥖', 'NCC002', -8, 10, 'assets/images/products/bread_pate.jpg'],
       ['Sandwich Trứng Mayonnaise', 'Đồ ăn liền & Chế biến sẵn', 25000, 60, '🥪', 'NCC002', -5, 7, 'assets/images/products/sandwich_egg.jpg'],
-      ['Cơm Tấm Sườn Nướng 7-E', 'Đồ ăn liền & Chế biến sẵn', 42000, 75, '🍱', 'NCC002', 1, 3, 'assets/images/products/com_tam.jpg'],
+      ['Cơm Tấm Sườn Nướng 7-E', 'Đồ ăn liền & Chế biến sẵn', 42000, 75, '🍱', 'NCC002', 5, 10, 'assets/images/products/com_tam.jpg'],
       ['Cơm nắm Onigiri cá hồi', 'Đồ ăn liền & Chế biến sẵn', 18000, 140, '🍙', 'NCC002', 35, 60, 'assets/images/products/seaweed_roll.jpg'],
       ['Bánh bao xá xíu trứng muối', 'Đồ ăn liền & Chế biến sẵn', 22000, 120, '🥟', 'NCC002', 40, 90, 'assets/images/products/bread_pate.jpg'],
       ['Xúc xích phô mai nướng', 'Đồ ăn liền & Chế biến sẵn', 16000, 160, '🌭', 'NCC002', 60, 120, 'assets/images/products/beef_jerky.jpg'],

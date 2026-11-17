@@ -52,6 +52,19 @@ function handleCatalogAction(a) {
       );
       break;
 
+    case 'sync-seed-catalog': {
+      confirmation(
+        'Đồng bộ danh mục mẫu mới?',
+        'Hệ thống sẽ cập nhật toàn bộ 80+ sản phẩm cửa hàng tiện lợi chuẩn CVS, nạp ảnh chụp thương phẩm thật và đồng bộ hạn sử dụng thực tế (12 cận date, 4 hết hạn) tương thích với ngày hiện tại.',
+        () => {
+          const count = store.syncSeedCatalog();
+          render();
+          notify(`Đã đồng bộ thành công ${count} sản phẩm và hạn sử dụng thực tế mới nhất!`);
+        },
+      );
+      break;
+    }
+
     default:
       return false;
   }

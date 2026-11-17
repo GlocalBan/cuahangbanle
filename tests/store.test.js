@@ -1,7 +1,7 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Store, KEY, clone, validateBackup } = require('../store');
+const { Store, KEY, clone, validateBackup, seed } = require('../store');
 const { totals, calculateDiscounts, calculateProfitAndLoss } = require('../src/domain/calculations.js');
 function fixture() {
   const map = new Map();
@@ -234,7 +234,7 @@ test('seed products satisfy extended schema, stock thresholds, and HSD test sets
   const expired = s.data.products.filter((p) => s.getExpiryInfo(p.expiryDate).status === 'expired');
   const nearExpiry = s.data.products.filter((p) => s.getExpiryInfo(p.expiryDate).status === 'near_expiry');
   assert.equal(expired.length, 4, 'Đúng 4 sản phẩm hết hạn');
-  assert.ok(nearExpiry.length >= 10 && nearExpiry.length <= 15, 'Có 10-15 sản phẩm cận date');
+  assert.equal(nearExpiry.length, 12, 'Đúng 12 sản phẩm cận date');
 });
 
 test('getExpiryInfo accurately classifies expired, near_expiry and valid items with boundary dates', () => {
@@ -347,6 +347,42 @@ test('backup restore backfills legacy data and maintains valid schema', () => {
   assert.ok(validated.products[0].batchCode, 'batchCode được tự động bổ sung');
   assert.ok(validated.products[0].expiryDate, 'expiryDate được tự động bổ sung');
   assert.ok(validated.products[0].mfgDate, 'mfgDate được tự động bổ sung');
+});
+
+test('Store auto-migrates legacy 29-product localStorage state and syncSeedCatalog updates catalog', () => {
+  const legacyStorage = new Map();
+  const legacyData = clone(seed());
+  // Simulate old legacy state with only 29 products and no expiry/image
+  legacyData.products = legacyData.products.slice(0, 29).map((p) => {
+    const copy = { ...p };
+    delete copy.expiryDate;
+    delete copy.mfgDate;
+    delete copy.imageUrl;
+    return copy;
+  });
+  delete legacyData.promotions;
+  delete legacyData.vouchers;
+  legacyStorage.set(KEY, JSON.stringify(legacyData));
+
+  // Initialize Store with legacy storage
+  const s = new Store({
+    getItem: (k) => legacyStorage.get(k) || null,
+    setItem: (k, v) => legacyStorage.set(k, v),
+  });
+  s.login('admin', '123456');
+
+  // Verify auto-migration kicked in immediately
+  assert.ok(s.data.products.length >= 80, 'Tự động mở rộng lên >= 80 sản phẩm');
+  assert.ok(s.data.products.every((p) => p.expiryDate && p.imageUrl), 'Mọi sản phẩm có expiryDate và imageUrl');
+  const exp = s.data.products.filter((p) => s.getExpiryInfo(p.expiryDate).status === 'expired');
+  const near = s.data.products.filter((p) => s.getExpiryInfo(p.expiryDate).status === 'near_expiry');
+  assert.equal(exp.length, 4, 'Auto-migrate khôi phục đúng 4 sản phẩm hết hạn');
+  assert.equal(near.length, 12, 'Auto-migrate khôi phục đúng 12 sản phẩm cận date');
+
+  // Verify syncSeedCatalog method
+  const count = s.syncSeedCatalog();
+  assert.ok(count >= 80, 'syncSeedCatalog đồng bộ thành công >= 80 sản phẩm');
+  assert.equal(s.data.products.length, count);
 });
 
 test('toggleNearDatePromo and applyAllNearDatePromo manage near-expiry items correctly', () => {

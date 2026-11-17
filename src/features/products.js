@@ -18,7 +18,8 @@ function productsView() {
       'DANH MỤC / SẢN PHẨM',
       'Quản lý sản phẩm',
       'Quản lý danh mục, giá bán, mã hàng, tồn kho và theo dõi hạn sử dụng.',
-      action('export-products', 'Xuất CSV', 'download') +
+      action('sync-seed-catalog', 'Đồng bộ danh mục mẫu mới', 'layers', 'ghost') +
+        action('export-products', 'Xuất CSV', 'download') +
         (store.user.role === 'ADMIN'
           ? action('entity-new', 'Thêm sản phẩm', 'plus', 'primary', 'data-type="products"')
           : ''),
@@ -44,10 +45,10 @@ function productsView() {
         'clock',
       ],
     ]) +
-    `<section class="panel"><div class="panel-head"><h2>Danh sách sản phẩm</h2><div class="row gap8 align-center"><span class="sub">${s.products.length} mặt hàng</span>${nearCount > 0 ? `<button type="button" class="btn warning small" data-action="apply-all-neardate-promo">${icon('clock')} Đưa tất cả SP Cận Date vào CTKM (-35%)</button>` : ''}</div></div><div class="table-tools wrap">${filterInput('products', 'Tìm tên, mã sản phẩm, mã vạch, mã lô…')}${filterSelect('category', [['', 'Tất cả danh mục'], ...categories.map((c) => [c, c])])}${filterSelect(
+    `<section class="panel"><div class="panel-head"><h2>Danh sách sản phẩm</h2><div class="row gap8 align-center"><span class="sub">${s.products.length} mặt hàng</span>${nearCount > 0 ? `<button type="button" class="btn warning small" data-action="apply-all-neardate-promo">${icon('clock')} Đưa tất cả SP Cận Date vào CTKM (-35%)</button>` : ''}</div></div><div class="table-tools product-filters">${filterInput('products', 'Tìm tên, mã vạch, SKU, mã lô…')}${filterSelect('category', [['', 'Tất cả danh mục'], ...categories.map((c) => [c, c])])}${filterSelect(
       'expiry',
       [
-        ['', 'Tất cả HSD'],
+        ['', 'Hạn sử dụng: Tất cả'],
         ['valid', 'Còn hạn'],
         ['near_expiry', 'Cận date'],
         ['expired', 'Hết hạn'],
@@ -55,7 +56,7 @@ function productsView() {
     )}${filterSelect(
       'active',
       [
-        ['', 'Tất cả trạng thái'],
+        ['', 'Trạng thái kinh doanh'],
         ['yes', 'Đang kinh doanh'],
         ['no', 'Ngừng kinh doanh'],
       ],

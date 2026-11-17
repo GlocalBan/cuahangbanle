@@ -262,6 +262,12 @@
     padding: 0 15px 13px;
     flex-wrap: wrap;
   }
+  .table-tools.product-filters,
+  .product-filters {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    padding: 0 15px 13px;
+  }
   .table-tools input {
     max-width: none;
   }
