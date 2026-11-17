@@ -4,7 +4,9 @@ function dashboardView() {
     low = s.products.filter((p) => p.active && p.stock <= p.minStock),
     expired = s.products.filter((p) => p.active && getExpiryInfo && getExpiryInfo(p.expiryDate).status === 'expired'),
     nearExpiry = s.products.filter((p) => p.active && getExpiryInfo && getExpiryInfo(p.expiryDate).status === 'near_expiry'),
-    pending = s.purchases.filter((p) => p.status === 'pending'),
+    pending = s.purchases.filter((p) =>
+      ['pending', 'sent_to_supplier', 'supplier_responded', 'store_approved'].includes(p.status),
+    ),
     refund = s.returns.filter((r) => r.status === 'pending');
   const methods = Object.keys(METHODS).map((m, i) => ({
     label: METHODS[m],

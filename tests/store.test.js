@@ -525,6 +525,28 @@ test('3-step inventory audit supports practical resolutions and expired write-of
 
   // Second call throws because no expired items remain in stock
   assert.throws(() => s.auditExpiredProducts(), /Không có sản phẩm hết hạn/);
+
+  // Audit with pending_resolution: stock is not moved until resolved
+  const p2 = s.data.products[1];
+  const initialStock2 = p2.stock;
+  const auditPending = s.audit(
+    [
+      {
+        id: p2.id,
+        actual: initialStock2 + 3,
+        resolution: 'surplus_adjust',
+      },
+    ],
+    'Kiểm kê thừa hàng chờ duyệt',
+    'pending_resolution',
+  );
+  assert.equal(s.data.products[1].stock, initialStock2, 'Chưa đổi kho khi pending_resolution');
+  assert.equal(auditPending.status, 'pending_resolution');
+
+  // Resolve audit: moves stock and marks resolved
+  s.resolveAudit(auditPending.id);
+  assert.equal(s.data.products[1].stock, initialStock2 + 3, 'Đã cập nhật kho sau khi resolve');
+  assert.equal(auditPending.status, 'resolved');
 });
 
 test('two-way purchase workflow handles negotiation and partial GRN receipt', () => {

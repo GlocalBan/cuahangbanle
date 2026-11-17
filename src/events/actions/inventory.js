@@ -24,6 +24,20 @@ function handleInventoryAction(a) {
       break;
     }
 
+    case 'resolve-inventory-audit': {
+      const aid = a.id;
+      confirmation(
+        'Phê duyệt & Hoàn tất xử lý kiểm kê?',
+        'Tồn kho sẽ được điều chỉnh cân bằng về số lượng thực đếm và chi phí được kết chuyển vào sổ sách.',
+        () => {
+          store.resolveAudit(aid);
+          render();
+          notify('Đã phê duyệt và hoàn tất xử lý kiểm kê!');
+        },
+      );
+      break;
+    }
+
     case 'purchase-new':
       purchaseModal();
       break;
@@ -59,6 +73,7 @@ function handleInventoryAction(a) {
       renderPurchaseLines();
       break;
 
+    case 'send-po-to-supplier':
     case 'purchase-send':
       store.purchaseStatus(a.id, 'sent_to_supplier');
       purchaseDetail(a.id);
@@ -85,6 +100,7 @@ function handleInventoryAction(a) {
       break;
     }
 
+    case 'confirm-purchase-receipt':
     case 'open-purchase-receipt':
       purchaseReceiptModal(a.id);
       break;
@@ -104,6 +120,7 @@ function handleInventoryAction(a) {
       break;
     }
 
+    case 'cancel-purchase':
     case 'purchase-cancel': {
       const pid = a.id;
       confirmation(

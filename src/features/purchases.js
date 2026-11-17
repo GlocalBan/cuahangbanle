@@ -109,12 +109,12 @@ function purchaseDetail(purchaseId) {
   showModal(
     'Chi tiết phiếu nhập hàng (PO)',
     `<div class="modal-content"><div class="detail-grid"><div><small>Mã phiếu</small><strong>${e(p.id)}</strong></div><div><small>Trạng thái</small>${status(p.status)}</div><div><small>Nhà cung cấp</small><strong>${e(p.supplier)}</strong></div><div><small>Ngày lập</small><strong>${date(p.time)}</strong></div></div>${table(
-      ['Sản phẩm', 'SL Đặt', 'Giá đặt', 'NCC Xác nhận', 'Giá vốn chốt', 'Thực nhận (GRN)'],
+      ['Sản phẩm', 'SL Cửa hàng đặt', 'Giá dự kiến', 'NCC Xác nhận', 'Giá NCC báo', 'Thực nhận (GRN)'],
       p.items.map(
         (i) =>
-          `<tr><td class="name">${e(i.name)}</td><td>${i.qty}</td><td>${money(i.price)}</td><td>${i.confirmedQty !== undefined ? `<strong>${i.confirmedQty}</strong>` : '<span class="muted">Chờ NCC</span>'}</td><td>${i.confirmedCost !== undefined ? money(i.confirmedCost) : money(i.price)}</td><td>${i.acceptedQty !== undefined ? `<span class="positive"><strong>${i.acceptedQty}</strong></span>${i.rejectedQty ? ` <span class="negative">(-${i.rejectedQty})</span>` : ''}` : '<span class="muted">Chưa nhận</span>'}</td></tr>`,
+          `<tr><td class="name">${e(i.name)}</td><td>${i.qty}</td><td>${money(i.price)}</td><td>${i.confirmedQty !== undefined ? `<strong class="${i.confirmedQty !== i.qty ? 'warning' : ''}">${i.confirmedQty}</strong>` : '<span class="muted">Chờ NCC</span>'}</td><td>${i.confirmedCost !== undefined ? `<span class="${i.confirmedCost !== i.price ? 'negative' : ''}">${money(i.confirmedCost)}</span>` : money(i.price)}</td><td>${i.acceptedQty !== undefined ? `<span class="positive"><strong>${i.acceptedQty}</strong></span>${i.rejectedQty ? ` <span class="negative">(-${i.rejectedQty})</span>` : ''}` : '<span class="muted">Chưa nhận</span>'}</td></tr>`,
       ),
-    )}<div class="right mt16"><strong>Tổng tiền: ${money(p.total)}</strong></div><p class="sub">${e(p.note || 'Không có ghi chú')}${p.supplierNote ? `<br><strong>Phản hồi NCC:</strong> ${e(p.supplierNote)}` : ''}${p.storeApprovalNote ? `<br><strong>Duyệt cửa hàng:</strong> ${e(p.storeApprovalNote)}` : ''}${p.receivedAt ? `<br>Nhập kho lúc ${date(p.receivedAt)} bởi ${e(p.receiver)}` : ''}</p></div><div class="modal-footer">${['draft', 'pending', 'sent_to_supplier', 'supplier_responded', 'store_approved'].includes(p.status) ? action('purchase-cancel', 'Hủy phiếu', '', 'danger', `data-id="${e(p.id)}"`) : ''}${p.status === 'draft' ? action('purchase-send', 'Gửi NCC', 'truck', 'primary', `data-id="${e(p.id)}"`) : ''}${['sent_to_supplier', 'pending'].includes(p.status) ? action('open-supplier-response', 'Cổng phản hồi NCC', 'edit', 'warning', `data-id="${e(p.id)}"`) : ''}${p.status === 'supplier_responded' ? action('approve-supplier-response', 'Duyệt phản hồi NCC', 'check', 'primary', `data-id="${e(p.id)}"`) + action('open-supplier-response', 'Sửa phản hồi NCC', 'edit', 'ghost', `data-id="${e(p.id)}"`) : ''}${['store_approved', 'pending'].includes(p.status) ? action('open-purchase-receipt', 'Kiểm nhận kho (GRN)', 'check', 'teal', `data-id="${e(p.id)}"`) : ''}${['pending', 'store_approved'].includes(p.status) ? action('purchase-receive', 'Xác nhận nhập kho', 'check', 'teal', `data-id="${e(p.id)}"`) : ''}${action('close-modal', 'Đóng')}</div>`,
+    )}<div class="right mt16"><strong>Tổng tiền: ${money(p.total)}</strong></div><p class="sub">${e(p.note || 'Không có ghi chú')}${p.supplierNote ? `<br><strong>Phản hồi NCC:</strong> ${e(p.supplierNote)}` : ''}${p.storeApprovalNote ? `<br><strong>Duyệt cửa hàng:</strong> ${e(p.storeApprovalNote)}` : ''}${p.receivedAt ? `<br>Nhập kho lúc ${date(p.receivedAt)} bởi ${e(p.receiver)}` : ''}</p></div><div class="modal-footer">${['draft', 'pending', 'sent_to_supplier', 'supplier_responded', 'store_approved'].includes(p.status) ? action('cancel-purchase', 'Từ chối & Hủy phiếu', '', 'danger', `data-id="${e(p.id)}" data-action="cancel-purchase" data-action-alt="purchase-cancel"`) : ''}${['draft', 'pending'].includes(p.status) ? action('send-po-to-supplier', 'Gửi yêu cầu đặt hàng cho NCC', 'truck', 'primary', `data-id="${e(p.id)}" data-action="send-po-to-supplier" data-action-alt="purchase-send"`) : ''}${['sent_to_supplier', 'pending'].includes(p.status) ? action('open-supplier-response', 'Cổng phản hồi NCC (Tương tác 2 chiều)', 'edit', 'warning', `data-id="${e(p.id)}" data-action="open-supplier-response"`) : ''}${p.status === 'supplier_responded' ? action('approve-supplier-response', 'Chấp nhận phương án NCC & Chờ nhận hàng', 'check', 'primary', `data-id="${e(p.id)}" data-action="approve-supplier-response"`) + action('open-supplier-response', 'Sửa phản hồi NCC', 'edit', 'ghost', `data-id="${e(p.id)}"`) : ''}${['store_approved', 'pending'].includes(p.status) ? action('confirm-purchase-receipt', 'Kiểm nhận thực tế & Nhập kho (GRN)', 'check', 'teal', `data-id="${e(p.id)}" data-action="confirm-purchase-receipt" data-action-alt="open-purchase-receipt"`) : ''}${['pending', 'store_approved'].includes(p.status) ? action('purchase-receive', 'Xác nhận nhập kho trực tiếp', 'check', 'teal', `data-id="${e(p.id)}"`) : ''}${action('close-modal', 'Đóng')}</div>`,
     true,
   );
 }
@@ -124,18 +124,25 @@ function supplierResponseModal(purchaseId) {
   if (!p) throw new Error('Không tìm thấy phiếu nhập.');
   modalContext = { type: 'supplier-response', purchaseId };
   showModal(
-    'Cổng Phản hồi Nhà cung cấp (Supplier Portal)',
+    'Cổng Phản hồi Nhà cung cấp (Tương tác 2 chiều NCC ⇄ Cửa hàng)',
     `<form id="supplier-response-form"><div class="modal-content stack">
-      <div class="note yellow">NCC <strong>${e(p.supplier)}</strong> phản hồi khả năng đáp ứng đơn đặt hàng <strong>${e(p.id)}</strong>.</div>
+      <div class="note yellow">NCC <strong>${e(p.supplier)}</strong> xác nhận số lượng thực giao, báo giá mới và khai báo HSD/Mã lô cho đơn đặt hàng <strong>${e(p.id)}</strong>.</div>
       ${table(
-        ['Mặt hàng', 'SL Đặt', 'SL Đáp ứng', 'Giá vốn chốt (₫)', 'Hạn sử dụng', 'Mã lô NCC'],
+        ['Mặt hàng', 'SL Đặt', 'Khả năng cung ứng', 'SL Xác nhận', 'Giá vốn chốt (₫)', 'Hạn sử dụng', 'Mã lô NCC'],
         p.items.map((i, idx) => {
           const prod = store.data.products.find((x) => x.id === i.id);
           const defExp = i.expiryDate || prod?.expiryDate || '';
           const defBatch = i.batchCode || prod?.batchCode || '';
           return `<tr>
             <td class="name">${e(i.name)}<input type="hidden" name="item_id_${idx}" value="${e(i.id)}"></td>
-            <td>${i.qty}</td>
+            <td><strong>${i.qty}</strong></td>
+            <td>
+              <select class="purchase-line-input" name="supplier_status_${idx}" onchange="if(this.value==='out_of_stock'){const q=this.closest('tr').querySelector('[name^=confirmed_qty]');if(q)q.value=0;}">
+                <option value="full" ${i.confirmedQty === i.qty ? 'selected' : ''}>Giao đủ</option>
+                <option value="partial" ${(i.confirmedQty !== undefined && i.confirmedQty < i.qty && i.confirmedQty > 0) ? 'selected' : ''}>Giao một phần</option>
+                <option value="out_of_stock" ${(i.confirmedQty === 0) ? 'selected' : ''}>Hết hàng (Không giao)</option>
+              </select>
+            </td>
             <td><input type="number" class="purchase-line-input" min="0" step="1" name="confirmed_qty_${idx}" value="${i.confirmedQty !== undefined ? i.confirmedQty : i.qty}" required></td>
             <td><input type="number" class="purchase-line-input purchase-line-price" min="0" step="1" name="confirmed_cost_${idx}" value="${i.confirmedCost !== undefined ? i.confirmedCost : i.price}" required></td>
             <td><input type="date" name="expiry_date_${idx}" value="${defExp}"></td>
@@ -143,7 +150,7 @@ function supplierResponseModal(purchaseId) {
           </tr>`;
         }),
       )}
-      ${textField('Ghi chú từ Nhà cung cấp', 'supplierNote', p.supplierNote || 'Xác nhận giao đủ và đúng hạn.')}
+      ${textField('Ghi chú phản hồi của Nhà cung cấp', 'supplierNote', p.supplierNote || 'Xác nhận giao hàng đúng hẹn.')}
       ${formError()}
     </div>${foot('Gửi phản hồi xác nhận tới Cửa hàng', 'primary')}</form>`,
     true,
@@ -155,11 +162,11 @@ function purchaseReceiptModal(purchaseId) {
   if (!p) throw new Error('Không tìm thấy phiếu nhập.');
   modalContext = { type: 'purchase-receipt', purchaseId };
   showModal(
-    'Biên bản Kiểm nhận Thực tế (GRN / Goods Receipt Note)',
+    'Kiểm nhận thực tế tại cửa hàng (GRN / Goods Receipt Note)',
     `<form id="purchase-receipt-form"><div class="modal-content stack">
       <div class="note teal">Nhân viên kho kiểm tra quy cách, date và số lượng hàng thực nhận cho phiếu <strong>${e(p.id)}</strong>. Chỉ số lượng đạt chuẩn mới được nhập vào tồn kho bán lẻ.</div>
       ${table(
-        ['Mặt hàng', 'NCC Xác nhận', 'Giá chốt', 'SL Đạt chuẩn (Nhập kho)', 'SL Lỗi/Từ chối (Trả lại NCC)', 'Hạn dùng'],
+        ['Mặt hàng', 'NCC Xác nhận', 'Giá chốt', 'SL Đạt chuẩn (Nhập kho)', 'SL Lỗi (Trả lại NCC)', 'Lý do từ chối', 'Hạn dùng'],
         p.items.map((i, idx) => {
           const expectedQty = i.confirmedQty !== undefined ? i.confirmedQty : i.qty;
           const cost = i.confirmedCost !== undefined ? i.confirmedCost : i.price;
@@ -168,7 +175,8 @@ function purchaseReceiptModal(purchaseId) {
             <td><strong>${expectedQty}</strong></td>
             <td class="money">${money(cost)}</td>
             <td><input type="number" class="purchase-line-input" min="0" max="${expectedQty}" step="1" name="accepted_qty_${idx}" value="${expectedQty}" required></td>
-            <td><input type="number" class="purchase-line-input" min="0" max="${expectedQty}" step="1" name="rejected_qty_${idx}" value="0"></td>
+            <td><input type="number" class="purchase-line-input" min="0" max="${expectedQty}" step="1" name="rejected_qty_${idx}" value="${i.rejectedQty || 0}"></td>
+            <td><input type="text" class="purchase-line-input" name="reject_reason_${idx}" value="${e(i.rejectReason || '')}" placeholder="Lý do lỗi/trả lại"></td>
             <td>${i.expiryDate ? `<span class="badge ${getExpiryInfo ? getExpiryInfo(i.expiryDate).color : 'green'}">${i.expiryDate}</span>` : '<span class="muted">Theo lô</span>'}</td>
           </tr>`;
         }),

@@ -37,22 +37,30 @@ document.addEventListener('submit', (event) => {
         notify('Đã lưu thông tin.');
         break;
       }
-      case 'audit-form':
+      case 'audit-form': {
+        const auditStatus = v.status || 'resolved';
         store.audit(
           [
             {
               id: v.productId,
               actual: Number(v.counted),
               resolution: v.resolution || 'damage_writeoff',
+              resolutionAction: v.resolution || 'damage_writeoff',
               responsibleStaff: v.responsibleStaff || '',
             },
           ],
           v.reason || 'Kiểm kê định kỳ',
+          auditStatus,
         );
         closeModal();
         render();
-        notify('Đã xác nhận kiểm kê và cập nhật tồn kho.');
+        notify(
+          auditStatus === 'pending_resolution'
+            ? 'Đã lưu phiếu kiểm kê (chờ phê duyệt).'
+            : 'Đã xác nhận kiểm kê và cập nhật tồn kho.',
+        );
         break;
+      }
       case 'purchase-form':
         store.createPurchase(v.supplierId, purchaseLines, v.note || '', v.status);
         closeModal();
@@ -65,6 +73,7 @@ document.addEventListener('submit', (event) => {
         if (!p) throw new Error('Không tìm thấy phiếu nhập.');
         const lines = p.items.map((item, idx) => ({
           id: item.id,
+          supplierStatus: v[`supplier_status_${idx}`] || (Number(v[`confirmed_qty_${idx}`]) === 0 ? 'out_of_stock' : Number(v[`confirmed_qty_${idx}`]) < item.qty ? 'partial' : 'full'),
           confirmedQty: Number(
             v[`confirmed_qty_${idx}`] !== undefined ? v[`confirmed_qty_${idx}`] : item.qty,
           ),
@@ -93,6 +102,7 @@ document.addEventListener('submit', (event) => {
               : item.confirmedQty || item.qty,
           ),
           rejectedQty: Number(v[`rejected_qty_${idx}`] || 0),
+          rejectReason: v[`reject_reason_${idx}`] || '',
         }));
         store.confirmPurchaseReceipt(pid, { lines, receiverNote: v.receiverNote });
         closeModal();

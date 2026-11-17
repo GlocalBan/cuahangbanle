@@ -58,13 +58,17 @@ function inventoryView() {
       s.audits.flatMap((a) =>
         a.items.map((i) => ({
           ...a,
+          auditId: a.id,
+          auditStatus: a.status || 'resolved',
+          productId: i.id,
           productName: i.name,
           before: i.previous,
           counted: i.actual,
           delta: i.delta,
           diffValue: i.diffValue || (Math.abs(i.delta) * (i.costPrice || 0)),
-          resolution: i.resolution || (i.delta < 0 ? 'damage_writeoff' : 'surplus_adjust'),
-          responsibleStaff: i.responsibleStaff || '',
+          resolution: i.resolutionAction || i.resolution || (i.delta < 0 ? 'damage_writeoff' : 'surplus_adjust'),
+          resolutionLabel: i.resolutionLabel || '',
+          responsibleStaff: i.responsibleStaff || a.actor || '',
           reason: a.note,
         })),
       ),
@@ -76,18 +80,22 @@ function inventoryView() {
           'Mã kiểm kê',
           'Ngày',
           'Sản phẩm',
+          'HSD',
           'Tồn trước',
           'Thực tế',
-          'Chênh lệch',
+          'Lệch',
           'Trị giá lệch',
           'Phương án xử lý',
-          'Ghi chú',
-          'Nhân viên',
+          'Lý do / Biên bản',
+          'Người chịu trách nhiệm',
+          'Trạng thái',
+          'Thao tác',
         ],
         p.items.map((a) => {
+          const prod = s.products.find((p) => p.id === a.productId || p.name === a.productName);
           const resBadge =
             a.resolution === 'damage_writeoff'
-              ? '<span class="badge red">Hủy hao hụt/hỏng</span>'
+              ? '<span class="badge red">Xuất hủy hàng hỏng/hết date</span>'
               : a.resolution === 'staff_compensation'
                 ? `<span class="badge yellow">NV bồi hoàn${a.responsibleStaff ? `: ${e(a.responsibleStaff)}` : ''}</span>`
                 : a.resolution === 'natural_shrinkage'
@@ -95,12 +103,60 @@ function inventoryView() {
                   : a.resolution === 'supplier_bonus'
                     ? '<span class="badge blue">Hàng tặng NCC</span>'
                     : a.resolution === 'surplus_adjust'
-                      ? '<span class="badge teal">Điều chỉnh thừa</span>'
-                      : '<span class="badge">Khớp</span>';
-          return `<tr><td>${e(a.id)}</td><td>${date(a.time)}</td><td class="name">${e(a.productName)}</td><td>${a.before}</td><td>${a.counted}</td><td class="${a.delta >= 0 ? 'positive' : 'negative'}">${a.delta > 0 ? '+' : ''}${a.delta}</td><td class="money">${money(a.diffValue || 0)}</td><td>${resBadge}</td><td>${e(a.reason)}</td><td>${e(a.actor)}</td></tr>`;
+                      ? '<span class="badge teal">Điều chỉnh tăng thừa</span>'
+                      : '<span class="badge">Khớp số liệu</span>';
+          const expCell = prod?.expiryDate && typeof getExpiryInfo === 'function'
+            ? expiryBadge(prod.expiryDate)
+            : '<span class="muted">Theo lô</span>';
+          const prodCell = `
+            <div class="product-cell">
+              <div class="product-thumb">${productImage(prod || { name: a.productName, icon: '📦' }, 'product-thumb-img')}</div>
+              <div>
+                <strong>${e(a.productName)}</strong>
+                <div class="sub">${e(prod?.barcode || a.productId)}</div>
+              </div>
+            </div>
+          `;
+          const statusBadge = a.auditStatus === 'pending_resolution' ? badge('Chờ duyệt', 'yellow') : badge('Đã giải quyết', 'green');
+          const resolveAction = a.auditStatus === 'pending_resolution'
+            ? action('resolve-inventory-audit', 'Phê duyệt', 'check', 'small teal', `data-id="${e(a.auditId)}"`)
+            : '';
+          return `<tr><td>${e(a.auditId)}</td><td>${date(a.time)}</td><td class="name">${prodCell}</td><td>${expCell}</td><td>${a.before}</td><td>${a.counted}</td><td class="${a.delta >= 0 ? 'positive' : 'negative'}"><strong>${a.delta > 0 ? '+' : ''}${a.delta}</strong></td><td class="money">${money(a.diffValue || 0)}</td><td>${resBadge}</td><td>${e(a.reason)}</td><td>${e(a.responsibleStaff || 'Ca trực kho')}</td><td>${statusBadge}</td><td>${resolveAction}</td></tr>`;
         }),
       ) + p.foot;
   }
+  const totalWriteoff = s.audits.reduce((acc, a) => {
+    return acc + (a.items || []).filter((i) => ['damage_writeoff', 'natural_shrinkage'].includes(i.resolution || (i.delta < 0 ? 'damage_writeoff' : ''))).reduce((sum, i) => sum + (i.diffValue || Math.abs(i.delta) * (i.costPrice || 0)), 0);
+  }, 0);
+  const totalCompensation = s.audits.reduce((acc, a) => {
+    return acc + (a.items || []).filter((i) => i.resolution === 'staff_compensation').reduce((sum, i) => sum + (i.diffValue || Math.abs(i.delta) * (i.costPrice || 0)), 0);
+  }, 0);
+  const resolvedAuditsCount = s.audits.filter((a) => a.status === 'resolved' || !a.status).length;
+
+  const currentStats = inventoryTab === 'audits'
+    ? stats([
+        ['Tổng phiếu đã xử lý', number(resolvedAuditsCount), 'Phiếu kiểm kê đã chốt', 'shield'],
+        ['Xuất hủy hàng hỏng/hết hạn', money(totalWriteoff), 'Kết chuyển vào chi phí', 'trash'],
+        ['Truy thu bồi thường', money(totalCompensation), 'Phải thu nhân viên/ca trực', 'receipt'],
+        ['Hàng hết hạn cần xử lý', number(expiredCount), 'Sản phẩm hết hạn còn tồn kho', 'bell'],
+      ])
+    : stats([
+        [
+          'Tổng số lượng tồn',
+          number(s.products.reduce((a, p) => a + p.stock, 0)),
+          'Sản phẩm trong kho',
+          'warehouse',
+        ],
+        [
+          'Giá trị tồn kho',
+          money(s.products.reduce((a, p) => a + p.stock * (p.costPrice !== undefined ? p.costPrice : p.cost), 0)),
+          'Theo giá vốn hiện tại',
+          'receipt',
+        ],
+        ['Sắp hết hàng', number(low.length), 'Bằng hoặc dưới ngưỡng', 'bell'],
+        ['Phiếu kiểm kê', number(s.audits.length), 'Đã xử lý & giải quyết', 'shield'],
+      ]);
+
   return (
     heading(
       'KHO HÀNG / KIỂM KÊ',
@@ -111,22 +167,7 @@ function inventoryView() {
           ? action('audit-expired-products', `Lập phiếu hủy ${expiredCount} SP hết hạn`, 'trash', 'danger')
           : action('audit-expired-products', 'Kiểm tra hủy hàng hết hạn', 'trash', 'ghost')),
     ) +
-    stats([
-      [
-        'Tổng số lượng tồn',
-        number(s.products.reduce((a, p) => a + p.stock, 0)),
-        'Sản phẩm trong kho',
-        'warehouse',
-      ],
-      [
-        'Giá trị tồn kho',
-        money(s.products.reduce((a, p) => a + p.stock * (p.costPrice !== undefined ? p.costPrice : p.cost), 0)),
-        'Theo giá vốn hiện tại',
-        'receipt',
-      ],
-      ['Sắp hết hàng', number(low.length), 'Bằng hoặc dưới ngưỡng', 'bell'],
-      ['Phiếu kiểm kê', number(s.audits.length), 'Đã xử lý & giải quyết', 'shield'],
-    ]) +
+    currentStats +
     `<div class="tabs">${tabs.map(([key, label]) => `<button class="${inventoryTab === key ? 'active' : ''}" data-action="inventory-tab" data-tab="${key}">${label}</button>`).join('')}</div><section class="panel"><div class="panel-head"><h2>${tabs.find((t) => t[0] === inventoryTab)[1]}</h2></div>${content}</section>`
   );
 }
@@ -182,6 +223,18 @@ function auditModal() {
       </div>
       <div>
         ${textField('Bước 3: Lý do chi tiết & Số biên bản kiểm kê', 'reason', 'Kiểm kê định kỳ cửa hàng')}
+      </div>
+      <div class="form-grid">
+        ${selectField(
+          'Quy trình phê duyệt phiếu kiểm kê',
+          'status',
+          [
+            ['resolved', 'Phê duyệt & Cân bằng kho ngay (Resolved)'],
+            ['pending_resolution', 'Lưu phiếu chờ quản trị viên duyệt (Pending Resolution)'],
+          ],
+          'resolved',
+          'id="audit-status-select"',
+        )}
       </div>
       ${formError()}
       <div class="note">Hệ thống sẽ cập nhật tồn kho về số lượng thực đếm, phân bổ chi phí hao hụt vào Báo cáo Lãi lỗ (P&L) và lưu vết kiểm toán.</div>
