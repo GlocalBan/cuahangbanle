@@ -712,3 +712,140 @@ test('M4-06: Atomic DAL transaction rollback on mid-flight error in checkout() a
     db.close();
   }
 });
+
+test('M4-07: M4 Patch — lineDiscount RBAC/THAM_SO limit, return approval window anchored to created_at, and overlapping pending returns cap', async () => {
+  const srv = await startTestServer();
+  try {
+    const cashierToken = await srv.loginAs('thungan');
+    const managerToken = await srv.loginAs('quanly');
+
+    const prod = (await srv.reqJson('GET', '/api/products?status=DangKinhDoanh', { token: cashierToken })).data.items
+      .find((p) => p.salePrice >= 20000 && p.stockQty >= 15);
+    assert.ok(prod, 'Need active product with salePrice >= 20000 and stockQty >= 15');
+
+    // (a) ThuNgan lineDiscount > 10% -> 403 Forbidden; <= 10% -> 201; QuanLy 30% -> 201 + logged in audit_logs
+    const qty = 2;
+    const lineGross = prod.salePrice * qty;
+    const overLimit = Math.round(lineGross * 0.15); // 15% > 10% default TyLeGiamGiaDongToiDa
+    const withinLimit = Math.floor(lineGross * 0.1); // <= 10%
+    const managerDiscount = Math.round(lineGross * 0.3); // 30% allowed for QuanLy
+
+    const cashierOver = await srv.reqJson('POST', '/api/pos/checkout', {
+      token: cashierToken,
+      body: {
+        paymentMethod: 'CASH',
+        cashReceived: lineGross * 2,
+        items: [{ productId: prod.id, qty, lineDiscount: overLimit }],
+      },
+    });
+    assert.equal(cashierOver.status, 403, 'ThuNgan exceeding TyLeGiamGiaDongToiDa must get 403');
+
+    const cashierOk = await srv.reqJson('POST', '/api/pos/checkout', {
+      token: cashierToken,
+      body: {
+        paymentMethod: 'CASH',
+        cashReceived: lineGross * 2,
+        items: [{ productId: prod.id, qty, lineDiscount: withinLimit }],
+      },
+    });
+    assert.equal(cashierOk.status, 201, 'ThuNgan within 10% lineDiscount limit must succeed');
+    assert.equal(cashierOk.data.item.subtotal, lineGross - withinLimit);
+
+    const managerOk = await srv.reqJson('POST', '/api/pos/checkout', {
+      token: managerToken,
+      body: {
+        paymentMethod: 'CASH',
+        cashReceived: lineGross * 2,
+        items: [{ productId: prod.id, qty, lineDiscount: managerDiscount }],
+      },
+    });
+    assert.equal(managerOk.status, 201, 'QuanLy with 30% lineDiscount must succeed');
+    assert.equal(managerOk.data.item.subtotal, lineGross - managerDiscount);
+
+    const auditRow = srv.db
+      .prepare("SELECT detail, after_json FROM audit_logs WHERE action = 'ORDER_CHECKOUT' AND entity_id = ?")
+      .get(managerOk.data.item.id);
+    assert.ok(auditRow, 'Audit log must exist for manager checkout');
+    assert.equal(JSON.parse(auditRow.after_json).totalLineDiscount, managerDiscount);
+
+    // (b) Return window anchored to returnSlip.created_at (order day 0, return created day 6, approved day 8 -> 200)
+    const repos = createRepositories(srv.db);
+    const sysSvc = new SystemService(srv.db, repos);
+    const salesSvc = new SalesService(srv.db, repos, sysSvc);
+    const cashierUser = repos.users.findByUsername('thungan');
+
+    const order8DaysAgo = salesSvc.checkout(
+      cashierUser,
+      {
+        paymentMethod: 'CASH',
+        cashReceived: prod.salePrice * 5,
+        items: [{ productId: prod.id, qty: 2 }],
+      },
+      { _createdAtOverride: new Date(Date.now() - 8 * 86400000).toISOString() },
+    );
+    const retFiledDay6 = salesSvc.createReturn(
+      cashierUser,
+      {
+        orderId: order8DaysAgo.id,
+        reason: 'Lập phiếu trả ngày thứ 6, quản lý duyệt ngày thứ 8',
+        restock: true,
+        items: [{ productId: prod.id, qty: 1 }],
+      },
+      { _createdAtOverride: new Date(Date.now() - 2 * 86400000).toISOString() },
+    );
+    assert.equal(retFiledDay6.status, 'ChoDuyet');
+
+    const approveDay8 = await srv.reqJson('POST', `/api/returns/${retFiledDay6.id}/approve`, {
+      token: managerToken,
+    });
+    assert.equal(approveDay8.status, 200, 'Approving return filed within 7-day window must succeed even after day 7');
+    assert.equal(approveDay8.data.item.status, 'DaXacNhan');
+
+    // (c) Overlapping ChoDuyet returns capped by (purchased - returned - pending)
+    const ck5 = await srv.reqJson('POST', '/api/pos/checkout', {
+      token: cashierToken,
+      body: {
+        paymentMethod: 'CASH',
+        cashReceived: prod.salePrice * 10,
+        items: [{ productId: prod.id, qty: 5 }],
+      },
+    });
+    assert.equal(ck5.status, 201);
+    const ord5Id = ck5.data.item.id;
+
+    const pending1 = await srv.reqJson('POST', '/api/returns', {
+      token: cashierToken,
+      body: {
+        orderId: ord5Id,
+        reason: 'Phiếu chờ duyệt đợt 1 (3 sp)',
+        restock: true,
+        items: [{ productId: prod.id, qty: 3 }],
+      },
+    });
+    assert.equal(pending1.status, 201);
+
+    const overlapExceed = await srv.reqJson('POST', '/api/returns', {
+      token: cashierToken,
+      body: {
+        orderId: ord5Id,
+        reason: 'Phiếu trùng vượt số lượng còn lại (3 > 5 - 3)',
+        restock: true,
+        items: [{ productId: prod.id, qty: 3 }],
+      },
+    });
+    assert.equal(overlapExceed.status, 400, 'Overlapping ChoDuyet return exceeding remaining qty must return 400');
+
+    const overlapValid = await srv.reqJson('POST', '/api/returns', {
+      token: cashierToken,
+      body: {
+        orderId: ord5Id,
+        reason: 'Phiếu chờ duyệt đợt 2 hợp lệ (2 sp)',
+        restock: true,
+        items: [{ productId: prod.id, qty: 2 }],
+      },
+    });
+    assert.equal(overlapValid.status, 201, 'Second pending return fitting remaining qty (2) must succeed');
+  } finally {
+    await srv.close();
+  }
+});

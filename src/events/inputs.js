@@ -58,6 +58,15 @@ document.addEventListener('input', (event) => {
       render();
     }
   }
+  if (el.dataset.input === 'cart-line-discount') {
+    const item = posCart.items.find((i) => i.productId === el.dataset.id);
+    if (item) {
+      const lineGross = Number(item.qty) * Number(item.salePrice);
+      const raw = Math.max(0, Math.round(Number(el.value) || 0));
+      item.lineDiscount = Math.min(lineGross, raw);
+      render();
+    }
+  }
   if (el.id === 'customer-phone-search') {
     try {
       searchCustomerPhone(el);
@@ -90,6 +99,8 @@ document.addEventListener('change', async (event) => {
         loadOrdersData(true);
       } else if (['returnStatus', 'returnFrom', 'returnTo'].includes(el.dataset.filter)) {
         loadReturnsData(true);
+      } else if (['reportFrom', 'reportTo', 'reportCategory', 'reportGroupBy'].includes(el.dataset.filter)) {
+        loadReportsData(true);
       } else {
         render();
       }

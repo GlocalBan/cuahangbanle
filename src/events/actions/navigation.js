@@ -67,8 +67,8 @@ function handleNavigationAction(a) {
     }
 
     case 'chart-period':
-      chartDays = Number(a.days);
-      render();
+      chartDays = Number(a.days) || 7;
+      loadDashboardData(true);
       break;
 
     case 'paginate':

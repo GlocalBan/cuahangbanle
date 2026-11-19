@@ -6,6 +6,7 @@ const { SystemService } = require('../bll/systemService.js');
 const { CatalogService } = require('../bll/catalogService.js');
 const { WarehouseService } = require('../bll/warehouseService.js');
 const { SalesService } = require('../bll/salesService.js');
+const { ReportService } = require('../bll/reportService.js');
 const { ForbiddenException, NotFoundException } = require('../bll/errors.js');
 const { sendJson, sendError, readJsonBody, createAuthGuards } = require('../middleware/rbac.js');
 
@@ -17,6 +18,7 @@ function createApiRouter(db) {
   const catalogService = new CatalogService(db, repos);
   const warehouseService = new WarehouseService(db, repos);
   const salesService = new SalesService(db, repos, systemService);
+  const reportService = new ReportService(db, repos, systemService);
   const { authenticate, authorize } = createAuthGuards(repos);
 
   return async function handleApiRequest(req, res, urlObj) {
@@ -744,6 +746,38 @@ function createApiRouter(db) {
             'Không cho phép xóa cứng phiếu trả hàng. Hãy dùng chức năng Từ chối (TuChoi) nếu phiếu đang Chờ duyệt.',
           );
         }
+      }
+
+      // ─── M5: DASHBOARD, FINANCIAL & INVENTORY REPORTS (BR-08 + RBAC) ───────
+      if (method === 'GET' && pathname === '/api/reports/dashboard') {
+        authorize(req, 'REPORT_VIEW');
+        authorize(req, 'REPORT_PROFIT');
+        const result = reportService.getDashboard({
+          days: urlObj.searchParams.get('days') || 7,
+          fromDate: urlObj.searchParams.get('fromDate') || '',
+          toDate: urlObj.searchParams.get('toDate') || '',
+        });
+        return sendJson(res, 200, result);
+      }
+
+      if (method === 'GET' && pathname === '/api/reports/sales') {
+        authorize(req, 'REPORT_VIEW');
+        authorize(req, 'REPORT_PROFIT');
+        const result = reportService.getSalesReport({
+          fromDate: urlObj.searchParams.get('fromDate') || '',
+          toDate: urlObj.searchParams.get('toDate') || '',
+          categoryCode: urlObj.searchParams.get('categoryCode') || '',
+          groupBy: urlObj.searchParams.get('groupBy') || 'day',
+        });
+        return sendJson(res, 200, result);
+      }
+
+      if (method === 'GET' && pathname === '/api/reports/inventory') {
+        authorize(req, 'INVENTORY_VIEW');
+        const result = reportService.getInventoryReport({
+          categoryCode: urlObj.searchParams.get('categoryCode') || '',
+        });
+        return sendJson(res, 200, result);
       }
 
       throw new NotFoundException(`Đường dẫn API không tồn tại: ${method} ${pathname}`);

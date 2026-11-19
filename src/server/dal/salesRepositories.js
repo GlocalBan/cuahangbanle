@@ -483,7 +483,7 @@ class ReturnRepository {
   }
 
   create(header, items) {
-    const nowIso = new Date().toISOString();
+    const nowIso = header.created_at || new Date().toISOString();
     const id = header.id || this.nextId();
     this.db
       .prepare(

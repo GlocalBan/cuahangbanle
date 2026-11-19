@@ -1,27 +1,10 @@
+/* M5: Tổng quan cửa hàng (Dashboard) — 100% kết nối SQLite API (/api/reports/dashboard, BR-08). */
+'use strict';
+
 function dashboardView() {
-  const s = store.data,
-    today = periodData(1),
-    low = s.products.filter((p) => p.active && p.stock <= p.minStock),
-    expired = s.products.filter((p) => p.active && getExpiryInfo && getExpiryInfo(p.expiryDate).status === 'expired'),
-    nearExpiry = s.products.filter((p) => p.active && getExpiryInfo && getExpiryInfo(p.expiryDate).status === 'near_expiry'),
-    pending = s.purchases.filter((p) =>
-      ['pending', 'sent_to_supplier', 'supplier_responded', 'store_approved'].includes(p.status),
-    ),
-    refund = s.returns.filter((r) => r.status === 'pending');
-  const methods = Object.keys(METHODS).map((m, i) => ({
-    label: METHODS[m],
-    value: today.orders.filter((o) => o.payment === m).reduce((s, o) => s + o.total, 0),
-    color: ['#7871d8', '#25b6a5', '#edc273'][i],
-  }));
-  const total = methods.reduce((s, m) => s + m.value, 0);
-  let angle = 0;
-  const gradient = methods
-    .map((m) => {
-      const start = angle;
-      angle += total ? (m.value / total) * 360 : 120;
-      return `${m.color} ${start}deg ${angle}deg`;
-    })
-    .join(',');
+  if (!apiState.dashboardLoaded && !apiState.loading.dashboard) {
+    loadDashboardData();
+  }
   const dateLabel = new Intl.DateTimeFormat('vi-VN', {
     weekday: 'long',
     day: 'numeric',
@@ -29,43 +12,202 @@ function dashboardView() {
     year: 'numeric',
     timeZone: 'Asia/Ho_Chi_Minh',
   }).format(new Date());
+
+  const headerHTML = heading(
+    e(dateLabel),
+    'Tổng quan cửa hàng',
+    'Tổng hợp doanh thu ròng, lợi nhuận gộp, cơ cấu thanh toán và cảnh báo vận hành trực tiếp từ CSDL SQLite (BR-08).',
+    `<div class="row gap8">
+      ${store.can('reports') ? action('navigate', 'Báo cáo chi tiết', 'chart', '', 'data-page="reports"') : ''}
+      ${store.can('pos') ? action('navigate', 'Tạo đơn bán mới', 'plus', 'primary', 'data-page="pos"') : ''}
+    </div>`,
+  );
+
+  if (apiState.dashboardError) {
+    return headerHTML + `<div class="note red" role="alert">${e(apiState.dashboardError)}</div>`;
+  }
+  if (!apiState.dashboardData) {
+    return headerHTML + '<section class="panel"><div class="panel-body"><div class="note">Đang tải số liệu tổng quan từ SQLite…</div></div></section>';
+  }
+
+  const d = apiState.dashboardData;
+  const today = d.today || {};
+  const summary = d.summary || {};
+  const queues = d.queues || {};
+  const days = d.period?.days || chartDays || 7;
+  const payColors = { CASH: '#5b54d6', VIETQR: '#16a394', CARD: '#eab308' };
+  const methods = (d.paymentBreakdown || []).map((m) => ({
+    ...m,
+    color: payColors[m.method] || '#64748b',
+  }));
+  const totalPayNet = methods.reduce((s, m) => s + Math.max(0, Number(m.netRevenue) || 0), 0);
+  let angle = 0;
+  const gradient = methods
+    .map((m) => {
+      const start = angle;
+      const val = Math.max(0, Number(m.netRevenue) || 0);
+      angle += totalPayNet > 0 ? (val / totalPayNet) * 360 : 120;
+      return `${m.color} ${start.toFixed(1)}deg ${angle.toFixed(1)}deg`;
+    })
+    .join(',');
+
+  const lowList = queues.lowStockProducts || [];
+
   return (
-    heading(
-      e(dateLabel),
-      'Tổng quan cửa hàng',
-      'Theo dõi hoạt động kinh doanh trong ngày.',
-      action('navigate', 'Tạo đơn bán mới', 'plus', 'primary', 'data-page="pos"'),
-    ) +
+    headerHTML +
     stats([
       [
-        'Doanh thu hôm nay',
-        money(today.gross - today.refund),
-        `${today.orders.length} giao dịch đã thanh toán`,
+        `Doanh thu ròng (${days} ngày)`,
+        money(summary.netRevenue || 0),
+        `Hôm nay: ${money(today.netRevenue || 0)} · ${number(today.orderCount || 0)} đơn`,
         'receipt',
       ],
-      ['Đơn hàng hôm nay', number(today.orders.length), 'Đơn bán hàng đã hoàn tất', 'cart'],
       [
-        'Mặt hàng đang bán',
-        number(s.products.filter((p) => p.active).length),
-        'Sản phẩm trong danh mục',
+        `Lợi nhuận gộp (${days} ngày)`,
+        money(summary.grossProfit || 0),
+        `Biên LN ${summary.grossMarginPct ?? 0}% · Giá vốn ${money(summary.netCogs || 0)}`,
+        'chart',
+      ],
+      [
+        `Hóa đơn & Hoàn trả (${days} ngày)`,
+        `${number(summary.orderCount || 0)} đơn`,
+        `Hoàn ${number(summary.returnCount || 0)} phiếu (−${money(summary.refundTotal || 0)})`,
+        'cart',
+      ],
+      [
+        'Mặt hàng đang kinh doanh',
+        number(queues.activeProducts || 0),
+        `Bán ròng ${number(summary.netQtyTotal || 0)} đv trong kỳ`,
         'box',
       ],
-      ['Sắp hết hàng', number(low.length), 'Cần bổ sung hàng hóa', 'bell'],
       [
-        'Cận date / Hết hạn',
-        number(nearExpiry.length + expired.length),
-        `${expired.length} hết hạn · ${nearExpiry.length} cận date`,
-        'clock',
+        'Cảnh báo tồn tối thiểu',
+        number(queues.lowStockCount || 0),
+        `${number(queues.outOfStockCount || 0)} hết hàng · Cần nhập bổ sung`,
+        'bell',
       ],
     ]) +
-    `<div class="dashboard-grid"><section class="panel"><div class="panel-head"><div><h2>Xu hướng doanh thu</h2><p class="sub">Doanh thu gộp · ${chartDays} ngày gần nhất</p></div><div class="segmented">${[7, 30].map((n) => `<button class="${chartDays === n ? 'active' : ''}" data-action="chart-period" data-days="${n}">${n} ngày</button>`).join('')}</div></div><div class="panel-body">${lineChart(chartDays)}</div></section><section class="panel"><div class="panel-head"><div><h2>Cơ cấu thanh toán</h2><p class="sub">Theo doanh thu hôm nay</p></div>${icon('card')}</div><div class="panel-body"><div class="donut-wrap"><div class="donut" style="background:conic-gradient(${gradient})"><div class="donut-center"><b>${today.orders.length}</b><small>giao dịch</small></div></div><div class="legend">${methods.map((m) => `<div><i class="dot" style="color:${m.color}"></i>${m.label}<strong>${total ? Math.round((m.value / total) * 100) : 0}%</strong></div>`).join('')}</div></div></div></section></div><div class="dashboard-grid"><section class="panel"><div class="panel-head"><h2>Đơn hàng gần đây</h2>${action('navigate', 'Xem tất cả →', '', 'ghost small', 'data-page="orders"')}</div>${orderTable(s.orders.slice(0, 6), true)}</section><section class="panel"><div class="panel-head"><h2>Cần chú ý</h2><span class="badge yellow">${low.length + pending.length + refund.length + expired.length + nearExpiry.length} cần xử lý</span></div><div class="panel-body">${expired.length ? `<div class="alert-item"><div class="stat-icon" style="background:#fff0f2;color:#d27386">${icon('close')}</div><div><strong>${expired.length} sản phẩm hết hạn</strong><small>Cần hủy hoặc đổi trả đối tác</small></div>${ib('navigate', 'arrow', 'Xem sản phẩm hết hạn', 'data-page="products"')}</div>` : ''}${nearExpiry.length ? `<div class="alert-item"><div class="stat-icon" style="background:#fff6e8;color:#bd963b">${icon('clock')}</div><div><strong>${nearExpiry.length} sản phẩm cận date</strong><small>Ưu tiên xả hàng hoặc áp dụng khuyến mãi</small></div>${ib('navigate', 'arrow', 'Xem sản phẩm cận date', 'data-page="products"')}</div>` : ''}${low
-      .slice(0, 3)
-      .map(
-        (p) =>
-          `<div class="alert-item"><div class="stat-icon">${icon('box')}</div><div><strong>${e(p.name)}</strong><small>Còn ${p.stock} · Ngưỡng tối thiểu ${p.minStock}</small></div>${badge('Tồn thấp', 'yellow')}</div>`,
-      )
-      .join(
-        '',
-      )}${pending.length ? `<div class="alert-item"><div class="stat-icon">${icon('truck')}</div><div><strong>${pending.length} phiếu nhập chờ nhận</strong><small>Kiểm tra và xác nhận nhập kho</small></div>${ib('navigate', 'arrow', 'Xem phiếu nhập', 'data-page="purchases"')}</div>` : ''}${refund.length ? `<div class="alert-item"><div class="stat-icon">${icon('return')}</div><div><strong>${refund.length} yêu cầu hoàn tiền</strong><small>Cần quản trị viên phê duyệt</small></div>${ib('navigate', 'arrow', 'Xem yêu cầu trả hàng', 'data-page="returns"')}</div>` : ''}${!low.length && !pending.length && !refund.length && !expired.length && !nearExpiry.length ? empty('Mọi thứ đang ổn', 'Chưa có công việc cần xử lý.', 'check') : ''}</div></section></div>`
+    `<div class="dashboard-grid">
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>Xu hướng doanh thu ròng & lợi nhuận</h2>
+            <p class="sub">Kỳ ${dateOnly(d.period?.fromDate)} – ${dateOnly(d.period?.toDate)} · Đã khấu trừ hoàn trả & giá vốn (BR-08)</p>
+          </div>
+          <div class="segmented">
+            ${[7, 30]
+              .map(
+                (n) =>
+                  `<button type="button" class="${days === n ? 'active' : ''}" data-action="chart-period" data-days="${n}">${n} ngày</button>`,
+              )
+              .join('')}
+          </div>
+        </div>
+        <div class="panel-body">
+          ${revenueTrendChart(d.series || [], { showProfit: true, ariaLabel: `Xu hướng doanh thu và lợi nhuận ${days} ngày` })}
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>Cơ cấu thanh toán</h2>
+            <p class="sub">Theo doanh thu ròng ${days} ngày gần nhất</p>
+          </div>
+          ${icon('card')}
+        </div>
+        <div class="panel-body">
+          <div class="donut-wrap">
+            <div class="donut" style="background:conic-gradient(${gradient})">
+              <div class="donut-center">
+                <b>${number(summary.orderCount || 0)}</b>
+                <small>hóa đơn</small>
+              </div>
+            </div>
+            <div class="legend">
+              ${methods
+                .map(
+                  (m) => `<div>
+                    <i class="dot" style="color:${m.color}"></i>
+                    <span>${e(m.label)} <small class="muted">(${number(m.orderCount)} đơn)</small></span>
+                    <strong class="money">${money(m.netRevenue)} (${m.sharePct}%)</strong>
+                  </div>`,
+                )
+                .join('')}
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="dashboard-grid">
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>Đơn hàng gần đây</h2>
+            <p class="sub">Hóa đơn đã thanh toán mới nhất trong SQLite</p>
+          </div>
+          ${store.can('orders') ? action('navigate', 'Xem tất cả →', '', 'ghost small', 'data-page="orders"') : ''}
+        </div>
+        ${orderTable(d.recentOrders || [], true)}
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>Hàng đợi cần xử lý</h2>
+            <p class="sub">Đồng bộ trạng thái kho, nhập hàng & hoàn trả</p>
+          </div>
+          <span class="badge ${queues.totalAttentionCount > 0 ? 'yellow' : 'green'}">${number(queues.totalAttentionCount || 0)} cần xử lý</span>
+        </div>
+        <div class="panel-body">
+          ${
+            queues.draftPurchases > 0
+              ? `<div class="alert-item">
+                  <div class="stat-icon">${icon('truck')}</div>
+                  <div><strong>${number(queues.draftPurchases)} phiếu nhập nháp (Draft)</strong><small>Chờ Quản lý kiểm tra và xác nhận cộng tồn kho</small></div>
+                  ${store.can('purchases') ? ib('navigate', 'arrow', 'Mở Nhập hàng', 'data-page="purchases"') : ''}
+                </div>`
+              : ''
+          }
+          ${
+            queues.pendingAudits > 0
+              ? `<div class="alert-item">
+                  <div class="stat-icon">${icon('warehouse')}</div>
+                  <div><strong>${number(queues.pendingAudits)} phiếu kiểm kê chờ duyệt</strong><small>Cần Quản lý rà soát chênh lệch và duyệt điều chỉnh</small></div>
+                  ${store.can('inventory') ? ib('navigate', 'arrow', 'Mở Kiểm kê', 'data-page="inventory"') : ''}
+                </div>`
+              : ''
+          }
+          ${
+            queues.pendingReturns > 0
+              ? `<div class="alert-item">
+                  <div class="stat-icon">${icon('return')}</div>
+                  <div><strong>${number(queues.pendingReturns)} phiếu trả hàng chờ duyệt</strong><small>Cần Quản lý xác nhận hoàn tiền & hoàn tồn kho</small></div>
+                  ${store.can('returns') ? ib('navigate', 'arrow', 'Mở Đổi trả', 'data-page="returns"') : ''}
+                </div>`
+              : ''
+          }
+          ${lowList
+            .slice(0, 4)
+            .map(
+              (p) => `<div class="alert-item">
+                <div class="stat-icon">${icon('box')}</div>
+                <div>
+                  <strong>${e(p.name)} <small class="muted">(${e(p.sku)})</small></strong>
+                  <small>Tồn hiện tại: ${number(p.stockQty)} ${e(p.unitName)} · Tối thiểu: ${number(p.minStock)}</small>
+                </div>
+                ${badge(p.stockQty <= 0 ? 'Hết hàng' : 'Tồn thấp', p.stockQty <= 0 ? 'red' : 'yellow')}
+              </div>`,
+            )
+            .join('')}
+          ${
+            !queues.totalAttentionCount
+              ? empty('Vận hành ổn định', 'Không có chứng từ chờ duyệt hay sản phẩm dưới ngưỡng tồn tối thiểu.', 'check')
+              : ''
+          }
+        </div>
+      </section>
+    </div>`
   );
 }

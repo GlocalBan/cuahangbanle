@@ -335,6 +335,12 @@ class SalesService {
     return Number.isFinite(parsed) && parsed >= 1 ? parsed : 7;
   }
 
+  _getMaxCashierLineDiscountPct() {
+    const row = this.repos.thamSo.findByCode('TyLeGiamGiaDongToiDa');
+    const parsed = row ? Number(row.gia_tri) : 10;
+    return Number.isFinite(parsed) && parsed >= 0 && parsed <= 100 ? parsed : 10;
+  }
+
   // ─── PROMOTIONS (BR-04) ────────────────────────────────────────────────────
 
   listPromotions(filters = {}, { activeOnly = false } = {}) {
@@ -740,11 +746,23 @@ class SalesService {
 
         const unitPriceSnapshot = Number(product.sale_price);
         const unitCostSnapshot = Number(product.cost_price);
+        const lineGross = qty * unitPriceSnapshot;
         assertRule(
-          lineDiscount <= qty * unitPriceSnapshot,
+          lineDiscount <= lineGross,
           `Giảm giá dòng hàng của "${product.name}" vượt quá thành tiền dòng hàng.`,
           400,
         );
+
+        // M4 Patch (Điểm 1): Giới hạn giảm giá dòng hàng theo RBAC & THAM_SO (TyLeGiamGiaDongToiDa)
+        if (lineDiscount > 0 && actor.role_code === 'CASHIER') {
+          const maxPct = this._getMaxCashierLineDiscountPct();
+          const maxAllowed = Math.round((lineGross * maxPct) / 100);
+          if (lineDiscount > maxAllowed) {
+            throw new ForbiddenException(
+              `Vượt hạn mức giảm giá tay của Thu ngân cho "${product.name}": tối đa ${maxPct}% (${maxAllowed.toLocaleString('vi-VN')} ₫ theo THAM_SO.TyLeGiamGiaDongToiDa). Yêu cầu Quản lý / Admin thực hiện.`,
+            );
+          }
+        }
 
         resolvedLines.push({
           product,
@@ -857,15 +875,17 @@ class SalesService {
         options._beforeCommitHook();
       }
 
+      const totalLineDiscount = resolvedLines.reduce((s, l) => s + l.lineDiscount, 0);
       this.repos.auditLogs.append({
         actor,
         action: 'ORDER_CHECKOUT',
         entityType: 'Order',
         entityId: order.id,
-        detail: `Thanh toán POS ${order.id}: ${resolvedLines.length} mặt hàng, tổng ${pricing.totalAmount.toLocaleString('vi-VN')} ₫ (${PAYMENT_METHOD_LABELS[paymentMethod]}${appliedPromo ? `, KM ${appliedPromo.code}` : ''})`,
+        detail: `Thanh toán POS ${order.id}: ${resolvedLines.length} mặt hàng, tổng ${pricing.totalAmount.toLocaleString('vi-VN')} ₫ (${PAYMENT_METHOD_LABELS[paymentMethod]}${appliedPromo ? `, KM ${appliedPromo.code}` : ''}${totalLineDiscount > 0 ? `, giảm dòng hàng ${totalLineDiscount.toLocaleString('vi-VN')} ₫` : ''})`,
         after: {
           orderId: order.id,
           subtotal: pricing.subtotal,
+          totalLineDiscount,
           invoiceDiscount: pricing.invoiceDiscount,
           taxAmount: pricing.taxAmount,
           totalAmount: pricing.totalAmount,
@@ -949,7 +969,7 @@ class SalesService {
     );
   }
 
-  createReturn(actor, input) {
+  createReturn(actor, input, options = {}) {
     const orderId = String(input?.orderId || '').trim();
     const reason = String(input?.reason || '').trim();
     const restock = input?.restock !== false && input?.restock !== 'damaged_or_expired' && input?.restock !== 0;
@@ -968,7 +988,8 @@ class SalesService {
         400,
       );
 
-      this._assertWithinReturnWindow(order);
+      const refNow = options._createdAtOverride ? new Date(options._createdAtOverride) : new Date();
+      this._assertWithinReturnWindow(order, refNow);
 
       const pendingMap = this.repos.returns.getPendingQtyMap(orderId);
       const paidMap = allocateOrderPaidTotals(order);
@@ -1020,6 +1041,7 @@ class SalesService {
           reason,
           restock,
           refund_amount: totalRefund,
+          created_at: options._createdAtOverride || undefined,
         },
         returnLines,
       );
@@ -1041,7 +1063,7 @@ class SalesService {
 
   /**
    * BR-05 & BR-06: Xác nhận phiếu trả hàng trong 1 Transaction nguyên tử:
-   * (1) Kiểm tra lại hạn trả hàng & số lượng trả <= đã mua - đã trả
+   * (1) Kiểm tra lại hạn trả hàng theo mốc lập phiếu (returnSlip.created_at) & số lượng trả <= đã mua - đã trả
    * (2) Cập nhật returned_qty trên order_items và trạng thái hóa đơn (TraMotPhan / DaHoanTra)
    * (3) Nếu hàng nguyên vẹn (restock=1): cộng hoàn tồn kho + ghi LichSuTonKho (TRA_HANG)
    * (4) Chuyển phiếu trả sang DaXacNhan + ghi AuditLog (RETURN_APPROVE)
@@ -1058,7 +1080,8 @@ class SalesService {
 
       const order = this.repos.orders.findById(existing.order_id);
       if (!order) throw new NotFoundException(`Không tìm thấy hóa đơn gốc "${existing.order_id}".`);
-      this._assertWithinReturnWindow(order);
+      // M4 Patch (Điểm 2): Chốt hạn trả hàng theo thời điểm lập phiếu (existing.created_at) thay vì now
+      this._assertWithinReturnWindow(order, new Date(existing.created_at));
 
       const orderItemMap = new Map((order.items || []).map((i) => [i.product_id, i]));
       const restockChanges = [];

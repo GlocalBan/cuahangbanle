@@ -1,3 +1,6 @@
+/* Export utilities: UTF-8 BOM CSV/Excel and safe in-page Print/PDF via #print-area. */
+'use strict';
+
 function download(content, filename, type) {
   const url = URL.createObjectURL(new Blob([content], { type }));
   const a = document.createElement('a');
@@ -20,4 +23,13 @@ function exportCSV(rows, filename) {
     filename,
     'text/csv;charset=utf-8',
   );
+}
+
+function printReportHTML(html) {
+  const printArea = $('#print-area');
+  if (!printArea) {
+    throw new Error('Không tìm thấy vùng in báo cáo (#print-area).');
+  }
+  printArea.innerHTML = html;
+  window.print();
 }

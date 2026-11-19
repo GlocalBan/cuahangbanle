@@ -49,6 +49,7 @@ class SystemService {
       taxRate: Number(map.TyLeVAT ?? 8),
       defaultMinStock: Number(map.TonToiThieuMacDinh ?? 15),
       returnWindowDays: Number(map.SoNgayChoPhepTraHang ?? 7),
+      maxCashierLineDiscountPct: Number(map.TyLeGiamGiaDongToiDa ?? 10),
       bank: map.NganHangVietQR || '',
       bankAccount: map.SoTaiKhoanVietQR || '',
       bankOwner: map.ChuTaiKhoanVietQR || '',
@@ -73,6 +74,8 @@ class SystemService {
         assertRule(strVal !== '' && Number.isFinite(num), `Tham số "${existing.ten_tham_so}" phải là giá trị số hợp lệ.`, 400);
         if (ma === 'TyLeVAT') {
           assertRule(num >= 0 && num <= 100, 'Tỷ lệ thuế VAT phải nằm trong khoảng từ 0% đến 100%.', 400);
+        } else if (ma === 'TyLeGiamGiaDongToiDa') {
+          assertRule(num >= 0 && num <= 100, 'Tỷ lệ giảm giá dòng hàng tối đa của Thu ngân phải từ 0% đến 100%.', 400);
         } else if (ma === 'SoNgayChoPhepTraHang') {
           assertRule(Number.isInteger(num) && num >= 1 && num <= 365, 'Số ngày cho phép trả hàng phải là số nguyên từ 1 đến 365 ngày.', 400);
         } else if (ma === 'TonToiThieuMacDinh') {

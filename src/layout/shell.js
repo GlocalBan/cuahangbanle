@@ -128,6 +128,8 @@ function navigate(target, options = {}) {
   apiState.stockAuditError = '';
   apiState.orderError = '';
   apiState.returnError = '';
+  apiState.dashboardError = '';
+  apiState.salesReportError = '';
   document.body.classList.remove('menu-open');
   $('.sidebar')?.classList.remove('open');
   $$('.nav-item').forEach((n) => {
@@ -163,6 +165,11 @@ function navigate(target, options = {}) {
     loadOrdersData(true);
   } else if (page === 'returns') {
     loadReturnsData(true);
+  } else if (page === 'dashboard') {
+    loadDashboardData(true);
+  } else if (page === 'reports') {
+    loadCatalogMeta();
+    loadReportsData(true);
   }
   render();
   window.scrollTo(0, 0);

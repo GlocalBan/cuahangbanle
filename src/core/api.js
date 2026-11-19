@@ -82,6 +82,15 @@ const apiState = {
   returnsSummary: { total: 0, pendingCount: 0, approvedCount: 0, rejectedCount: 0, totalRefunded: 0 },
   returnsLoaded: false,
   returnError: '',
+  // M5 Dashboard & Financial/Inventory Reports caches
+  dashboardData: null,
+  dashboardLoaded: false,
+  dashboardError: '',
+  salesReport: null,
+  salesReportLoaded: false,
+  salesReportError: '',
+  inventoryReport: null,
+  inventoryReportLoaded: false,
   loading: {},
 };
 
@@ -178,6 +187,14 @@ function resetApiCaches() {
   apiState.returnsSummary = { total: 0, pendingCount: 0, approvedCount: 0, rejectedCount: 0, totalRefunded: 0 };
   apiState.returnsLoaded = false;
   apiState.returnError = '';
+  apiState.dashboardData = null;
+  apiState.dashboardLoaded = false;
+  apiState.dashboardError = '';
+  apiState.salesReport = null;
+  apiState.salesReportLoaded = false;
+  apiState.salesReportError = '';
+  apiState.inventoryReport = null;
+  apiState.inventoryReportLoaded = false;
   apiState.loading = {};
 }
 
@@ -190,6 +207,7 @@ function syncStoreSettingsFromServer(storeConfig) {
     taxRate: Number(storeConfig.taxRate ?? store.data.settings.taxRate),
     defaultMinStock: Number(storeConfig.defaultMinStock ?? 15),
     returnWindowDays: Number(storeConfig.returnWindowDays ?? 7),
+    maxCashierLineDiscountPct: Number(storeConfig.maxCashierLineDiscountPct ?? 10),
     bank: storeConfig.bank || store.data.settings.bank,
     bankAccount: storeConfig.bankAccount || store.data.settings.bankAccount,
     bankOwner: storeConfig.bankOwner || store.data.settings.bankOwner,
@@ -336,6 +354,11 @@ const api = {
   approveReturn: (id) => apiRequest('POST', `/api/returns/${encodeURIComponent(id)}/approve`, {}),
   rejectReturn: (id, reason = '') =>
     apiRequest('POST', `/api/returns/${encodeURIComponent(id)}/reject`, { reason }),
+
+  // M5 Dashboard & Financial / Inventory Reports (BR-08)
+  getDashboardReport: (params = {}) => apiRequest('GET', `/api/reports/dashboard${buildQuery(params)}`),
+  getSalesReport: (params = {}) => apiRequest('GET', `/api/reports/sales${buildQuery(params)}`),
+  getInventoryReport: (params = {}) => apiRequest('GET', `/api/reports/inventory${buildQuery(params)}`),
 };
 
 async function loadStaffData(force = false) {
@@ -742,5 +765,71 @@ async function loadReturnsData(force = false) {
   } finally {
     apiState.loading.returns = false;
     if (page === 'returns' && $('#content')) render();
+  }
+}
+
+function getDefaultReportRange(days = 30) {
+  const end = new Date();
+  const start = new Date(end.getTime() - (Math.max(1, Number(days) || 30) - 1) * 86400000);
+  return {
+    fromDate: start.toISOString().slice(0, 10),
+    toDate: end.toISOString().slice(0, 10),
+  };
+}
+
+async function loadDashboardData(force = false) {
+  if (!store.hasPermission('REPORT_VIEW') || !store.hasPermission('REPORT_PROFIT')) return;
+  if (apiState.loading.dashboard && !force) return;
+  apiState.dashboardError = '';
+  apiState.loading.dashboard = true;
+  try {
+    const res = await api.getDashboardReport({ days: chartDays || 7 });
+    apiState.dashboardData = res;
+    apiState.dashboardLoaded = true;
+  } catch (err) {
+    apiState.dashboardError = err.message;
+    notify(err.message, true);
+  } finally {
+    apiState.loading.dashboard = false;
+    if (page === 'dashboard' && $('#content')) render();
+  }
+}
+
+async function loadReportsData(force = false) {
+  if (!store.hasPermission('REPORT_VIEW') || !store.hasPermission('REPORT_PROFIT')) return;
+  if (apiState.loading.reports && !force) return;
+  if (!filters.reportFrom || !filters.reportTo) {
+    const def = getDefaultReportRange(reportDays || 30);
+    if (!filters.reportFrom) filters.reportFrom = def.fromDate;
+    if (!filters.reportTo) filters.reportTo = def.toDate;
+  }
+  const fromDate = filters.reportFrom || '';
+  const toDate = filters.reportTo || '';
+  if (fromDate && toDate && fromDate > toDate) {
+    apiState.salesReportError =
+      'Khoảng thời gian không hợp lệ: "Từ ngày" phải nhỏ hơn hoặc bằng "Đến ngày" (BR-08).';
+    apiState.salesReportLoaded = true;
+    if (page === 'reports' && $('#content')) render();
+    return;
+  }
+  apiState.salesReportError = '';
+  apiState.loading.reports = true;
+  try {
+    const categoryCode = filters.reportCategory || '';
+    const groupBy = filters.reportGroupBy || 'day';
+    const [salesRes, invRes] = await Promise.all([
+      api.getSalesReport({ fromDate, toDate, categoryCode, groupBy }),
+      api.getInventoryReport({ categoryCode }),
+    ]);
+    apiState.salesReport = salesRes;
+    apiState.salesReportLoaded = true;
+    apiState.inventoryReport = invRes;
+    apiState.inventoryReportLoaded = true;
+  } catch (err) {
+    apiState.salesReportError = err.message;
+    notify(err.message, true);
+  } finally {
+    apiState.loading.reports = false;
+    if (page === 'reports' && $('#content')) render();
   }
 }

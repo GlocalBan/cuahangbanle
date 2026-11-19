@@ -228,6 +228,7 @@ document.addEventListener('submit', async (event) => {
             items: posCart.items.map((i) => ({
               productId: i.productId,
               qty: Number(i.qty),
+              lineDiscount: Math.max(0, Math.round(Number(i.lineDiscount || 0))),
             })),
           };
           const res = await api.checkoutPos(payload);

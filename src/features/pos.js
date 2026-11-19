@@ -2,7 +2,33 @@
 'use strict';
 
 function computePosCartPricing() {
-  const subtotal = (posCart.items || []).reduce((sum, i) => sum + Number(i.qty) * Number(i.salePrice), 0);
+  const maxCashierPct = Number(store.data.settings.maxCashierLineDiscountPct ?? 10);
+  const isCashier = store.user?.role === 'CASHIER';
+  let grossBeforeLineDiscount = 0;
+  let totalLineDiscount = 0;
+  const lineViolations = [];
+
+  for (const i of posCart.items || []) {
+    const lineGross = Number(i.qty) * Number(i.salePrice);
+    const rawLineDisc = Math.max(0, Math.round(Number(i.lineDiscount || 0)));
+    const clampedLineDisc = Math.min(lineGross, rawLineDisc);
+    grossBeforeLineDiscount += lineGross;
+    totalLineDiscount += clampedLineDisc;
+
+    if (isCashier && rawLineDisc > 0) {
+      const maxAllowed = Math.round((lineGross * maxCashierPct) / 100);
+      if (rawLineDisc > maxAllowed) {
+        lineViolations.push({
+          productId: i.productId,
+          name: i.name,
+          maxAllowed,
+          message: `"${i.name}": Thu ngân chỉ được giảm tối đa ${maxCashierPct}% (${money(maxAllowed)}). Yêu cầu Quản lý/Admin thực hiện.`,
+        });
+      }
+    }
+  }
+
+  const subtotal = Math.max(0, grossBeforeLineDiscount - totalLineDiscount);
   let invoiceDiscount = 0;
   let promoValid = false;
   let promoHint = posCart.promoError || '';
@@ -29,6 +55,8 @@ function computePosCartPricing() {
   const totalAmount = Math.max(0, afterDiscount + taxAmount);
 
   return {
+    grossBeforeLineDiscount,
+    totalLineDiscount,
     subtotal,
     invoiceDiscount,
     afterDiscount,
@@ -37,6 +65,9 @@ function computePosCartPricing() {
     totalAmount,
     promoValid,
     promoHint,
+    maxCashierPct,
+    lineViolations,
+    hasLineDiscountViolation: lineViolations.length > 0,
   };
 }
 
@@ -152,19 +183,29 @@ function posView() {
                     .map((i) => {
                       const prod = activeProducts.find((p) => p.id === i.productId);
                       const maxStock = prod ? Number(prod.stockQty) : i.maxStock || 999;
+                      const lineGross = Number(i.qty) * Number(i.salePrice);
+                      const lineDisc = Math.min(lineGross, Math.max(0, Number(i.lineDiscount || 0)));
+                      const lineNet = Math.max(0, lineGross - lineDisc);
+                      const violation = t.lineViolations.find((v) => v.productId === i.productId);
                       return `<div class="cart-item">
                         <div class="product-thumb">${productImage(i, 'cart-thumb-img')}</div>
                         <div class="cart-item-info">
                           <strong>${e(i.name)}</strong>
                           <small class="muted"><code>${e(i.sku)}</code> · ${money(i.salePrice)} / ${e(i.unitName || 'đv')}</small>
-                          <div class="row gap8" style="margin-top:8px">
+                          <div class="row gap8" style="margin-top:8px;flex-wrap:wrap">
                             ${action('cart-qty', '−', '', 'small', `data-id="${e(i.productId)}" data-delta="-1"`)}
                             <input type="number" class="cart-direct-input" min="1" max="${maxStock}" value="${i.qty}" data-input="cart-direct-qty" data-id="${e(i.productId)}" aria-label="Số lượng ${e(i.name)}">
                             ${action('cart-qty', '+', '', 'small', `data-id="${e(i.productId)}" data-delta="1"`)}
+                            <label class="row gap4" style="font-size:11.5px;color:#475569;margin-left:auto" title="Giảm giá dòng hàng (₫)${store.user?.role === 'CASHIER' ? ` · Thu ngân tối đa ${t.maxCashierPct}%` : ''}">
+                              <span>Giảm:</span>
+                              <input type="number" min="0" max="${lineGross}" step="1000" value="${Number(i.lineDiscount || 0)}" data-input="cart-line-discount" data-id="${e(i.productId)}" aria-label="Giảm giá dòng hàng ${e(i.name)}" style="width:76px;height:28px;padding:0 6px;border:1px solid ${violation ? '#dc2626' : '#cbd5e1'};border-radius:6px;text-align:right;font-size:12px">
+                            </label>
                           </div>
+                          ${violation ? `<div class="error-text" style="margin-top:4px;font-size:11.5px" role="alert">${e(violation.message)}</div>` : ''}
                         </div>
                         <div class="right">
-                          <strong class="money">${money(i.qty * i.salePrice)}</strong>
+                          <strong class="money">${money(lineNet)}</strong>
+                          ${lineDisc > 0 ? `<div class="sub positive" style="font-size:11px">−${money(lineDisc)}</div>` : ''}
                           ${ib('remove-cart', 'close', 'Bỏ sản phẩm', `data-id="${e(i.productId)}"`)}
                         </div>
                       </div>`;
@@ -221,11 +262,17 @@ function posView() {
           </div>
 
           <div class="cart-summary">
-            <div class="between"><span>1. Tạm tính</span><span class="money">${money(t.subtotal)}</span></div>
+            <div class="between"><span>1. Tạm tính${t.totalLineDiscount > 0 ? ` (đã trừ giảm dòng ${money(t.totalLineDiscount)})` : ''}</span><span class="money">${money(t.subtotal)}</span></div>
             <div class="between ${t.invoiceDiscount ? 'positive' : ''}"><span>2. Giảm giá hóa đơn</span><span class="money">−${money(t.invoiceDiscount)}</span></div>
             <div class="between"><span>3. Tiền sau giảm</span><span class="money">${money(t.afterDiscount)}</span></div>
             <div class="between"><span>4. Thuế VAT (${t.taxRate}% · THAM_SO)</span><span class="money">${money(t.taxAmount)}</span></div>
           </div>
+
+          ${
+            t.hasLineDiscountViolation
+              ? `<div class="note red mt8" role="alert"><strong>Vượt hạn mức giảm giá Thu ngân (${t.maxCashierPct}%):</strong> Vui lòng giảm mức chiết khấu dòng hàng về trong hạn mức hoặc nhờ Quản lý / Admin duyệt thanh toán.</div>`
+              : ''
+          }
 
           <div class="mt16">
             ${field('Ghi chú hóa đơn', 'cart-note', posCart.note || '', 'text', 'id="cart-note" placeholder="Ghi chú giao hàng / xuất hóa đơn…"')}
@@ -238,7 +285,7 @@ function posView() {
 
           <div class="cart-actions">
             ${action('hold', 'Lưu đơn (F4)', 'save', '', posCart.items.length ? '' : 'disabled')}
-            ${action('checkout', 'Thanh toán (F8)', 'card', 'teal', posCart.items.length ? '' : 'disabled')}
+            ${action('checkout', 'Thanh toán (F8)', 'card', 'teal', posCart.items.length && !t.hasLineDiscountViolation ? '' : 'disabled')}
           </div>
           <div class="cart-notice">${icon('shield')} Checkout lưu nguyên tử trên SQLite · Cấm xuất âm kho (BR-03)</div>
         </div>
@@ -277,6 +324,7 @@ function addCart(productId, delta = 1) {
       unitName: p.unitName,
       salePrice: Number(p.salePrice),
       qty: nextQty,
+      lineDiscount: 0,
       maxStock: available,
       imageUrl: p.imageUrl,
     });

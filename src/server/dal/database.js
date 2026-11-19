@@ -149,6 +149,14 @@ const DEFAULT_THAM_SO = [
     mo_ta: 'Giới hạn thời hạn lập phiếu trả hàng kể từ ngày thanh toán (BR-05).',
   },
   {
+    ma_tham_so: 'TyLeGiamGiaDongToiDa',
+    ten_tham_so: 'Tỷ lệ giảm giá dòng hàng tối đa của Thu ngân (%)',
+    kieu_du_lieu: 'NUMBER',
+    gia_tri: '10',
+    nhom_tham_so: 'NGHIEP_VU',
+    mo_ta: 'Hạn mức giảm giá tay tối đa (%) trên mỗi dòng hàng cho vai trò Thu ngân; vượt mức cần Quản lý/Admin thực hiện.',
+  },
+  {
     ma_tham_so: 'NganHangVietQR',
     ten_tham_so: 'Ngân hàng nhận VietQR',
     kieu_du_lieu: 'STRING',
@@ -815,6 +823,208 @@ function seedCoreData(db) {
       ];
       for (const p of seedPromos) {
         insertPromo.run(...p, nowIso);
+      }
+    }
+
+    // Seed realistic historical paid orders & 1 approved partial return across the last 7 days
+    // (Does NOT mutate stock_movements or promotions.used_count so opening KHOI_TAO_TON = 93 and promo counters stay clean)
+    const orderCount = db.prepare('SELECT COUNT(*) AS cnt FROM orders').get().cnt;
+    if (orderCount === 0) {
+      const prods = db.prepare("SELECT id, name, sale_price, cost_price FROM products WHERE status = 'DangKinhDoanh' ORDER BY id ASC").all();
+      const prodById = new Map(prods.map((p) => [p.id, p]));
+      const pick = (id, fallbackIdx) => prodById.get(id) || prods[fallbackIdx % prods.length];
+      if (prods.length >= 12) {
+        const dayMs = 86400000;
+        const isoDaysAgo = (daysAgo, hour = 10, minute = 15) => {
+          const d = new Date(Date.now() - daysAgo * dayMs);
+          d.setUTCHours(hour - 7 < 0 ? hour + 17 : hour - 7, minute, 0, 0);
+          return d.toISOString();
+        };
+
+        const sampleOrders = [
+          {
+            id: 'HD0001',
+            customerId: 'KH001',
+            cashierId: 'NV003',
+            method: 'CASH',
+            ref: '',
+            daysAgo: 6,
+            hour: 9,
+            lines: [
+              { prod: pick('SP001', 0), qty: 4 },
+              { prod: pick('SP002', 1), qty: 10 },
+              { prod: pick('SP015', 14), qty: 2 },
+            ],
+          },
+          {
+            id: 'HD0002',
+            customerId: 'KH002',
+            cashierId: 'NV003',
+            method: 'VIETQR',
+            ref: 'VQR260501',
+            daysAgo: 5,
+            hour: 11,
+            lines: [
+              { prod: pick('SP003', 2), qty: 3 },
+              { prod: pick('SP020', 19), qty: 2 },
+              { prod: pick('SP030', 29), qty: 3 },
+            ],
+          },
+          {
+            id: 'HD0003',
+            customerId: null,
+            cashierId: 'NV003',
+            method: 'CARD',
+            ref: 'POS-CARD-4412',
+            daysAgo: 4,
+            hour: 14,
+            lines: [
+              { prod: pick('SP004', 3), qty: 6 },
+              { prod: pick('SP040', 39), qty: 2 },
+            ],
+          },
+          {
+            id: 'HD0004',
+            customerId: 'KH003',
+            cashierId: 'NV002',
+            method: 'VIETQR',
+            ref: 'VQR260502',
+            daysAgo: 3,
+            hour: 16,
+            lines: [
+              { prod: pick('SP001', 0), qty: 6 },
+              { prod: pick('SP050', 49), qty: 3 },
+              { prod: pick('SP060', 59), qty: 2 },
+            ],
+          },
+          {
+            id: 'HD0005',
+            customerId: 'KH001',
+            cashierId: 'NV003',
+            method: 'CASH',
+            ref: '',
+            daysAgo: 2,
+            hour: 10,
+            lines: [
+              { prod: pick('SP005', 4), qty: 5 },
+              { prod: pick('SP070', 69), qty: 2 },
+            ],
+          },
+          {
+            id: 'HD0006',
+            customerId: 'KH004',
+            cashierId: 'NV003',
+            method: 'VIETQR',
+            ref: 'VQR260503',
+            daysAgo: 1,
+            hour: 15,
+            status: 'TraMotPhan',
+            lines: [
+              { prod: pick('SP001', 0), qty: 5, returnedQty: 1 },
+              { prod: pick('SP010', 9), qty: 3, returnedQty: 0 },
+            ],
+          },
+          {
+            id: 'HD0007',
+            customerId: 'KH002',
+            cashierId: 'NV003',
+            method: 'CASH',
+            ref: '',
+            daysAgo: 0,
+            hour: 8,
+            lines: [
+              { prod: pick('SP002', 1), qty: 12 },
+              { prod: pick('SP003', 2), qty: 2 },
+              { prod: pick('SP025', 24), qty: 3 },
+            ],
+          },
+          {
+            id: 'HD0008',
+            customerId: 'KH003',
+            cashierId: 'NV002',
+            method: 'VIETQR',
+            ref: 'VQR260504',
+            daysAgo: 0,
+            hour: 10,
+            lines: [
+              { prod: pick('SP004', 3), qty: 4 },
+              { prod: pick('SP045', 44), qty: 2 },
+              { prod: pick('SP080', 79), qty: 2 },
+            ],
+          },
+        ];
+
+        const insertOrder = db.prepare(`
+          INSERT INTO orders (
+            id, customer_id, cashier_id, promotion_id,
+            subtotal, invoice_discount, tax_rate, tax_amount, total_amount,
+            payment_method, cash_received, cash_change, payment_ref,
+            status, note, created_at
+          ) VALUES (?, ?, ?, NULL, ?, 0, 8, ?, ?, ?, ?, 0, ?, ?, ?, ?)
+        `);
+        const insertOrderItem = db.prepare(`
+          INSERT INTO order_items (
+            order_id, product_id, product_name_snapshot,
+            unit_price_snapshot, unit_cost_snapshot,
+            qty, line_discount, returned_qty
+          ) VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+        `);
+
+        let hd0006Ref = null;
+        for (const o of sampleOrders) {
+          const subtotal = o.lines.reduce((s, l) => s + l.qty * Number(l.prod.sale_price), 0);
+          const taxAmount = Math.round((subtotal * 8) / 100);
+          const totalAmount = subtotal + taxAmount;
+          const createdAt = isoDaysAgo(o.daysAgo, o.hour, 20);
+          insertOrder.run(
+            o.id,
+            o.customerId,
+            o.cashierId,
+            subtotal,
+            taxAmount,
+            totalAmount,
+            o.method,
+            totalAmount,
+            o.ref,
+            o.status || 'DaThanhToan',
+            'Giao dịch bán lẻ mẫu chuẩn BR-03/BR-04',
+            createdAt,
+          );
+          for (const l of o.lines) {
+            insertOrderItem.run(
+              o.id,
+              l.prod.id,
+              l.prod.name,
+              Number(l.prod.sale_price),
+              Number(l.prod.cost_price),
+              l.qty,
+              l.returnedQty || 0,
+            );
+          }
+          if (o.id === 'HD0006') {
+            hd0006Ref = { ...o, subtotal, totalAmount, createdAt };
+          }
+        }
+
+        // Seed 1 approved partial return (TH0001) on HD0006 so net revenue & returns reports have real data
+        if (hd0006Ref) {
+          const retLine = hd0006Ref.lines[0];
+          const linePaidTotal = Math.floor(
+            (hd0006Ref.totalAmount * (retLine.qty * Number(retLine.prod.sale_price))) / hd0006Ref.subtotal,
+          );
+          const refundAmt = Math.floor((linePaidTotal * 1) / retLine.qty);
+          const retCreatedAt = isoDaysAgo(1, 17, 10);
+          const retResolvedAt = isoDaysAgo(0, 9, 5);
+          db.prepare(`
+            INSERT INTO returns (
+              id, order_id, created_by, approved_by, reason, restock, refund_amount, status, created_at, resolved_at
+            ) VALUES ('TH0001', 'HD0006', 'NV003', 'NV002', 'Khách mua dư 1 sản phẩm còn nguyên tem', 1, ?, 'DaXacNhan', ?, ?)
+          `).run(refundAmt, retCreatedAt, retResolvedAt);
+          db.prepare(`
+            INSERT INTO return_items (return_id, product_id, qty, refund_line_amount)
+            VALUES ('TH0001', ?, 1, ?)
+          `).run(retLine.prod.id, refundAmt);
+        }
       }
     }
 

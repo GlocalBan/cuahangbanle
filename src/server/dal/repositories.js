@@ -324,6 +324,7 @@ const {
   OrderRepository,
   ReturnRepository,
 } = require('./salesRepositories.js');
+const { ReportRepository } = require('./reportRepository.js');
 
 function createRepositories(db) {
   return {
@@ -343,6 +344,7 @@ function createRepositories(db) {
     customers: new CustomerRepository(db),
     orders: new OrderRepository(db),
     returns: new ReturnRepository(db),
+    reports: new ReportRepository(db),
   };
 }
 
@@ -363,5 +365,6 @@ module.exports = {
   CustomerRepository,
   OrderRepository,
   ReturnRepository,
+  ReportRepository,
   createRepositories,
 };
