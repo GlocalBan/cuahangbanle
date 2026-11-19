@@ -6,6 +6,12 @@ document.addEventListener('input', (event) => {
     if (el.dataset.filter === 'auditSearch') {
       clearTimeout(window.__auditSearchTimer);
       window.__auditSearchTimer = setTimeout(() => loadAuditLogsData(true), 220);
+    } else if (['products', 'productMinPrice', 'productMaxPrice'].includes(el.dataset.filter)) {
+      clearTimeout(window.__productsSearchTimer);
+      window.__productsSearchTimer = setTimeout(() => loadProductsData(true), 220);
+    } else if (el.dataset.filter === 'moveSearch') {
+      clearTimeout(window.__moveSearchTimer);
+      window.__moveSearchTimer = setTimeout(() => loadStockMovementsData(true), 220);
     } else {
       render();
     }
@@ -39,6 +45,10 @@ document.addEventListener('change', async (event) => {
       pagination = {};
       if (['auditAction', 'auditFrom', 'auditTo'].includes(el.dataset.filter)) {
         loadAuditLogsData(true);
+      } else if (['productCategory', 'productSupplier', 'productStatus', 'productStock'].includes(el.dataset.filter)) {
+        loadProductsData(true);
+      } else if (['moveDocType', 'moveFrom', 'moveTo'].includes(el.dataset.filter)) {
+        loadStockMovementsData(true);
       } else {
         render();
       }

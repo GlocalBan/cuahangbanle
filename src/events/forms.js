@@ -12,6 +12,8 @@ document.addEventListener('submit', async (event) => {
           const res = await api.login(v.username.trim(), v.password);
           setAuthToken(res.token);
           resetApiCaches();
+          productsTab = 'products';
+          inventoryTab = 'stock';
           store.setAuthenticatedUser(res.user);
           try {
             const cfg = await api.getStoreConfig();
@@ -85,6 +87,124 @@ document.addEventListener('submit', async (event) => {
           syncStoreSettingsFromServer(res.storeConfig);
           render();
           notify('Đã lưu bảng THAM_SO vào CSDL và ghi Nhật ký kiểm toán.');
+        } finally {
+          if (submitBtn) submitBtn.disabled = false;
+        }
+        break;
+      }
+      case 'product-api-form': {
+        if (submitBtn) submitBtn.disabled = true;
+        try {
+          const payload = {
+            name: (v.name || '').trim(),
+            sku: (v.sku || '').trim().toUpperCase(),
+            barcode: (v.barcode || '').trim(),
+            brand: (v.brand || '').trim(),
+            packSize: (v.packSize || '').trim(),
+            categoryCode: v.categoryCode,
+            unitCode: v.unitCode,
+            supplierId: v.supplierId,
+            salePrice: Number(v.salePrice),
+            costPrice: Number(v.costPrice),
+            minStock: Number(v.minStock),
+            imageUrl: v.imageUrl,
+          };
+          if (modalContext.id) {
+            if (v.status) payload.status = v.status;
+            await api.updateProduct(modalContext.id, payload);
+            notify('Đã cập nhật thông tin sản phẩm vào CSDL.');
+          } else {
+            payload.stockQty = Number(v.stockQty || 0);
+            await api.createProduct(payload);
+            notify('Đã thêm sản phẩm mới và ghi Thẻ kho khởi tạo (nếu tồn > 0).');
+          }
+          closeModal();
+          await Promise.all([loadProductsData(true), loadCatalogMeta(true)]);
+        } finally {
+          if (submitBtn) submitBtn.disabled = false;
+        }
+        break;
+      }
+      case 'stock-adjust-form': {
+        if (submitBtn) submitBtn.disabled = true;
+        try {
+          const res = await api.adjustProductStock(modalContext.id, {
+            newStock: Number(v.newStock),
+            docId: (v.docId || '').trim(),
+            note: (v.note || '').trim(),
+          });
+          closeModal();
+          notify(
+            `Đã điều chỉnh tồn ${res.item.sku}: ${res.movement.stockBefore} → ${res.movement.stockAfter} và ghi Thẻ kho (${res.movement.docId}).`,
+          );
+          await Promise.all([loadProductsData(true), loadStockMovementsData(true)]);
+        } finally {
+          if (submitBtn) submitBtn.disabled = false;
+        }
+        break;
+      }
+      case 'category-api-form': {
+        if (submitBtn) submitBtn.disabled = true;
+        try {
+          const payload = {
+            code: (v.code || '').trim().toUpperCase(),
+            name: (v.name || '').trim(),
+            description: (v.description || '').trim(),
+          };
+          if (modalContext.code) {
+            await api.updateCategory(modalContext.code, payload);
+            notify('Đã cập nhật danh mục hàng hóa.');
+          } else {
+            await api.createCategory(payload);
+            notify('Đã thêm danh mục hàng hóa mới.');
+          }
+          closeModal();
+          await loadCatalogMeta(true);
+        } finally {
+          if (submitBtn) submitBtn.disabled = false;
+        }
+        break;
+      }
+      case 'unit-api-form': {
+        if (submitBtn) submitBtn.disabled = true;
+        try {
+          const payload = {
+            code: (v.code || '').trim().toUpperCase(),
+            name: (v.name || '').trim(),
+          };
+          if (modalContext.code) {
+            await api.updateUnit(modalContext.code, payload);
+            notify('Đã cập nhật đơn vị tính.');
+          } else {
+            await api.createUnit(payload);
+            notify('Đã thêm đơn vị tính mới.');
+          }
+          closeModal();
+          await loadCatalogMeta(true);
+        } finally {
+          if (submitBtn) submitBtn.disabled = false;
+        }
+        break;
+      }
+      case 'supplier-api-form': {
+        if (submitBtn) submitBtn.disabled = true;
+        try {
+          const payload = {
+            name: (v.name || '').trim(),
+            phone: (v.phone || '').trim(),
+            categoryGroup: (v.categoryGroup || '').trim(),
+            areas: (v.areas || '').trim(),
+          };
+          if (modalContext.id) {
+            if (v.status) payload.status = v.status;
+            await api.updateSupplier(modalContext.id, payload);
+            notify('Đã cập nhật nhà cung cấp vào CSDL.');
+          } else {
+            await api.createSupplier(payload);
+            notify('Đã thêm nhà cung cấp mới.');
+          }
+          closeModal();
+          await loadSuppliersData(true);
         } finally {
           if (submitBtn) submitBtn.disabled = false;
         }

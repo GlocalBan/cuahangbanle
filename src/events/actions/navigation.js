@@ -35,6 +35,8 @@ function handleNavigationAction(a) {
         setAuthToken('');
         store.setAuthenticatedUser(null);
         resetApiCaches();
+        productsTab = 'products';
+        inventoryTab = 'stock';
         window.location.hash = '';
         loginScreen();
         notify('Bạn đã đăng xuất an toàn.');

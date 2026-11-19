@@ -1,5 +1,210 @@
+/* M2 Catalog, Category, Unit, Supplier & Stock Ledger Click Actions. */
+'use strict';
+
 function handleCatalogAction(a) {
   switch (a.action) {
+    case 'products-tab':
+      productsTab = a.tab || 'products';
+      pagination = {};
+      if (productsTab === 'products') loadProductsData(true);
+      else loadCatalogMeta(true);
+      render();
+      break;
+
+    case 'product-new':
+      productApiModal('');
+      break;
+
+    case 'product-edit':
+      productApiModal(a.id);
+      break;
+
+    case 'product-ledger':
+      productLedgerModal(a.id);
+      break;
+
+    case 'product-stock-adjust':
+      stockAdjustModal(a.id);
+      break;
+
+    case 'product-reset-filters':
+      delete filters.products;
+      delete filters.productCategory;
+      delete filters.productSupplier;
+      delete filters.productStatus;
+      delete filters.productStock;
+      delete filters.productMinPrice;
+      delete filters.productMaxPrice;
+      apiState.productError = '';
+      pagination.products = 1;
+      loadProductsData(true);
+      render();
+      break;
+
+    case 'product-toggle-status': {
+      const target = apiState.products.find((x) => x.id === a.id);
+      if (!target) return true;
+      const nextStatus = a.nextStatus || (target.active ? 'NgungKinhDoanh' : 'DangKinhDoanh');
+      const isStopping = nextStatus === 'NgungKinhDoanh';
+      confirmation(
+        isStopping ? 'Xác nhận ngừng kinh doanh sản phẩm?' : 'Xác nhận mở bán lại sản phẩm?',
+        isStopping
+          ? `Sản phẩm <strong>${e(target.sku)} — ${e(target.name)}</strong> sẽ chuyển sang trạng thái <strong>Ngừng kinh doanh</strong> (Soft-Delete), ẩn khỏi POS nhưng vẫn bảo toàn lịch sử hóa đơn và Thẻ kho.`
+          : `Mở bán lại sản phẩm <strong>${e(target.sku)} — ${e(target.name)}</strong> (Đang kinh doanh)?`,
+        async () => {
+          try {
+            await api.setProductStatus(target.id, nextStatus);
+            notify(isStopping ? `Đã ngừng kinh doanh ${target.sku}.` : `Đã mở bán lại ${target.sku}.`);
+            await loadProductsData(true);
+          } catch (err) {
+            notify(err.message, true);
+          }
+        },
+      );
+      break;
+    }
+
+    case 'export-products-api': {
+      const canViewCost = store.hasPermission('PRODUCT_COST_VIEW');
+      const header = [
+        'Mã SP',
+        'SKU',
+        'Mã vạch',
+        'Tên sản phẩm',
+        'Thương hiệu',
+        'Quy cách',
+        'Danh mục',
+        'ĐVT',
+        'Nhà cung cấp',
+        'Giá bán',
+        ...(canViewCost ? ['Giá vốn'] : []),
+        'Tồn hiện tại',
+        'Tồn tối thiểu',
+        'Trạng thái',
+      ];
+      exportCSV(
+        [
+          header,
+          ...apiState.products.map((p) => [
+            p.id,
+            p.sku,
+            p.barcode,
+            p.name,
+            p.brand,
+            p.packSize,
+            p.categoryName,
+            p.unitName,
+            p.supplierName,
+            p.salePrice,
+            ...(canViewCost ? [p.costPrice ?? ''] : []),
+            p.stockQty,
+            p.minStock,
+            p.active ? 'Đang kinh doanh' : 'Ngừng kinh doanh',
+          ]),
+        ],
+        'RetailFlow-hang-hoa.csv',
+      );
+      break;
+    }
+
+    case 'category-new':
+      categoryApiModal('');
+      break;
+
+    case 'category-edit':
+      categoryApiModal(a.code);
+      break;
+
+    case 'category-toggle-status': {
+      const target = apiState.categories.find((c) => c.code === a.code);
+      if (!target) return true;
+      const nextStatus = a.nextStatus || (target.active ? 'NgungSuDung' : 'HoatDong');
+      const isStopping = nextStatus === 'NgungSuDung';
+      confirmation(
+        isStopping ? 'Xác nhận ngừng sử dụng danh mục?' : 'Xác nhận khôi phục danh mục?',
+        isStopping
+          ? `Danh mục <strong>${e(target.code)} — ${e(target.name)}</strong> (đang gắn ${number(target.productCount)} sản phẩm) sẽ chuyển sang trạng thái <strong>Ngừng sử dụng</strong> (Soft-Delete).`
+          : `Khôi phục trạng thái hoạt động cho danh mục <strong>${e(target.code)} — ${e(target.name)}</strong>?`,
+        async () => {
+          try {
+            await api.setCategoryStatus(target.code, nextStatus);
+            notify(isStopping ? `Đã ngừng sử dụng danh mục ${target.code}.` : `Đã khôi phục danh mục ${target.code}.`);
+            await loadCatalogMeta(true);
+          } catch (err) {
+            notify(err.message, true);
+          }
+        },
+      );
+      break;
+    }
+
+    case 'unit-new':
+      unitApiModal('');
+      break;
+
+    case 'unit-edit':
+      unitApiModal(a.code);
+      break;
+
+    case 'unit-toggle-status': {
+      const target = apiState.units.find((u) => u.code === a.code);
+      if (!target) return true;
+      const nextStatus = a.nextStatus || (target.active ? 'NgungSuDung' : 'HoatDong');
+      const isStopping = nextStatus === 'NgungSuDung';
+      confirmation(
+        isStopping ? 'Xác nhận ngừng sử dụng đơn vị tính?' : 'Xác nhận khôi phục đơn vị tính?',
+        isStopping
+          ? `Đơn vị tính <strong>${e(target.code)} — ${e(target.name)}</strong> sẽ chuyển sang <strong>Ngừng sử dụng</strong> (Soft-Delete).`
+          : `Khôi phục trạng thái hoạt động cho ĐVT <strong>${e(target.code)} — ${e(target.name)}</strong>?`,
+        async () => {
+          try {
+            await api.setUnitStatus(target.code, nextStatus);
+            notify(isStopping ? `Đã ngừng sử dụng ĐVT ${target.code}.` : `Đã khôi phục ĐVT ${target.code}.`);
+            await loadCatalogMeta(true);
+          } catch (err) {
+            notify(err.message, true);
+          }
+        },
+      );
+      break;
+    }
+
+    case 'supplier-new':
+      supplierApiModal('');
+      break;
+
+    case 'supplier-edit':
+      supplierApiModal(a.id);
+      break;
+
+    case 'supplier-api-history':
+    case 'supplier-history':
+      supplierApiHistory(a.id);
+      break;
+
+    case 'supplier-toggle-status': {
+      const target = apiState.suppliers.find((s) => s.id === a.id);
+      if (!target) return true;
+      const nextStatus = a.nextStatus || (target.active ? 'NgungHopTac' : 'HoatDong');
+      const isStopping = nextStatus === 'NgungHopTac';
+      confirmation(
+        isStopping ? 'Xác nhận ngừng hợp tác nhà cung cấp?' : 'Xác nhận khôi phục hợp tác?',
+        isStopping
+          ? `Nhà cung cấp <strong>${e(target.id)} — ${e(target.name)}</strong> sẽ chuyển sang <strong>Ngừng hợp tác</strong> (Soft-Delete), không thể tạo phiếu nhập mới nhưng vẫn giữ nguyên dữ liệu lịch sử.`
+          : `Khôi phục hợp tác với nhà cung cấp <strong>${e(target.id)} — ${e(target.name)}</strong>?`,
+        async () => {
+          try {
+            await api.setSupplierStatus(target.id, nextStatus);
+            notify(isStopping ? `Đã ngừng hợp tác với ${target.name}.` : `Đã khôi phục hợp tác với ${target.name}.`);
+            await loadSuppliersData(true);
+          } catch (err) {
+            notify(err.message, true);
+          }
+        },
+      );
+      break;
+    }
+
     case 'entity-new':
       entityModal(a.type);
       break;
@@ -11,196 +216,6 @@ function handleCatalogAction(a) {
     case 'customer-history':
       customerHistory(a.id);
       break;
-
-    case 'supplier-history':
-      supplierHistory(a.id);
-      break;
-
-    case 'view-product-batches': {
-      const p = store.data.products.find((x) => x.id === a.id);
-      if (!p) return true;
-      const batches = p.batches || [];
-      const batchRows = batches.map((b) => {
-        const exp = getExpiryInfo ? getExpiryInfo(b.expiryDate) : { label: 'Còn hạn', color: 'green' };
-        const statusBadge =
-          b.status === 'expired_quarantined'
-            ? badge('Hết hạn - Cách ly', 'red')
-            : b.status === 'depleted'
-              ? badge('Đã xuất hết', 'gray')
-              : badge('Đang lưu kho', 'green');
-        return `<tr>
-          <td><strong>${e(b.batchCode)}</strong></td>
-          <td>${e(b.mfgDate || 'N/A')}</td>
-          <td><span class="badge ${exp.color}">${e(b.expiryDate || 'N/A')}</span></td>
-          <td class="money">${money(b.costPrice)}</td>
-          <td>${b.initialQty}</td>
-          <td><strong>${b.remainingQty}</strong></td>
-          <td>${statusBadge}</td>
-        </tr>`;
-      });
-      showModal(
-        `Chi tiết lô hàng — ${e(p.name)}`,
-        `<div class="modal-content">
-          <p class="sub">Quản lý lô hàng theo nguyên tắc <strong>FEFO (First-Expired, First-Out)</strong>. Khi thanh toán POS, hệ thống tự động xuất từ lô có HSD sớm nhất.</p>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Mã lô</th>
-                  <th>Ngày SX</th>
-                  <th>Hạn SD</th>
-                  <th>Giá vốn</th>
-                  <th>Nhập</th>
-                  <th>Còn lại</th>
-                  <th>Trạng thái</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${batchRows.length ? batchRows.join('') : '<tr><td colspan="7" class="text-center muted">Chưa có thông tin lô hàng chi tiết.</td></tr>'}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div class="modal-footer"><button type="button" class="btn" data-action="close-modal">Đóng</button></div>`,
-        true,
-      );
-      break;
-    }
-
-    case 'export-products':
-      exportCSV(
-        [
-          [
-            'Mã',
-            'GTIN',
-            'Mã vạch',
-            'Tên',
-            'Thương hiệu',
-            'Quy cách',
-            'Ngành cấp 1',
-            'Ngành cấp 2',
-            'Ngành cấp 3',
-            'Giá bán',
-            'Giá vốn',
-            'VAT (%)',
-            'Tồn khả dụng',
-            'Hàng cách ly/hủy',
-            'Mã lô FEFO',
-            'NSX',
-            'HSD',
-            'Trạng thái HSD',
-            'Trạng thái',
-            'Nguồn đối chứng',
-          ],
-          ...store.data.products.map((p) => [
-            p.id,
-            p.gtin || p.barcode,
-            p.barcode,
-            p.name,
-            p.brand || '',
-            p.packSize || '',
-            p.categoryL1 || '',
-            p.categoryL2 || p.category,
-            p.categoryL3 || '',
-            p.price,
-            p.costPrice || p.cost,
-            p.vatRate ?? 10,
-            p.stock,
-            p.damagedStock || 0,
-            p.batchCode || '',
-            p.mfgDate || '',
-            p.expiryDate || '',
-            typeof getExpiryInfo === 'function' ? getExpiryInfo(p.expiryDate).label : '',
-            p.active ? 'Đang bán' : 'Ngừng bán',
-            p.referenceSource?.status || 'seed',
-          ]),
-        ],
-        'RetailFlow-san-pham-FEFO.csv',
-      );
-      break;
-
-    case 'sync-seed-catalog': {
-      if (store.user.role !== 'ADMIN') {
-        notify('Chỉ Quản trị viên (ADMIN) mới có quyền đồng bộ danh mục mẫu.', 'error');
-        return true;
-      }
-      confirmation(
-        'Đồng bộ danh mục mẫu mới (Bảo vệ dữ liệu)?',
-        'Hệ thống sẽ thêm các SKU mẫu CVS mới chưa có trong hệ thống, cập nhật nhà cung cấp thực tế và KHÔNG ghi đè bất kỳ sản phẩm nào bạn đã chỉnh sửa giá, tồn kho hoặc tên.',
-        () => {
-          const count = store.syncSeedCatalog();
-          render();
-          notify(`Đã đồng bộ thành công danh mục mẫu (${count} mặt hàng)!`);
-        },
-      );
-      break;
-    }
-
-    case 'sweep-expired-batches': {
-      confirmation(
-        'Quét và cách ly các lô hàng hết hạn?',
-        'Hệ thống sẽ chuyển các lô hàng có ngày hết hạn nhỏ hơn ngày hiện tại sang trạng thái cách ly (expired_quarantined) và cộng dồn vào tổn thất hàng hủy.',
-        () => {
-          const res = store.sweepExpiredBatches();
-          render();
-          notify(`Đã quét xong: Cách ly ${res.quarantinedBatchesCount} lô (${res.totalQuarantinedQty} sản phẩm).`);
-        },
-      );
-      break;
-    }
-
-    case 'import-reference-csv': {
-      if (store.user.role !== 'ADMIN') {
-        notify('Chỉ Quản trị viên (ADMIN) mới có quyền nạp CSV đối chứng.', 'error');
-        return true;
-      }
-      const sampleCsv = `gtin,brand,name,packSize,categoryL1,categoryL2,categoryL3,price,costPrice,vatRate,imageUrl,refUrl
-8934543000017,Vinamilk,Sữa tươi Vinamilk 1L,1L,Thực phẩm,Sữa & Chế phẩm,Sữa tươi tiệt trùng,36000,27000,5,assets/images/products/milk_vinamilk.jpg,https://vinamilk.com.vn
-8934607000018,Hảo Hảo,Mì Hảo Hảo tôm chua cay 75g,75g,Thực phẩm,Mì ăn liền,Mì vị tôm,4500,3240,10,assets/images/products/haohao_shrimp.jpg,https://acecookvietnam.vn`;
-
-      showModal(
-        'Nạp tệp CSV Đối chứng 1-1 (Chuẩn GTIN EAN-13)',
-        `<form id="import-csv-form">
-          <div class="modal-content">
-            <p class="sub">Nhập nội dung CSV chuẩn đối chứng 1-1. Thuật toán kiểm tra check-digit <strong>EAN-13</strong> và chống trùng lặp GTIN sẽ tự động xác thực từng dòng dữ liệu.</p>
-            <div class="field full">
-              <span>Tải tệp CSV từ máy</span>
-              <input type="file" id="csv-file-input" accept=".csv,text/csv" />
-            </div>
-            <label class="field full">
-              <span>Hoặc dán nội dung CSV vào đây:</span>
-              <textarea name="csvContent" id="csv-text-area" rows="8" style="font-family:monospace;font-size:0.8rem">${e(sampleCsv)}</textarea>
-            </label>
-            ${formError()}
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn" data-action="close-modal">Đóng</button>
-            <button type="submit" class="btn primary">${icon('upload')} Tiến hành Nạp & Xác thực</button>
-          </div>
-        </form>`,
-        true,
-      );
-
-      // File reader listener
-      setTimeout(() => {
-        const fileIn = $('#csv-file-input');
-        if (fileIn) {
-          fileIn.addEventListener('change', (ev) => {
-            const f = ev.target.files && ev.target.files[0];
-            if (f) {
-              const r = new FileReader();
-              r.onload = (e) => {
-                const txt = e.target.result;
-                const area = $('#csv-text-area');
-                if (area) area.value = txt;
-              };
-              r.readAsText(f, 'UTF-8');
-            }
-          });
-        }
-      }, 50);
-      break;
-    }
 
     default:
       return false;

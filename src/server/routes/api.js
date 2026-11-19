@@ -3,6 +3,7 @@ const { createRepositories } = require('../dal/repositories.js');
 const { AuthService } = require('../bll/authService.js');
 const { StaffService } = require('../bll/staffService.js');
 const { SystemService } = require('../bll/systemService.js');
+const { CatalogService } = require('../bll/catalogService.js');
 const { ForbiddenException, NotFoundException } = require('../bll/errors.js');
 const { sendJson, sendError, readJsonBody, createAuthGuards } = require('../middleware/rbac.js');
 
@@ -11,6 +12,7 @@ function createApiRouter(db) {
   const authService = new AuthService(db, repos);
   const staffService = new StaffService(db, repos);
   const systemService = new SystemService(db, repos);
+  const catalogService = new CatalogService(db, repos);
   const { authenticate, authorize } = createAuthGuards(repos);
 
   return async function handleApiRequest(req, res, urlObj) {
@@ -154,6 +156,249 @@ function createApiRouter(db) {
         if (['DELETE', 'PUT', 'PATCH'].includes(method)) {
           authenticate(req);
           throw new ForbiddenException('Nhật ký kiểm toán (Audit Log) là bất biến — nghiêm cấm sửa hoặc xóa.');
+        }
+      }
+
+      // ─── M2: PRODUCT IMAGES CATALOG (Real assets in assets/images/products) ─
+      if (method === 'GET' && pathname === '/api/product-images') {
+        authorize(req, 'PRODUCT_VIEW');
+        return sendJson(res, 200, { items: catalogService.listProductImages() });
+      }
+
+      // ─── M2: PRODUCTS (Hàng hóa — BR-01 & BR-06) ───────────────────────────
+      if (pathname === '/api/products') {
+        if (method === 'GET') {
+          const auth = authorize(req, 'PRODUCT_VIEW');
+          const canViewCost = auth.permissions.includes('PRODUCT_COST_VIEW');
+          const result = catalogService.listProducts(
+            {
+              search: urlObj.searchParams.get('search') || '',
+              categoryCode: urlObj.searchParams.get('categoryCode') || '',
+              supplierId: urlObj.searchParams.get('supplierId') || '',
+              status: urlObj.searchParams.get('status') || '',
+              stockLevel: urlObj.searchParams.get('stockLevel') || '',
+              minPrice: urlObj.searchParams.get('minPrice') || '',
+              maxPrice: urlObj.searchParams.get('maxPrice') || '',
+            },
+            { canViewCost },
+          );
+          return sendJson(res, 200, result);
+        }
+        if (method === 'POST') {
+          const auth = authorize(req, 'PRODUCT_MANAGE');
+          const body = await readJsonBody(req);
+          const item = catalogService.createProduct(auth.user, body);
+          return sendJson(res, 201, { item });
+        }
+      }
+
+      const productStatusMatch = /^\/api\/products\/([^/]+)\/status$/.exec(pathname);
+      if (method === 'PATCH' && productStatusMatch) {
+        const auth = authorize(req, 'PRODUCT_MANAGE');
+        const body = await readJsonBody(req);
+        const item = catalogService.setProductStatus(
+          auth.user,
+          decodeURIComponent(productStatusMatch[1]),
+          body.status,
+        );
+        return sendJson(res, 200, { item });
+      }
+
+      const productAdjustMatch = /^\/api\/products\/([^/]+)\/stock-adjust$/.exec(pathname);
+      if (method === 'POST' && productAdjustMatch) {
+        const auth = authorize(req, 'INVENTORY_APPROVE');
+        const body = await readJsonBody(req);
+        const result = catalogService.adjustProductStock(
+          auth.user,
+          decodeURIComponent(productAdjustMatch[1]),
+          body,
+        );
+        return sendJson(res, 200, result);
+      }
+
+      const productIdMatch = /^\/api\/products\/([^/]+)$/.exec(pathname);
+      if (productIdMatch) {
+        const targetId = decodeURIComponent(productIdMatch[1]);
+        if (method === 'GET') {
+          const auth = authorize(req, 'PRODUCT_VIEW');
+          const result = catalogService.getProduct(targetId, {
+            canViewCost: auth.permissions.includes('PRODUCT_COST_VIEW'),
+            canViewLedger: auth.permissions.includes('INVENTORY_VIEW'),
+          });
+          return sendJson(res, 200, result);
+        }
+        if (method === 'PUT' || method === 'PATCH') {
+          const auth = authorize(req, 'PRODUCT_MANAGE');
+          const body = await readJsonBody(req);
+          const item = catalogService.updateProduct(auth.user, targetId, body);
+          return sendJson(res, 200, { item });
+        }
+        if (method === 'DELETE') {
+          const auth = authorize(req, 'PRODUCT_MANAGE');
+          catalogService.deleteProduct(auth.user, targetId);
+        }
+      }
+
+      // ─── M2: CATEGORIES (Danh mục hàng hóa) ────────────────────────────────
+      if (pathname === '/api/categories') {
+        if (method === 'GET') {
+          authorize(req, 'PRODUCT_VIEW');
+          const items = catalogService.listCategories({
+            search: urlObj.searchParams.get('search') || '',
+            status: urlObj.searchParams.get('status') || '',
+          });
+          return sendJson(res, 200, { items });
+        }
+        if (method === 'POST') {
+          const auth = authorize(req, 'CATEGORY_MANAGE');
+          const body = await readJsonBody(req);
+          const item = catalogService.createCategory(auth.user, body);
+          return sendJson(res, 201, { item });
+        }
+      }
+
+      const catStatusMatch = /^\/api\/categories\/([^/]+)\/status$/.exec(pathname);
+      if (method === 'PATCH' && catStatusMatch) {
+        const auth = authorize(req, 'CATEGORY_MANAGE');
+        const body = await readJsonBody(req);
+        const item = catalogService.setCategoryStatus(
+          auth.user,
+          decodeURIComponent(catStatusMatch[1]),
+          body.status,
+        );
+        return sendJson(res, 200, { item });
+      }
+
+      const catIdMatch = /^\/api\/categories\/([^/]+)$/.exec(pathname);
+      if (catIdMatch) {
+        const code = decodeURIComponent(catIdMatch[1]);
+        if (method === 'PUT' || method === 'PATCH') {
+          const auth = authorize(req, 'CATEGORY_MANAGE');
+          const body = await readJsonBody(req);
+          const item = catalogService.updateCategory(auth.user, code, body);
+          return sendJson(res, 200, { item });
+        }
+        if (method === 'DELETE') {
+          authorize(req, 'CATEGORY_MANAGE');
+          catalogService.deleteCategory(code);
+        }
+      }
+
+      // ─── M2: UNITS (Đơn vị tính) ───────────────────────────────────────────
+      if (pathname === '/api/units') {
+        if (method === 'GET') {
+          authorize(req, 'PRODUCT_VIEW');
+          const items = catalogService.listUnits({
+            search: urlObj.searchParams.get('search') || '',
+            status: urlObj.searchParams.get('status') || '',
+          });
+          return sendJson(res, 200, { items });
+        }
+        if (method === 'POST') {
+          const auth = authorize(req, 'CATEGORY_MANAGE');
+          const body = await readJsonBody(req);
+          const item = catalogService.createUnit(auth.user, body);
+          return sendJson(res, 201, { item });
+        }
+      }
+
+      const unitStatusMatch = /^\/api\/units\/([^/]+)\/status$/.exec(pathname);
+      if (method === 'PATCH' && unitStatusMatch) {
+        const auth = authorize(req, 'CATEGORY_MANAGE');
+        const body = await readJsonBody(req);
+        const item = catalogService.setUnitStatus(
+          auth.user,
+          decodeURIComponent(unitStatusMatch[1]),
+          body.status,
+        );
+        return sendJson(res, 200, { item });
+      }
+
+      const unitIdMatch = /^\/api\/units\/([^/]+)$/.exec(pathname);
+      if (unitIdMatch) {
+        const code = decodeURIComponent(unitIdMatch[1]);
+        if (method === 'PUT' || method === 'PATCH') {
+          const auth = authorize(req, 'CATEGORY_MANAGE');
+          const body = await readJsonBody(req);
+          const item = catalogService.updateUnit(auth.user, code, body);
+          return sendJson(res, 200, { item });
+        }
+        if (method === 'DELETE') {
+          authorize(req, 'CATEGORY_MANAGE');
+          catalogService.deleteUnit(code);
+        }
+      }
+
+      // ─── M2: SUPPLIERS (Nhà cung cấp) ──────────────────────────────────────
+      if (pathname === '/api/suppliers') {
+        if (method === 'GET') {
+          authorize(req, 'SUPPLIER_VIEW');
+          const items = catalogService.listSuppliers({
+            search: urlObj.searchParams.get('search') || '',
+            status: urlObj.searchParams.get('status') || '',
+          });
+          return sendJson(res, 200, { items });
+        }
+        if (method === 'POST') {
+          const auth = authorize(req, 'SUPPLIER_MANAGE');
+          const body = await readJsonBody(req);
+          const item = catalogService.createSupplier(auth.user, body);
+          return sendJson(res, 201, { item });
+        }
+      }
+
+      const supStatusMatch = /^\/api\/suppliers\/([^/]+)\/status$/.exec(pathname);
+      if (method === 'PATCH' && supStatusMatch) {
+        const auth = authorize(req, 'SUPPLIER_MANAGE');
+        const body = await readJsonBody(req);
+        const item = catalogService.setSupplierStatus(
+          auth.user,
+          decodeURIComponent(supStatusMatch[1]),
+          body.status,
+        );
+        return sendJson(res, 200, { item });
+      }
+
+      const supHistoryMatch = /^\/api\/suppliers\/([^/]+)\/history$/.exec(pathname);
+      if (method === 'GET' && supHistoryMatch) {
+        authorize(req, 'SUPPLIER_VIEW');
+        const result = catalogService.getSupplierHistory(decodeURIComponent(supHistoryMatch[1]));
+        return sendJson(res, 200, result);
+      }
+
+      const supIdMatch = /^\/api\/suppliers\/([^/]+)$/.exec(pathname);
+      if (supIdMatch) {
+        const targetId = decodeURIComponent(supIdMatch[1]);
+        if (method === 'PUT' || method === 'PATCH') {
+          const auth = authorize(req, 'SUPPLIER_MANAGE');
+          const body = await readJsonBody(req);
+          const item = catalogService.updateSupplier(auth.user, targetId, body);
+          return sendJson(res, 200, { item });
+        }
+        if (method === 'DELETE') {
+          authorize(req, 'SUPPLIER_MANAGE');
+          catalogService.deleteSupplier(targetId);
+        }
+      }
+
+      // ─── M2: IMMUTABLE STOCK MOVEMENTS (Thẻ kho — LichSuTonKho) ───────────
+      if (pathname === '/api/stock-movements' || pathname.startsWith('/api/stock-movements/')) {
+        if (method === 'GET' && pathname === '/api/stock-movements') {
+          authorize(req, 'INVENTORY_VIEW');
+          const result = catalogService.queryStockMovements({
+            search: urlObj.searchParams.get('search') || '',
+            productId: urlObj.searchParams.get('productId') || '',
+            docType: urlObj.searchParams.get('docType') || '',
+            fromDate: urlObj.searchParams.get('fromDate') || '',
+            toDate: urlObj.searchParams.get('toDate') || '',
+            page: urlObj.searchParams.get('page') || 1,
+            limit: urlObj.searchParams.get('limit') || 15,
+          });
+          return sendJson(res, 200, result);
+        }
+        if (['DELETE', 'PUT', 'PATCH'].includes(method)) {
+          authenticate(req);
+          throw new ForbiddenException('Thẻ kho (LichSuTonKho) là bất biến — nghiêm cấm sửa hoặc xóa.');
         }
       }
 

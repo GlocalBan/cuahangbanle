@@ -4,7 +4,26 @@ function handleInventoryAction(a) {
       inventoryTab = a.tab;
       filters = {};
       pagination = {};
+      if (inventoryTab === 'movements') loadStockMovementsData(true);
+      else if (inventoryTab === 'stock') loadProductsData(true);
       render();
+      break;
+
+    case 'stock-movements-page': {
+      const nextPage = Math.max(1, (pagination['stock-movements'] || 1) + Number(a.delta || 0));
+      pagination['stock-movements'] = nextPage;
+      loadStockMovementsData(true);
+      break;
+    }
+
+    case 'stock-movements-reset':
+      delete filters.moveSearch;
+      delete filters.moveDocType;
+      delete filters.moveFrom;
+      delete filters.moveTo;
+      apiState.stockMovementError = '';
+      pagination['stock-movements'] = 1;
+      loadStockMovementsData(true);
       break;
 
     case 'audit-new':

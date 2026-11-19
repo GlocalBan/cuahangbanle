@@ -307,6 +307,14 @@ class TokenRevocationRepository {
   }
 }
 
+const {
+  CategoryRepository,
+  UnitRepository,
+  SupplierRepository,
+  ProductRepository,
+  StockMovementRepository,
+} = require('./catalogRepositories.js');
+
 function createRepositories(db) {
   return {
     users: new UserRepository(db),
@@ -314,6 +322,11 @@ function createRepositories(db) {
     thamSo: new ThamSoRepository(db),
     auditLogs: new AuditLogRepository(db),
     revokedTokens: new TokenRevocationRepository(db),
+    categories: new CategoryRepository(db),
+    units: new UnitRepository(db),
+    suppliers: new SupplierRepository(db),
+    products: new ProductRepository(db),
+    stockMovements: new StockMovementRepository(db),
   };
 }
 
@@ -323,5 +336,10 @@ module.exports = {
   ThamSoRepository,
   AuditLogRepository,
   TokenRevocationRepository,
+  CategoryRepository,
+  UnitRepository,
+  SupplierRepository,
+  ProductRepository,
+  StockMovementRepository,
   createRepositories,
 };

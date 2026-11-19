@@ -187,6 +187,7 @@ const DEFAULT_CATEGORIES = [
   { code: 'DM03', name: 'Gia vị & Nhu yếu phẩm', description: 'Dầu ăn, nước mắm, nước tương, hạt nêm, đường, muối' },
   { code: 'DM04', name: 'Snack & Bánh kẹo', description: 'Bánh quy, snack khoai tây, kẹo, hạt dinh dưỡng' },
   { code: 'DM05', name: 'Chăm sóc cá nhân & Tiện ích', description: 'Dầu gội, sữa tắm, bột giặt, nước rửa chén, khăn giấy' },
+  { code: 'DM06', name: 'Đồ ăn liền & Chế biến sẵn', description: 'Bánh mì, sandwich, cơm hộp, đồ ăn nóng dùng ngay' },
 ];
 
 const DEFAULT_UNITS = [
@@ -199,6 +200,11 @@ const DEFAULT_UNITS = [
   { code: 'DVT07', name: 'lốc' },
   { code: 'DVT08', name: 'cái' },
   { code: 'DVT09', name: 'cuộn' },
+  { code: 'DVT10', name: 'chiếc' },
+  { code: 'DVT11', name: 'tuýp' },
+  { code: 'DVT12', name: 'quả' },
+  { code: 'DVT13', name: 'ly' },
+  { code: 'DVT14', name: 'đôi' },
 ];
 
 const SCHEMA_SQL = `
@@ -518,6 +524,11 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DE
 CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_username);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role_code);
 CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
+CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_code);
+CREATE INDEX IF NOT EXISTS idx_products_supplier ON products(supplier_id);
+CREATE INDEX IF NOT EXISTS idx_products_status ON products(status);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements(product_id);
+CREATE INDEX IF NOT EXISTS idx_stock_movements_created ON stock_movements(created_at DESC);
 `;
 
 function openDatabase(dbPath) {
@@ -630,11 +641,108 @@ function seedCoreData(db) {
     `);
     insertBranch.run(nowIso);
 
+    // Seed suppliers, products (93 real SKU with 1-1 images in assets/images/products/), and opening stock_movements
+    const supplierCount = db.prepare('SELECT COUNT(*) AS cnt FROM suppliers').get().cnt;
+    const productCount = db.prepare('SELECT COUNT(*) AS cnt FROM products').get().cnt;
+    if (supplierCount === 0 || productCount === 0) {
+      const { seed } = require('../../domain/seed.js');
+      const seeded = seed();
+
+      if (supplierCount === 0) {
+        const insertSupplier = db.prepare(`
+          INSERT OR IGNORE INTO suppliers (id, name, phone, category_group, areas, status, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+        const insertBranchSupplier = db.prepare(`
+          INSERT OR IGNORE INTO branch_suppliers (branch_id, supplier_id)
+          VALUES ('CN001', ?)
+        `);
+        for (const sup of seeded.suppliers || []) {
+          insertSupplier.run(
+            sup.id,
+            sup.name,
+            sup.phone || '',
+            sup.category || '',
+            sup.areas || '',
+            sup.active === false ? 'NgungHopTac' : 'HoatDong',
+            nowIso,
+          );
+          insertBranchSupplier.run(sup.id);
+        }
+      }
+
+      if (productCount === 0) {
+        const catMap = new Map(
+          db.prepare('SELECT code, name FROM categories').all().map((r) => [r.name.toLowerCase(), r.code]),
+        );
+        const unitMap = new Map(
+          db.prepare('SELECT code, name FROM units').all().map((r) => [r.name.toLowerCase(), r.code]),
+        );
+        const insertProduct = db.prepare(`
+          INSERT OR IGNORE INTO products (
+            id, sku, barcode, name, brand, pack_size,
+            category_code, unit_code, supplier_id,
+            sale_price, cost_price, stock_qty, min_stock,
+            image_url, status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+        const insertMovement = db.prepare(`
+          INSERT OR IGNORE INTO stock_movements (
+            id, product_id, stock_before, delta, stock_after,
+            doc_type, doc_id, actor_id, actor_name, note, created_at
+          ) VALUES (?, ?, 0, ?, ?, 'KHOI_TAO_TON', ?, 'NV001', 'Hệ thống', ?, ?)
+        `);
+
+        for (const prod of seeded.products || []) {
+          const catCode = catMap.get(String(prod.category || '').toLowerCase()) || 'DM01';
+          const unitCode = unitMap.get(String(prod.unit || '').toLowerCase()) || 'DVT01';
+          const salePrice = Math.max(0, Math.round(Number(prod.price) || 0));
+          const costPrice = Math.max(0, Math.round(Number(prod.costPrice ?? prod.cost) || 0));
+          const stockQty = Math.max(0, Math.round(Number(prod.stock) || 0));
+          const minStock = Math.max(0, Math.round(Number(prod.minStock) || 15));
+          const imgUrl =
+            prod.imageUrl && prod.imageUrl !== 'assets/images/products/default.jpg'
+              ? prod.imageUrl
+              : 'assets/images/products/milk_vinamilk.jpg';
+          insertProduct.run(
+            prod.id,
+            prod.id,
+            prod.barcode,
+            prod.name,
+            prod.brand || '',
+            prod.packSize || '',
+            catCode,
+            unitCode,
+            prod.supplierId || 'NCC001',
+            salePrice,
+            costPrice,
+            stockQty,
+            minStock,
+            imgUrl,
+            prod.active === false ? 'NgungKinhDoanh' : 'DangKinhDoanh',
+            nowIso,
+            nowIso,
+          );
+          if (stockQty > 0) {
+            insertMovement.run(
+              `STK-SEED-${prod.id}`,
+              prod.id,
+              stockQty,
+              stockQty,
+              `INIT-${prod.id}`,
+              `Khởi tạo tồn kho đầu kỳ cho ${prod.name}`,
+              nowIso,
+            );
+          }
+        }
+      }
+    }
+
     const logCount = db.prepare('SELECT COUNT(*) AS cnt FROM audit_logs').get().cnt;
     if (logCount === 0) {
       db.prepare(`
         INSERT INTO audit_logs (id, actor_id, actor_username, actor_name, actor_role, action, entity_type, entity_id, detail, created_at)
-        VALUES ('AUD-SEED-001', NULL, 'system', 'Hệ thống', 'SYSTEM', 'SYSTEM_INIT', 'Database', 'retailflow.db', 'Khởi tạo CSDL chuẩn 9 quy tắc, 4 vai trò RBAC, 4 tài khoản mẫu và bảng THAM_SO.', ?)
+        VALUES ('AUD-SEED-001', NULL, 'system', 'Hệ thống', 'SYSTEM', 'SYSTEM_INIT', 'Database', 'retailflow.db', 'Khởi tạo CSDL chuẩn 9 quy tắc, 4 vai trò RBAC, 4 tài khoản mẫu, bảng THAM_SO và danh mục 93 SKU.', ?)
       `).run(nowIso);
     }
   });

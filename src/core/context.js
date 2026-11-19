@@ -21,6 +21,17 @@ const date = (value) =>
     minute: '2-digit',
     timeZone: 'Asia/Ho_Chi_Minh',
   }).format(new Date(value));
+const dateOnly = (value) => {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return String(value);
+  return new Intl.DateTimeFormat('vi-VN', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    timeZone: 'Asia/Ho_Chi_Minh',
+  }).format(d);
+};
 const dayKey = (value) =>
   new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Ho_Chi_Minh',
@@ -164,5 +175,6 @@ let page = 'dashboard',
   chartDays = 7,
   reportDays = 7,
   activeCategory = 'Tất cả',
+  productsTab = 'products',
   inventoryTab = 'stock';
 let purchaseLines = [];

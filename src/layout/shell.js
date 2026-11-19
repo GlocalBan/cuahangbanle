@@ -122,6 +122,8 @@ function navigate(target, options = {}) {
   page = cleanTarget;
   filters = {};
   pagination = {};
+  apiState.productError = '';
+  apiState.stockMovementError = '';
   document.body.classList.remove('menu-open');
   $('.sidebar')?.classList.remove('open');
   $$('.nav-item').forEach((n) => {
@@ -134,6 +136,15 @@ function navigate(target, options = {}) {
   }
   const bc = $('#topbar-breadcrumb');
   if (bc) bc.innerHTML = renderBreadcrumb();
+  if (page === 'products') {
+    loadCatalogMeta();
+    loadProductsData(true);
+  } else if (page === 'suppliers') {
+    loadSuppliersData(true);
+  } else if (page === 'inventory') {
+    loadProductsData(true);
+    if (inventoryTab === 'movements') loadStockMovementsData(true);
+  }
   render();
   window.scrollTo(0, 0);
 }

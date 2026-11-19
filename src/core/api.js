@@ -13,6 +13,37 @@ const apiState = {
   auditLogs: { items: [], total: 0, page: 1, limit: 15, totalPages: 1, actions: [] },
   auditLogsLoaded: false,
   auditLogError: '',
+  // M2 Catalog & Stock Ledger caches
+  products: [],
+  productsSummary: {
+    total: 0,
+    activeCount: 0,
+    inactiveCount: 0,
+    lowStockCount: 0,
+    outOfStockCount: 0,
+    totalStockQty: 0,
+  },
+  productsLoaded: false,
+  productError: '',
+  categories: [],
+  categoriesLoaded: false,
+  units: [],
+  unitsLoaded: false,
+  suppliers: [],
+  suppliersLoaded: false,
+  productImages: [],
+  productImagesLoaded: false,
+  stockMovements: {
+    items: [],
+    total: 0,
+    page: 1,
+    limit: 12,
+    totalPages: 1,
+    docTypes: [],
+    docTypeLabels: {},
+  },
+  stockMovementsLoaded: false,
+  stockMovementError: '',
   loading: {},
 };
 
@@ -43,6 +74,36 @@ function resetApiCaches() {
   apiState.auditLogs = { items: [], total: 0, page: 1, limit: 15, totalPages: 1, actions: [] };
   apiState.auditLogsLoaded = false;
   apiState.auditLogError = '';
+  apiState.products = [];
+  apiState.productsSummary = {
+    total: 0,
+    activeCount: 0,
+    inactiveCount: 0,
+    lowStockCount: 0,
+    outOfStockCount: 0,
+    totalStockQty: 0,
+  };
+  apiState.productsLoaded = false;
+  apiState.productError = '';
+  apiState.categories = [];
+  apiState.categoriesLoaded = false;
+  apiState.units = [];
+  apiState.unitsLoaded = false;
+  apiState.suppliers = [];
+  apiState.suppliersLoaded = false;
+  apiState.productImages = [];
+  apiState.productImagesLoaded = false;
+  apiState.stockMovements = {
+    items: [],
+    total: 0,
+    page: 1,
+    limit: 12,
+    totalPages: 1,
+    docTypes: [],
+    docTypeLabels: {},
+  };
+  apiState.stockMovementsLoaded = false;
+  apiState.stockMovementError = '';
   apiState.loading = {};
 }
 
@@ -60,6 +121,16 @@ function syncStoreSettingsFromServer(storeConfig) {
     bankOwner: storeConfig.bankOwner || store.data.settings.bankOwner,
     receiptNote: storeConfig.receiptNote ?? store.data.settings.receiptNote,
   });
+}
+
+function buildQuery(params = {}) {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && String(v).trim() !== '') {
+      qs.set(k, String(v).trim());
+    }
+  }
+  return qs.toString() ? `?${qs.toString()}` : '';
 }
 
 async function apiRequest(method, url, body = null, options = {}) {
@@ -109,28 +180,46 @@ const api = {
   logout: () => apiRequest('POST', '/api/auth/logout', {}, { skipAuthRedirect: true }),
   changePassword: (data) => apiRequest('POST', '/api/auth/change-password', data),
   listRoles: () => apiRequest('GET', '/api/roles'),
-  listStaff: (params = {}) => {
-    const qs = new URLSearchParams();
-    if (params.search) qs.set('search', params.search);
-    if (params.role) qs.set('role', params.role);
-    if (params.status) qs.set('status', params.status);
-    const suffix = qs.toString() ? `?${qs.toString()}` : '';
-    return apiRequest('GET', `/api/staff${suffix}`);
-  },
+  listStaff: (params = {}) => apiRequest('GET', `/api/staff${buildQuery(params)}`),
   createStaff: (data) => apiRequest('POST', '/api/staff', data),
   updateStaff: (id, data) => apiRequest('PUT', `/api/staff/${encodeURIComponent(id)}`, data),
   setStaffStatus: (id, status) =>
     apiRequest('PATCH', `/api/staff/${encodeURIComponent(id)}/status`, { status }),
   listThamSo: () => apiRequest('GET', '/api/tham-so'),
   updateThamSo: (items) => apiRequest('PUT', '/api/tham-so', { items }),
-  queryAuditLogs: (params = {}) => {
-    const qs = new URLSearchParams();
-    for (const [k, v] of Object.entries(params)) {
-      if (v !== undefined && v !== null && String(v).trim() !== '') qs.set(k, String(v).trim());
-    }
-    const suffix = qs.toString() ? `?${qs.toString()}` : '';
-    return apiRequest('GET', `/api/audit-logs${suffix}`);
-  },
+  queryAuditLogs: (params = {}) => apiRequest('GET', `/api/audit-logs${buildQuery(params)}`),
+
+  // M2 Catalog & Stock Ledger
+  listProductImages: () => apiRequest('GET', '/api/product-images'),
+  listProducts: (params = {}) => apiRequest('GET', `/api/products${buildQuery(params)}`),
+  getProduct: (id) => apiRequest('GET', `/api/products/${encodeURIComponent(id)}`),
+  createProduct: (data) => apiRequest('POST', '/api/products', data),
+  updateProduct: (id, data) => apiRequest('PUT', `/api/products/${encodeURIComponent(id)}`, data),
+  setProductStatus: (id, status) =>
+    apiRequest('PATCH', `/api/products/${encodeURIComponent(id)}/status`, { status }),
+  adjustProductStock: (id, data) =>
+    apiRequest('POST', `/api/products/${encodeURIComponent(id)}/stock-adjust`, data),
+
+  listCategories: (params = {}) => apiRequest('GET', `/api/categories${buildQuery(params)}`),
+  createCategory: (data) => apiRequest('POST', '/api/categories', data),
+  updateCategory: (code, data) => apiRequest('PUT', `/api/categories/${encodeURIComponent(code)}`, data),
+  setCategoryStatus: (code, status) =>
+    apiRequest('PATCH', `/api/categories/${encodeURIComponent(code)}/status`, { status }),
+
+  listUnits: (params = {}) => apiRequest('GET', `/api/units${buildQuery(params)}`),
+  createUnit: (data) => apiRequest('POST', '/api/units', data),
+  updateUnit: (code, data) => apiRequest('PUT', `/api/units/${encodeURIComponent(code)}`, data),
+  setUnitStatus: (code, status) =>
+    apiRequest('PATCH', `/api/units/${encodeURIComponent(code)}/status`, { status }),
+
+  listSuppliers: (params = {}) => apiRequest('GET', `/api/suppliers${buildQuery(params)}`),
+  createSupplier: (data) => apiRequest('POST', '/api/suppliers', data),
+  updateSupplier: (id, data) => apiRequest('PUT', `/api/suppliers/${encodeURIComponent(id)}`, data),
+  setSupplierStatus: (id, status) =>
+    apiRequest('PATCH', `/api/suppliers/${encodeURIComponent(id)}/status`, { status }),
+  getSupplierHistory: (id) => apiRequest('GET', `/api/suppliers/${encodeURIComponent(id)}/history`),
+
+  queryStockMovements: (params = {}) => apiRequest('GET', `/api/stock-movements${buildQuery(params)}`),
 };
 
 async function loadStaffData(force = false) {
@@ -200,5 +289,132 @@ async function loadAuditLogsData(force = false) {
   } finally {
     apiState.loading.auditLogs = false;
     if (page === 'audit-logs' && $('#content')) render();
+  }
+}
+
+async function loadCatalogMeta(force = false) {
+  if (!store.hasPermission('PRODUCT_VIEW')) return;
+  if (apiState.loading.catalogMeta) return;
+  const needSup = store.hasPermission('SUPPLIER_VIEW') && (!apiState.suppliersLoaded || force);
+  const needCat = !apiState.categoriesLoaded || force;
+  const needUnit = !apiState.unitsLoaded || force;
+  const needImg = !apiState.productImagesLoaded || force;
+  if (!needSup && !needCat && !needUnit && !needImg) return;
+
+  apiState.loading.catalogMeta = true;
+  try {
+    const jobs = [];
+    if (needCat) jobs.push(api.listCategories().then((r) => { apiState.categories = r.items || []; apiState.categoriesLoaded = true; }));
+    if (needUnit) jobs.push(api.listUnits().then((r) => { apiState.units = r.items || []; apiState.unitsLoaded = true; }));
+    if (needImg) jobs.push(api.listProductImages().then((r) => { apiState.productImages = r.items || []; apiState.productImagesLoaded = true; }));
+    if (needSup) {
+      jobs.push(
+        api.listSuppliers().then((r) => {
+          apiState.suppliers = r.items || [];
+          apiState.suppliersLoaded = true;
+        }),
+      );
+    }
+    await Promise.all(jobs);
+  } catch (err) {
+    notify(err.message, true);
+  } finally {
+    apiState.loading.catalogMeta = false;
+    if (['products', 'suppliers', 'inventory'].includes(page) && $('#content')) render();
+  }
+}
+
+async function loadProductsData(force = false) {
+  if (!store.hasPermission('PRODUCT_VIEW')) return;
+  if (apiState.loading.products && !force) return;
+  const minPrice = filters.productMinPrice || '';
+  const maxPrice = filters.productMaxPrice || '';
+  if (minPrice !== '' && maxPrice !== '' && Number(minPrice) > Number(maxPrice)) {
+    apiState.productError = 'Khoảng giá không hợp lệ: "Giá từ" phải nhỏ hơn hoặc bằng "Giá đến".';
+    apiState.productsLoaded = true;
+    if (['products', 'inventory'].includes(page) && $('#content')) render();
+    return;
+  }
+  apiState.productError = '';
+  apiState.loading.products = true;
+  try {
+    const params =
+      page === 'products'
+        ? {
+            search: filters.products || '',
+            categoryCode: filters.productCategory || '',
+            supplierId: filters.productSupplier || '',
+            status: filters.productStatus || '',
+            stockLevel: filters.productStock || '',
+            minPrice,
+            maxPrice,
+          }
+        : {
+            search: filters.inventory || '',
+            stockLevel: filters.low === 'yes' ? 'low' : '',
+          };
+    const res = await api.listProducts(params);
+    apiState.products = res.items || [];
+    apiState.productsSummary = res.summary || apiState.productsSummary;
+    apiState.productsLoaded = true;
+  } catch (err) {
+    apiState.productError = err.message;
+    notify(err.message, true);
+  } finally {
+    apiState.loading.products = false;
+    if (['products', 'inventory'].includes(page) && $('#content')) render();
+  }
+}
+
+async function loadSuppliersData(force = false) {
+  if (!store.hasPermission('SUPPLIER_VIEW')) return;
+  if (apiState.loading.suppliers && !force) return;
+  if (apiState.suppliersLoaded && !force && !filters.suppliers && !filters.supplierStatus) return;
+  apiState.loading.suppliers = true;
+  try {
+    const res = await api.listSuppliers({
+      search: filters.suppliers || '',
+      status: filters.supplierStatus || '',
+    });
+    apiState.suppliers = res.items || [];
+    apiState.suppliersLoaded = true;
+  } catch (err) {
+    notify(err.message, true);
+  } finally {
+    apiState.loading.suppliers = false;
+    if (['suppliers', 'products'].includes(page) && $('#content')) render();
+  }
+}
+
+async function loadStockMovementsData(force = false) {
+  if (!store.hasPermission('INVENTORY_VIEW')) return;
+  if (apiState.loading.stockMovements && !force) return;
+  const fromDate = filters.moveFrom || '';
+  const toDate = filters.moveTo || '';
+  if (fromDate && toDate && fromDate > toDate) {
+    apiState.stockMovementError = 'Khoảng thời gian không hợp lệ: "Từ ngày" phải nhỏ hơn hoặc bằng "Đến ngày" (BR-08).';
+    apiState.stockMovementsLoaded = true;
+    if (page === 'inventory' && $('#content')) render();
+    return;
+  }
+  apiState.stockMovementError = '';
+  apiState.loading.stockMovements = true;
+  try {
+    const res = await api.queryStockMovements({
+      search: filters.moveSearch || '',
+      docType: filters.moveDocType || '',
+      fromDate,
+      toDate,
+      page: pagination['stock-movements'] || 1,
+      limit: 12,
+    });
+    apiState.stockMovements = res;
+    apiState.stockMovementsLoaded = true;
+  } catch (err) {
+    apiState.stockMovementError = err.message;
+    notify(err.message, true);
+  } finally {
+    apiState.loading.stockMovements = false;
+    if (page === 'inventory' && $('#content')) render();
   }
 }

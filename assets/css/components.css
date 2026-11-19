@@ -551,34 +551,45 @@ td .icon-btn svg {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 10px;
   padding: 0 20px 16px;
 }
-.table-tools input {
-  min-width: 160px;
-  height: 42px;
-  font-size: 13.5px;
-  background: #fafbfe;
-  padding: 0 12px;
-  border: 1px solid var(--line, #e2e8f0);
-  border-radius: 8px;
-  box-sizing: border-box;
-}
+.table-tools input,
 .table-tools select {
-  min-width: 150px;
-  height: 42px;
-  font-size: 13.5px;
+  width: auto;
+  height: 38px;
+  font-size: 12.5px;
   padding: 0 12px;
   border: 1px solid var(--line, #e2e8f0);
   border-radius: 8px;
   background: #ffffff;
+  color: #1e293b;
   box-sizing: border-box;
+}
+.table-tools input:not([type]),
+.table-tools input[type='text'],
+.table-tools input[type='search'] {
+  flex: 1 1 240px;
+  min-width: 200px;
+  background: #fafbfe;
+}
+.table-tools select {
+  flex: 0 1 190px;
+  min-width: 155px;
+}
+.table-tools input[type='date'] {
+  flex: 0 1 155px;
+  min-width: 140px;
+}
+.table-tools input[type='number'] {
+  flex: 0 1 135px;
+  min-width: 115px;
 }
 .table-tools.product-filters,
 .product-filters {
   display: grid;
-  grid-template-columns: minmax(220px, 2fr) repeat(auto-fit, minmax(165px, 1fr));
-  gap: 12px;
+  grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(150px, 1fr));
+  gap: 10px;
   align-items: center;
   width: 100%;
   padding: 0 20px 16px;
@@ -588,12 +599,12 @@ td .icon-btn svg {
 .table-tools.product-filters select,
 .product-filters input,
 .product-filters select {
-  min-width: 160px;
+  min-width: 0;
   width: 100%;
   max-width: none;
-  height: 42px;
-  padding: 0 12px;
-  font-size: 13.5px;
+  height: 38px;
+  padding: 0 11px;
+  font-size: 12.5px;
   border: 1px solid var(--line, #e2e8f0);
   border-radius: 8px;
   background: #ffffff;
@@ -610,6 +621,30 @@ td .icon-btn svg {
 .product-filters select:focus {
   border-color: #6366f1;
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+}
+.action-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+}
+.btn.xs {
+  padding: 4px 8px;
+  min-height: 28px;
+  font-size: 10.5px;
+  border-radius: 6px;
+  gap: 4px;
+  font-weight: 600;
+}
+.btn.xs svg {
+  width: 12px;
+  height: 12px;
+}
+td.wrap-cell {
+  white-space: normal;
+  min-width: 160px;
+  max-width: 240px;
+  line-height: 1.45;
 }
 .table-foot {
   display: flex;
