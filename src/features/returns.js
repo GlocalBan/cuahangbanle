@@ -1,104 +1,261 @@
+/* M4: Trả hàng & Hoàn tiền (BR-05, BR-06, BR-08) — 100% SQLite API + RBAC 3 lớp. */
+'use strict';
+
 function returnsView() {
-  const s = store.data,
-    r = s.returns;
-  const p = paginate(
-    r.filter(
-      (r) =>
-        match(`${r.id} ${r.orderId} ${r.reason}`, filters.returns || '') &&
-        (!filters.status || r.status === filters.status),
-    ),
-    'returns',
-  );
+  if (!apiState.returnsLoaded && !apiState.loading.returns) {
+    loadReturnsData();
+  }
+  const summary = apiState.returnsSummary || {};
+  const list = apiState.returns || [];
+  const p = paginate(list, 'returns');
+  const canCreate = store.hasPermission('RETURN_CREATE');
+  const canApprove = store.hasPermission('RETURN_APPROVE');
+  const returnDays = Number(store.data.settings.returnWindowDays || 7);
+
   return (
     heading(
       'BÁN HÀNG / ĐỔI TRẢ',
-      'Đổi trả & hoàn tiền',
-      'Quy trình đổi trả CVS: Phân loại hàng nguyên tem nhập lại kho và hàng lỗi/hết date đưa vào kho chờ hủy.',
-      action('return-new', 'Tạo yêu cầu đổi trả', 'plus', 'primary'),
+      'Trả hàng & hoàn tiền',
+      `Cho phép lập phiếu trả hàng cho hóa đơn Đã thanh toán trong hạn ${returnDays} ngày (đọc từ THAM_SO). Duyệt hoàn tiền do Quản lý/Admin xác nhận trong 1 Transaction.`,
+      canCreate ? action('return-new', 'Tạo phiếu trả hàng', 'plus', 'primary') : '',
     ) +
     stats([
-      ['Yêu cầu đổi trả', r.length, 'Đã tiếp nhận', 'return'],
+      ['Tổng phiếu trả', number(summary.total || 0), 'Đồng bộ từ CSDL SQLite', 'return'],
+      ['Chờ duyệt', number(summary.pendingCount || 0), 'Chưa hoàn tồn kho / chưa tính hoàn tiền', 'bell'],
+      ['Đã xác nhận', number(summary.approvedCount || 0), 'Đã hoàn tiền & ghi Thẻ kho TRA_HANG', 'check'],
       [
-        'Đã giải quyết',
-        r.filter((r) => r.status === 'approved').length,
-        'Đã ghi nhận hoàn tiền',
-        'check',
-      ],
-      [
-        'Chờ phê duyệt',
-        r.filter((r) => r.status === 'pending').length,
-        'Quản trị viên cần xác nhận',
-        'bell',
-      ],
-      [
-        'Tổng tiền hoàn',
-        money(r.filter((r) => r.status === 'approved').reduce((a, r) => a + r.amount, 0)),
-        'Chỉ tính phiếu đã duyệt',
+        'Tổng tiền đã hoàn',
+        money(summary.totalRefunded || 0),
+        'Chỉ tính phiếu ở trạng thái Đã xác nhận',
         'receipt',
       ],
     ]) +
-    `<section class="panel"><div class="panel-head"><h2>Lịch sử yêu cầu trả hàng</h2></div><div class="table-tools">${filterInput('returns', 'Tìm mã phiếu, hóa đơn gốc, lý do…')}${filterSelect('status', [['', 'Tất cả trạng thái'], ...['pending', 'approved', 'rejected'].map((x) => [x, statusLabels[x][0]])])}</div>${table(
-      ['Mã phiếu', 'Hóa đơn gốc', 'Ngày tạo', 'Lý do', 'Tình trạng hàng', 'Tiền hoàn', 'Trạng thái', ''],
-      p.items.map((item) => {
-        const isDamaged = item.returnCondition === 'damaged_or_expired' || item.restock === false;
-        const condBadge = isDamaged
-          ? '<span class="badge red">Hàng lỗi/Chờ hủy</span>'
-          : '<span class="badge green">Nguyên tem (Nhập kho)</span>';
-        return `<tr><td class="name">${e(item.id)}</td><td>${e(item.orderId)}</td><td>${date(item.time)}</td><td>${e(item.reason)}</td><td>${condBadge}</td><td class="money">${money(item.amount)}</td><td>${status(item.status)}</td><td>${action('return-detail', 'Xem', '', 'small', `data-id="${e(item.id)}"`)}</td></tr>`;
-      }),
-    )}${p.foot}<div class="panel-body"><div class="note yellow">Yêu cầu chờ duyệt chưa hoàn tiền và chưa cập nhật kho. Hàng nguyên vẹn mới được cộng lại vào tồn kho bán; hàng hỏng hoặc hết hạn sẽ được ghi nhận vào kho chờ hủy và tính vào chi phí hao hụt P&L.</div></div></section>`
+    `<section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Lịch sử phiếu trả hàng (${number(list.length)})</h2>
+          <p class="sub">${
+            canApprove
+              ? 'Bạn có quyền phê duyệt / từ chối phiếu trả hàng ở trạng thái Chờ duyệt.'
+              : 'Thu ngân được lập phiếu trả hàng trong hạn; thao tác Duyệt hoàn tiền thuộc quyền Quản lý / Admin.'
+          }</p>
+        </div>
+      </div>
+      <div class="table-tools wrap">
+        ${filterInput('returns', 'Tìm mã phiếu trả, mã hóa đơn gốc, khách hàng, lý do…')}
+        ${filterSelect('returnStatus', [
+          ['', 'Tất cả trạng thái'],
+          ['ChoDuyet', 'Chờ duyệt'],
+          ['DaXacNhan', 'Đã xác nhận'],
+          ['TuChoi', 'Đã từ chối'],
+        ])}
+        <label class="date-filter">Từ <input type="date" id="filter-returnFrom" data-filter="returnFrom" value="${e(filters.returnFrom || '')}"></label>
+        <label class="date-filter">Đến <input type="date" id="filter-returnTo" data-filter="returnTo" value="${e(filters.returnTo || '')}"></label>
+        ${action('returns-reset', 'Đặt lại', 'return', 'small')}
+      </div>
+      ${
+        apiState.returnError
+          ? `<div class="panel-body"><div class="note red" role="alert">${e(apiState.returnError)}</div></div>`
+          : apiState.loading.returns && !apiState.returnsLoaded
+            ? '<div class="panel-body"><div class="note">Đang tải danh sách phiếu trả hàng…</div></div>'
+            : table(
+                ['Mã phiếu', 'Hóa đơn gốc', 'Khách hàng', 'Thời gian lập', 'Lý do', 'Tình trạng hàng', 'Tiền hoàn', 'Trạng thái', 'Thao tác'],
+                p.items.map((item) => {
+                  const condBadge = item.restock
+                    ? badge('Nguyên vẹn (Hoàn kho)', 'green')
+                    : badge('Lỗi / Hỏng (Không hoàn kho)', 'red');
+                  return `<tr>
+                    <td class="name"><code>${e(item.id)}</code></td>
+                    <td><button type="button" class="text-link" data-action="order-detail" data-id="${e(item.orderId)}"><code>${e(item.orderId)}</code></button></td>
+                    <td>${e(item.customerName || 'Khách lẻ')}</td>
+                    <td>${date(item.createdAt)}</td>
+                    <td class="wrap-cell">${e(item.reason)}</td>
+                    <td>${condBadge}</td>
+                    <td class="money name">${money(item.refundAmount)}</td>
+                    <td>${status(item.status)}</td>
+                    <td>${action('return-detail', 'Xem', 'eye', 'small', `data-id="${e(item.id)}"`)}</td>
+                  </tr>`;
+                }),
+              ) + p.foot
+      }
+      <div class="panel-body">
+        <div class="note yellow">
+          <strong>Quy tắc BR-05 &amp; BR-06:</strong> Phiếu ở trạng thái <em>Chờ duyệt</em> chưa cộng tồn kho và chưa trừ doanh thu ròng. Khi Quản lý / Admin bấm <strong>Xác nhận hoàn tiền</strong>, hệ thống cộng hoàn tồn kho (nếu hàng nguyên vẹn) + ghi Thẻ kho <code>TRA_HANG</code> + cập nhật trạng thái hóa đơn trong <strong>1 Transaction nguyên tử</strong>.
+        </div>
+      </div>
+    </section>`
   );
 }
 
 function returnModal(orderId = '') {
-  store.require('returns');
-  modalContext = { type: 'return', orderId };
+  if (!store.hasPermission('RETURN_CREATE')) {
+    notify('Bạn không có quyền lập phiếu trả hàng (RETURN_CREATE).', true);
+    return;
+  }
+  const returnDays = Number(store.data.settings.returnWindowDays || 7);
+  modalContext = { type: 'return', orderId: '', order: null };
   showModal(
-    'Tạo yêu cầu trả hàng',
-    `<form id="return-form"><div class="modal-content stack"><div class="row"><input id="return-order-search" name="orderId" placeholder="Nhập mã hóa đơn gốc…" value="${e(orderId)}" required aria-label="Mã hóa đơn gốc">${action('return-search', 'Tra cứu', 'search')}</div><div id="return-items"></div>${textField('Lý do trả hàng', 'reason')}<div class="field full"><span>Phân loại tình trạng hàng trả:</span><div class="row gap16 mt8"><label class="check-label"><input type="radio" name="restock" value="good_restock" checked> <span><strong>Nguyên vẹn:</strong> Đủ điều kiện nhập lại kho bán</span></label><label class="check-label"><input type="radio" name="restock" value="damaged_or_expired"> <span><strong>Lỗi / Hết date / Hư hỏng:</strong> Chuyển kho chờ hủy (không nhập lại kho bán)</span></label></div></div>${formError()}<div class="note">Chọn số lượng cần trả. Giá trị hoàn tiền được tính theo số tiền thực trả trên hóa đơn sau giảm giá và thuế.</div></div>${foot('Gửi yêu cầu trả hàng')}</form>`,
+    'Lập phiếu trả hàng trong hạn (BR-05)',
+    `<form id="return-form">
+      <div class="modal-content stack">
+        <div class="row gap8">
+          <input id="return-order-search" name="orderId" placeholder="Nhập mã hóa đơn gốc (VD: HD0001)…" value="${e(orderId)}" required aria-label="Mã hóa đơn gốc" style="flex:1;height:40px;padding:0 12px;border:1px solid #d1d5db;border-radius:8px;text-transform:uppercase">
+          ${action('return-search', 'Tra cứu hóa đơn', 'search', 'primary')}
+        </div>
+        <div id="return-items">
+          <div class="note">Nhập mã hóa đơn gốc đã thanh toán (trong hạn ${returnDays} ngày) và bấm <strong>Tra cứu hóa đơn</strong> để chọn sản phẩm cần trả.</div>
+        </div>
+        ${textField('Lý do trả hàng (*)', 'reason', '', 'required minlength="3" maxlength="300" placeholder="VD: Khách đổi ý, bao bì nguyên vẹn hoặc sản phẩm lỗi…"')}
+        <div class="field full">
+          <span>Phân loại tình trạng hàng trả (*):</span>
+          <div class="row gap16 mt8 wrap">
+            <label class="check-label">
+              <input type="radio" name="restock" value="good_restock" checked>
+              <span><strong>Hàng nguyên vẹn:</strong> Cộng hoàn lại tồn kho bán &amp; ghi Thẻ kho <code>TRA_HANG</code></span>
+            </label>
+            <label class="check-label">
+              <input type="radio" name="restock" value="damaged_or_expired">
+              <span><strong>Hàng lỗi / Hư hỏng:</strong> Không cộng lại tồn kho bán</span>
+            </label>
+          </div>
+        </div>
+        ${formError()}
+      </div>
+      <div class="modal-footer">
+        ${action('close-modal', 'Hủy')}
+        <button class="btn primary" type="submit">${icon('check')}Gửi phiếu trả hàng</button>
+      </div>
+    </form>`,
     true,
   );
-  if (orderId) searchReturn();
+  if (orderId) {
+    searchReturn();
+  }
 }
 
-function searchReturn() {
-  const code = $('#return-order-search').value.trim();
-  const o = store.data.orders.find((o) => o.id.toLowerCase() === code.toLowerCase());
-  if (!o) throw new Error('Không tìm thấy hóa đơn. Kiểm tra lại mã trong lịch sử đơn hàng.');
-  if (!['completed', 'partial'].includes(o.status))
-    throw new Error('Hóa đơn này không còn hàng hợp lệ để trả.');
-  modalContext.orderId = o.id;
-  $('#return-items').innerHTML =
-    `<div class="note mb16">${e(o.customer)} · ${date(o.time)} · ${METHODS[o.payment]}<br>Hóa đơn: <strong>${money(o.total)}</strong></div>${table(
-      ['Sản phẩm', 'Đã mua', 'Đã trả', 'Có thể trả', 'SL yêu cầu'],
-      o.items.map((i) => {
-        const available = store.available(o.id, i.id);
-        return `<tr><td class="name">${e(i.name)}</td><td>${i.qty}</td><td>${i.returnedQty}</td><td>${available}</td><td><input class="return-qty" type="number" data-return-id="${e(i.id)}" min="0" max="${available}" step="1" value="0" ${available ? '' : 'disabled'} aria-label="Số lượng trả ${e(i.name)}"></td></tr>`;
+async function searchReturn() {
+  const input = $('#return-order-search');
+  const box = $('#return-items');
+  const errBox = $('#form-error', $('#return-form'));
+  if (!input || !box) return;
+  const code = input.value.trim().toUpperCase();
+  if (!code) {
+    if (errBox) errBox.textContent = 'Vui lòng nhập mã hóa đơn gốc cần tra cứu.';
+    return;
+  }
+  if (errBox) errBox.textContent = '';
+  box.innerHTML = '<div class="note">Đang tra cứu hóa đơn từ CSDL SQLite…</div>';
+  try {
+    const res = await api.getOrder(code);
+    const o = res.item;
+    if (!['DaThanhToan', 'TraMotPhan'].includes(o.status)) {
+      throw new Error(`Hóa đơn ${o.id} ở trạng thái "${o.statusLabel}", không còn hàng hợp lệ để trả.`);
+    }
+    const returnDays = Number(store.data.settings.returnWindowDays || 7);
+    const elapsedDays = (Date.now() - new Date(o.createdAt).getTime()) / 86400000;
+    if (elapsedDays > returnDays) {
+      throw new Error(
+        `Hóa đơn ${o.id} đã quá hạn trả hàng ${returnDays} ngày (đã qua ${Math.floor(elapsedDays)} ngày theo THAM_SO) (BR-05).`,
+      );
+    }
+    modalContext.orderId = o.id;
+    modalContext.order = o;
+    input.value = o.id;
+
+    box.innerHTML = `<div class="note green mb16">
+      <strong>${e(o.id)}</strong> · Khách hàng: <strong>${e(o.customerName)}</strong> · ${date(o.createdAt)} · ${e(METHODS[o.paymentMethod] || o.paymentMethod)}<br>
+      Tổng hóa đơn: <strong class="money">${money(o.totalAmount)}</strong> (đã gồm KM &amp; VAT ${o.taxRate}%) · Còn lại tối đa ${Math.max(0, Math.ceil(returnDays - elapsedDays))} ngày trong hạn trả.
+    </div>
+    ${table(
+      ['Sản phẩm', 'Đơn giá gốc', 'Đã mua', 'Đã trả / Chờ duyệt', 'Có thể trả', 'SL trả'],
+      (o.items || []).map((i) => {
+        const available = Number(i.returnableQty) || 0;
+        return `<tr>
+          <td class="name">${e(i.productName)}<div class="sub"><code>${e(i.sku)}</code></div></td>
+          <td class="money">${money(i.unitPrice)}</td>
+          <td>${number(i.qty)}</td>
+          <td>${number(i.returnedQty)}${i.pendingReturnQty ? ` (+${number(i.pendingReturnQty)} chờ duyệt)` : ''}</td>
+          <td><strong>${number(available)}</strong></td>
+          <td>
+            <input class="return-qty" type="number" data-return-id="${e(i.productId)}" min="0" max="${available}" step="1" value="0" ${available ? '' : 'disabled'} aria-label="Số lượng trả ${e(i.productName)}">
+          </td>
+        </tr>`;
       }),
     )}`;
+  } catch (err) {
+    modalContext.orderId = '';
+    modalContext.order = null;
+    box.innerHTML = `<div class="note red" role="alert">${e(err.message)}</div>`;
+  }
 }
 
-function returnDetail(returnId) {
-  const r = store.data.returns.find((r) => r.id === returnId);
-  if (!r) throw new Error('Phiếu trả không tồn tại.');
-  const o = store.data.orders.find((o) => o.id === r.orderId);
-  const estimate = r.items.reduce((a, item) => {
-    const i = o.items.find((i) => i.id === item.id);
-    return (
-      a +
-      Math.floor((i.paidTotal * (i.returnedQty + item.qty)) / i.qty) -
-      Math.floor((i.paidTotal * i.returnedQty) / i.qty)
+async function returnDetail(returnId) {
+  try {
+    const res = await api.getReturn(returnId);
+    const r = res.item;
+    if (!r) throw new Error('Không tìm thấy phiếu trả hàng.');
+    const canApprove = store.hasPermission('RETURN_APPROVE');
+    modalContext = { type: 'return-detail', id: r.id, item: r };
+
+    showModal(
+      `Chi tiết phiếu trả hàng · ${e(r.id)}`,
+      `<div class="modal-content">
+        <div class="detail-grid">
+          <div><small>Mã phiếu trả</small><strong><code>${e(r.id)}</code></strong></div>
+          <div><small>Hóa đơn gốc</small><strong><code>${e(r.orderId)}</code></strong></div>
+          <div><small>Khách hàng</small><strong>${e(r.customerName)}</strong></div>
+          <div><small>Trạng thái</small>${status(r.status)}</div>
+        </div>
+        ${table(
+          ['SKU', 'Sản phẩm', 'SL trả / Đã mua', 'Đơn giá gốc', 'Tiền hoàn dòng'],
+          (r.items || []).map(
+            (i) => `<tr>
+              <td><code>${e(i.sku)}</code></td>
+              <td class="name">${e(i.productName)}</td>
+              <td><strong>${number(i.qty)}</strong> / ${number(i.purchasedQty)} ${e(i.unitName || '')}</td>
+              <td class="money">${money(i.unitPriceSnapshot)}</td>
+              <td class="money name">${money(i.refundLineAmount)}</td>
+            </tr>`,
+          ),
+        )}
+        <div class="stack mt16">
+          <div class="between">
+            <strong>${r.status === 'DaXacNhan' ? 'Tổng tiền đã hoàn' : 'Tổng tiền hoàn dự kiến'}:</strong>
+            <strong class="money" style="font-size:18px;color:#0f766e">${money(r.refundAmount)}</strong>
+          </div>
+          <p class="sub">
+            Lý do: <strong>${e(r.reason)}</strong><br>
+            Tình trạng hàng trả: <strong>${r.restock ? 'Hàng nguyên vẹn (Cộng hoàn tồn kho & ghi Thẻ kho TRA_HANG)' : 'Hàng lỗi / Hư hỏng (Không cộng tồn kho bán)'}</strong><br>
+            Phương thức thanh toán gốc: ${e(METHODS[r.orderPaymentMethod] || r.orderPaymentMethod)}<br>
+            Người lập: ${e(r.createdByName || '—')} · ${date(r.createdAt)}
+            ${r.resolvedAt ? `<br>Người xử lý: ${e(r.approvedByName || '—')} · ${date(r.resolvedAt)}` : ''}
+          </p>
+          ${
+            r.status === 'ChoDuyet'
+              ? `<div class="note yellow">
+                  ${
+                    canApprove
+                      ? 'Kiểm tra tình trạng hàng thực nhận trước khi duyệt. Thao tác Xác nhận sẽ cập nhật tồn kho, Thẻ kho và tiền hoàn trong 1 Transaction nguyên tử.'
+                      : 'Phiếu đang chờ Quản lý cửa hàng hoặc Quản trị viên phê duyệt hoàn tiền.'
+                  }
+                </div>`
+              : ''
+          }
+        </div>
+      </div>
+      <div class="modal-footer wrap">
+        ${action('order-detail', 'Xem hóa đơn gốc', 'receipt', '', `data-id="${e(r.orderId)}"`)}
+        ${
+          r.status === 'ChoDuyet' && canApprove
+            ? action('return-reject', 'Từ chối', 'close', 'danger', `data-id="${e(r.id)}"`) +
+              action('return-approve', 'Xác nhận hoàn tiền', 'check', 'teal', `data-id="${e(r.id)}"`)
+            : ''
+        }
+        ${action('close-modal', 'Đóng')}
+      </div>`,
+      true,
     );
-  }, 0);
-  const isDamaged = r.returnCondition === 'damaged_or_expired' || r.restock === false;
-  showModal(
-    'Chi tiết yêu cầu trả hàng',
-    `<div class="modal-content"><div class="detail-grid"><div><small>Mã phiếu</small><strong>${e(r.id)}</strong></div><div><small>Hóa đơn gốc</small><strong>${e(r.orderId)}</strong></div><div><small>Khách hàng</small><strong>${e(o.customer)}</strong></div><div><small>Trạng thái</small>${status(r.status)}</div></div>${table(
-      ['Sản phẩm', 'SL trả', 'Đơn giá gốc'],
-      r.items.map(
-        (i) => `<tr><td>${e(i.name)}</td><td>${i.qty}</td><td>${money(i.price)}</td></tr>`,
-      ),
-    )}<div class="stack mt16"><p><strong>${r.status === 'approved' ? 'Đã hoàn tiền' : 'Dự kiến hoàn'}: ${money(r.status === 'approved' ? r.amount : estimate)}</strong></p><p class="sub">Lý do: ${e(r.reason)}<br>Phân loại hàng trả: <strong>${isDamaged ? 'Hàng hỏng / hết date (Kho chờ hủy - Không cộng tồn bán)' : 'Hàng nguyên tem (Cộng lại kho bán)'}</strong><br>Phương thức hoàn: ${METHODS[r.payment]}<br>Người tạo: ${e(r.actor)} · ${date(r.time)}${r.resolvedAt ? `<br>Xử lý bởi ${e(r.approver)} · ${date(r.resolvedAt)}` : ''}</p>${r.status === 'pending' ? '<div class="note yellow">Trước khi phê duyệt, kiểm tra hàng thực nhận và thực hiện hoàn tiền cho khách bằng phương thức gốc. Ứng dụng ghi nhận kết quả thủ công.</div>' : ''}</div></div><div class="modal-footer">${action('order-detail', 'Xem hóa đơn gốc', 'receipt', '', `data-id="${e(o.id)}"`)}${r.status === 'pending' && store.user.role === 'ADMIN' ? action('return-reject', 'Từ chối', '', 'danger', `data-id="${e(r.id)}"`) + action('return-approve', 'Xác nhận đã hoàn tiền', 'check', 'teal', `data-id="${e(r.id)}"`) : ''}</div>`,
-    true,
-  );
+  } catch (err) {
+    notify(err.message, true);
+  }
 }

@@ -5,6 +5,7 @@ const { StaffService } = require('../bll/staffService.js');
 const { SystemService } = require('../bll/systemService.js');
 const { CatalogService } = require('../bll/catalogService.js');
 const { WarehouseService } = require('../bll/warehouseService.js');
+const { SalesService } = require('../bll/salesService.js');
 const { ForbiddenException, NotFoundException } = require('../bll/errors.js');
 const { sendJson, sendError, readJsonBody, createAuthGuards } = require('../middleware/rbac.js');
 
@@ -15,6 +16,7 @@ function createApiRouter(db) {
   const systemService = new SystemService(db, repos);
   const catalogService = new CatalogService(db, repos);
   const warehouseService = new WarehouseService(db, repos);
+  const salesService = new SalesService(db, repos, systemService);
   const { authenticate, authorize } = createAuthGuards(repos);
 
   return async function handleApiRequest(req, res, urlObj) {
@@ -523,6 +525,223 @@ function createApiRouter(db) {
           authorize(req, 'INVENTORY_APPROVE');
           throw new ForbiddenException(
             'Không cho phép xóa cứng phiếu kiểm kê. Hãy chuyển trạng thái sang Đã hủy (DaHuy) nếu phiếu đang Chờ duyệt.',
+          );
+        }
+      }
+
+      // ─── M4: PROMOTIONS (Khuyến mãi — BR-04) ───────────────────────────────
+      if (method === 'POST' && pathname === '/api/promotions/validate') {
+        authorize(req, 'POS_SELL');
+        const body = await readJsonBody(req);
+        const result = salesService.validatePromotionForSubtotal(body.code || body.promotionId, body.subtotal);
+        return sendJson(res, 200, {
+          promotion: result.promotion,
+          subtotal: result.subtotal,
+          discountAmount: result.discountAmount,
+          afterDiscount: result.afterDiscount,
+          taxRate: result.taxRate,
+          taxAmount: result.taxAmount,
+          totalAmount: result.totalAmount,
+        });
+      }
+
+      if (pathname === '/api/promotions') {
+        if (method === 'GET') {
+          const requestedActiveOnly = urlObj.searchParams.get('activeOnly') === 'true';
+          const auth = authenticate(req);
+          const canManage = auth.permissions.includes('PROMOTION_MANAGE');
+          const canSell = auth.permissions.includes('POS_SELL');
+          if (requestedActiveOnly) {
+            if (!canManage && !canSell) {
+              throw new ForbiddenException(
+                `Vai trò ${auth.user.role_short_name} không có quyền xem khuyến mãi áp dụng tại POS (yêu cầu POS_SELL hoặc PROMOTION_MANAGE).`,
+              );
+            }
+          } else if (!canManage) {
+            throw new ForbiddenException(
+              `Vai trò ${auth.user.role_short_name} không có quyền quản lý chương trình khuyến mãi (yêu cầu PROMOTION_MANAGE).`,
+            );
+          }
+          const result = salesService.listPromotions(
+            {
+              search: urlObj.searchParams.get('search') || '',
+              status: urlObj.searchParams.get('status') || '',
+            },
+            { activeOnly: requestedActiveOnly },
+          );
+          return sendJson(res, 200, result);
+        }
+        if (method === 'POST') {
+          const auth = authorize(req, 'PROMOTION_MANAGE');
+          const body = await readJsonBody(req);
+          const item = salesService.createPromotion(auth.user, body);
+          return sendJson(res, 201, { item });
+        }
+      }
+
+      const promoStatusMatch = /^\/api\/promotions\/([^/]+)\/status$/.exec(pathname);
+      if (method === 'PATCH' && promoStatusMatch) {
+        const auth = authorize(req, 'PROMOTION_MANAGE');
+        const body = await readJsonBody(req);
+        const item = salesService.setPromotionStatus(
+          auth.user,
+          decodeURIComponent(promoStatusMatch[1]),
+          body.status,
+        );
+        return sendJson(res, 200, { item });
+      }
+
+      const promoIdMatch = /^\/api\/promotions\/([^/]+)$/.exec(pathname);
+      if (promoIdMatch) {
+        const targetId = decodeURIComponent(promoIdMatch[1]);
+        if (method === 'PUT' || method === 'PATCH') {
+          const auth = authorize(req, 'PROMOTION_MANAGE');
+          const body = await readJsonBody(req);
+          const item = salesService.updatePromotion(auth.user, targetId, body);
+          return sendJson(res, 200, { item });
+        }
+        if (method === 'DELETE') {
+          authorize(req, 'PROMOTION_MANAGE');
+          throw new ForbiddenException(
+            'Không cho phép xóa cứng chương trình khuyến mãi. Hãy chuyển trạng thái sang Tạm dừng hoặc Kết thúc để bảo toàn lịch sử hóa đơn.',
+          );
+        }
+      }
+
+      // ─── M4: CUSTOMERS (Khách hàng cho POS & Tra cứu) ──────────────────────
+      if (pathname === '/api/customers') {
+        if (method === 'GET') {
+          authorize(req, 'CUSTOMER_MANAGE');
+          const result = salesService.listCustomers({
+            search: urlObj.searchParams.get('search') || '',
+            status: urlObj.searchParams.get('status') || '',
+          });
+          return sendJson(res, 200, result);
+        }
+        if (method === 'POST') {
+          const auth = authorize(req, 'CUSTOMER_MANAGE');
+          const body = await readJsonBody(req);
+          const item = salesService.createCustomer(auth.user, body);
+          return sendJson(res, 201, { item });
+        }
+      }
+
+      const custHistoryMatch = /^\/api\/customers\/([^/]+)\/history$/.exec(pathname);
+      if (method === 'GET' && custHistoryMatch) {
+        authorize(req, 'CUSTOMER_MANAGE');
+        return sendJson(res, 200, salesService.getCustomerHistory(decodeURIComponent(custHistoryMatch[1])));
+      }
+
+      const custIdMatch = /^\/api\/customers\/([^/]+)$/.exec(pathname);
+      if (custIdMatch) {
+        const targetId = decodeURIComponent(custIdMatch[1]);
+        if (method === 'PUT' || method === 'PATCH') {
+          const auth = authorize(req, 'CUSTOMER_MANAGE');
+          const body = await readJsonBody(req);
+          const item = salesService.updateCustomer(auth.user, targetId, body);
+          return sendJson(res, 200, { item });
+        }
+        if (method === 'DELETE') {
+          authorize(req, 'CUSTOMER_MANAGE');
+          throw new ForbiddenException('Không cho phép xóa cứng khách hàng. Hãy chuyển trạng thái sang Tạm ngừng.');
+        }
+      }
+
+      // ─── M4: POS CHECKOUT & ORDERS (BR-03, BR-04, BR-05) ───────────────────
+      if (method === 'POST' && pathname === '/api/pos/checkout') {
+        const auth = authorize(req, 'POS_SELL');
+        const body = await readJsonBody(req);
+        const item = salesService.checkout(auth.user, body);
+        return sendJson(res, 201, { item });
+      }
+
+      if (method === 'GET' && pathname === '/api/orders') {
+        authorize(req, 'ORDER_VIEW');
+        const result = salesService.listOrders({
+          search: urlObj.searchParams.get('search') || '',
+          status: urlObj.searchParams.get('status') || '',
+          paymentMethod: urlObj.searchParams.get('paymentMethod') || '',
+          customerId: urlObj.searchParams.get('customerId') || '',
+          fromDate: urlObj.searchParams.get('fromDate') || '',
+          toDate: urlObj.searchParams.get('toDate') || '',
+        });
+        return sendJson(res, 200, result);
+      }
+
+      const orderPayMatch = /^\/api\/orders\/([^/]+)\/pay$/.exec(pathname);
+      if (method === 'POST' && orderPayMatch) {
+        const auth = authorize(req, 'POS_SELL');
+        salesService.payOrder(auth.user, decodeURIComponent(orderPayMatch[1]));
+      }
+
+      const orderIdMatch = /^\/api\/orders\/([^/]+)$/.exec(pathname);
+      if (orderIdMatch) {
+        const targetId = decodeURIComponent(orderIdMatch[1]);
+        if (method === 'GET') {
+          const auth = authorize(req, 'ORDER_VIEW');
+          const item = salesService.getOrder(targetId, {
+            canViewCost: auth.permissions.includes('PRODUCT_COST_VIEW'),
+          });
+          return sendJson(res, 200, { item });
+        }
+        if (['PUT', 'PATCH', 'DELETE'].includes(method)) {
+          authorize(req, 'ORDER_VIEW');
+          salesService.forbidOrderMutation(targetId);
+        }
+      }
+
+      // ─── M4: CUSTOMER RETURNS (Trả hàng trong hạn — BR-05 & BR-06) ─────────
+      if (pathname === '/api/returns') {
+        if (method === 'GET') {
+          authorize(req, 'RETURN_CREATE');
+          const result = salesService.listReturns({
+            search: urlObj.searchParams.get('search') || '',
+            status: urlObj.searchParams.get('status') || '',
+            orderId: urlObj.searchParams.get('orderId') || '',
+            fromDate: urlObj.searchParams.get('fromDate') || '',
+            toDate: urlObj.searchParams.get('toDate') || '',
+          });
+          return sendJson(res, 200, result);
+        }
+        if (method === 'POST') {
+          const auth = authorize(req, 'RETURN_CREATE');
+          const body = await readJsonBody(req);
+          const item = salesService.createReturn(auth.user, body);
+          return sendJson(res, 201, { item });
+        }
+      }
+
+      const returnApproveMatch = /^\/api\/returns\/([^/]+)\/approve$/.exec(pathname);
+      if (method === 'POST' && returnApproveMatch) {
+        const auth = authorize(req, 'RETURN_APPROVE');
+        const item = salesService.approveReturn(auth.user, decodeURIComponent(returnApproveMatch[1]));
+        return sendJson(res, 200, { item });
+      }
+
+      const returnRejectMatch = /^\/api\/returns\/([^/]+)\/reject$/.exec(pathname);
+      if (method === 'POST' && returnRejectMatch) {
+        const auth = authorize(req, 'RETURN_APPROVE');
+        const body = await readJsonBody(req);
+        const item = salesService.rejectReturn(
+          auth.user,
+          decodeURIComponent(returnRejectMatch[1]),
+          body.reason || '',
+        );
+        return sendJson(res, 200, { item });
+      }
+
+      const returnIdMatch = /^\/api\/returns\/([^/]+)$/.exec(pathname);
+      if (returnIdMatch) {
+        const targetId = decodeURIComponent(returnIdMatch[1]);
+        if (method === 'GET') {
+          authorize(req, 'RETURN_CREATE');
+          const item = salesService.getReturn(targetId);
+          return sendJson(res, 200, { item });
+        }
+        if (method === 'DELETE') {
+          authorize(req, 'RETURN_APPROVE');
+          throw new ForbiddenException(
+            'Không cho phép xóa cứng phiếu trả hàng. Hãy dùng chức năng Từ chối (TuChoi) nếu phiếu đang Chờ duyệt.',
           );
         }
       }

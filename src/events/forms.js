@@ -211,18 +211,95 @@ document.addEventListener('submit', async (event) => {
         break;
       }
       case 'checkout-form': {
-        const d = clone(store.data.draft);
-        d.demographic = v.demographic;
-        store.saveDraft(d);
-        const o = store.checkout({
-          payment: v.payment,
-          received: Number(v.received || 0),
-          paymentRef: v.paymentRef || '',
-          confirmed: v.confirmed === 'on',
-        });
-        render();
-        orderDetail(o.id);
-        notify(`Thanh toán thành công · ${o.id}`);
+        if (!posCart.items.length) {
+          throw new Error('Giỏ hàng trống, không thể thanh toán.');
+        }
+        if (submitBtn) submitBtn.disabled = true;
+        try {
+          const paymentMethod = String(v.paymentMethod || v.payment || 'CASH').toUpperCase();
+          const cashVal = v.cashReceived !== undefined ? v.cashReceived : v.received;
+          const payload = {
+            customerId: posCart.customerId || null,
+            promotionCode: posCart.appliedPromotion?.code || '',
+            paymentMethod,
+            cashReceived: paymentMethod === 'CASH' ? Number(cashVal || 0) : 0,
+            paymentRef: (v.paymentRef || '').trim(),
+            note: (posCart.note || '').trim(),
+            items: posCart.items.map((i) => ({
+              productId: i.productId,
+              qty: Number(i.qty),
+            })),
+          };
+          const res = await api.checkoutPos(payload);
+          const createdOrder = res.item;
+          resetPosCart();
+          closeModal();
+          notify(`Thanh toán thành công hóa đơn ${createdOrder.id} · ${money(createdOrder.totalAmount)}`);
+          await Promise.all([
+            loadPosData(true),
+            store.hasPermission('ORDER_VIEW') ? loadOrdersData(true) : Promise.resolve(),
+          ]);
+          await orderDetail(createdOrder.id);
+        } finally {
+          if (submitBtn) submitBtn.disabled = false;
+        }
+        break;
+      }
+      case 'promotion-api-form': {
+        if (submitBtn) submitBtn.disabled = true;
+        try {
+          const payload = {
+            code: (v.code || '').trim().toUpperCase(),
+            name: (v.name || '').trim(),
+            discountType: v.discountType,
+            discountValue: Number(v.discountValue),
+            maxDiscount: Number(v.maxDiscount || 0),
+            minOrderAmount: Number(v.minOrderAmount || 0),
+            startDate: v.startDate,
+            endDate: v.endDate,
+            usageLimit: Number(v.usageLimit),
+            status: v.status,
+          };
+          if (modalContext.id) {
+            await api.updatePromotion(modalContext.id, payload);
+            notify(`Đã cập nhật chương trình khuyến mãi ${payload.code}.`);
+          } else {
+            await api.createPromotion(payload);
+            notify(`Đã tạo chương trình khuyến mãi ${payload.code}.`);
+          }
+          closeModal();
+          await loadPromotionsData(true);
+        } finally {
+          if (submitBtn) submitBtn.disabled = false;
+        }
+        break;
+      }
+      case 'customer-api-form': {
+        if (submitBtn) submitBtn.disabled = true;
+        try {
+          const payload = {
+            name: (v.name || '').trim(),
+            phone: (v.phone || '').trim(),
+            email: (v.email || '').trim(),
+          };
+          if (modalContext.id) {
+            if (v.status) payload.status = v.status;
+            await api.updateCustomer(modalContext.id, payload);
+            notify('Đã cập nhật hồ sơ khách hàng.');
+          } else {
+            const res = await api.createCustomer(payload);
+            notify(`Đã thêm khách hàng ${res.item.name} (${res.item.id}).`);
+            if (page === 'pos' && res.item) {
+              posCart.customerId = res.item.id;
+              customerSearchState.customerId = res.item.id;
+              customerSearchState.query = '';
+            }
+          }
+          closeModal();
+          await loadCustomersData(true);
+        } finally {
+          if (submitBtn) submitBtn.disabled = false;
+        }
         break;
       }
       case 'entity-form': {
@@ -372,24 +449,37 @@ document.addEventListener('submit', async (event) => {
       case 'return-form': {
         if (
           !modalContext.orderId ||
-          v.orderId.trim().toLowerCase() !== modalContext.orderId.toLowerCase()
-        )
-          throw new Error('Tra cứu hóa đơn trước khi gửi yêu cầu.');
-        if (!v.reason?.trim()) throw new Error('Vui lòng nhập lý do trả hàng.');
+          (v.orderId || '').trim().toUpperCase() !== modalContext.orderId.toUpperCase()
+        ) {
+          throw new Error('Vui lòng bấm "Tra cứu hóa đơn" trước khi gửi phiếu trả hàng.');
+        }
+        const reason = (v.reason || '').trim();
+        if (reason.length < 3) throw new Error('Vui lòng nhập lý do trả hàng (tối thiểu 3 ký tự).');
         const selections = $$('[data-return-id]', $('#modal'))
-          .map((input) => ({ id: input.dataset.returnId, qty: Number(input.value) }))
+          .map((input) => ({ productId: input.dataset.returnId, qty: Number(input.value) }))
           .filter((i) => i.qty > 0);
-        const restockChoice =
-          v.restock === 'good_restock' || v.restock === 'on' || v.restock === true;
-        const r = store.createReturn(
-          modalContext.orderId,
-          selections,
-          v.reason,
-          restockChoice ? 'good_restock' : 'damaged_or_expired',
-        );
-        render();
-        returnDetail(r.id);
-        notify('Đã tạo yêu cầu, chờ quản trị viên phê duyệt.');
+        if (!selections.length) {
+          throw new Error('Vui lòng nhập số lượng trả (> 0) cho ít nhất 1 sản phẩm.');
+        }
+        const restock = v.restock !== 'damaged_or_expired';
+        if (submitBtn) submitBtn.disabled = true;
+        try {
+          const res = await api.createReturn({
+            orderId: modalContext.orderId,
+            reason,
+            restock,
+            items: selections,
+          });
+          closeModal();
+          notify(`Đã lập phiếu trả hàng ${res.item.id} (Chờ Quản lý/Admin duyệt hoàn tiền).`);
+          await Promise.all([
+            loadReturnsData(true),
+            store.hasPermission('ORDER_VIEW') ? loadOrdersData(true) : Promise.resolve(),
+          ]);
+          await returnDetail(res.item.id);
+        } finally {
+          if (submitBtn) submitBtn.disabled = false;
+        }
         break;
       }
       case 'settings-form':
@@ -404,13 +494,18 @@ document.addEventListener('submit', async (event) => {
         notify('Địa chỉ có đối tác phục vụ. Đã lưu đề xuất chi nhánh.');
         break;
       case 'scan-form': {
-        const p = store.data.products.find(
-          (p) => p.barcode === v.code.trim() || p.id.toLowerCase() === v.code.trim().toLowerCase(),
+        const code = (v.code || '').trim().toLowerCase();
+        const p = (apiState.products || []).find(
+          (item) =>
+            item.status === 'DangKinhDoanh' &&
+            (String(item.barcode || '').toLowerCase() === code ||
+              String(item.sku || '').toLowerCase() === code ||
+              String(item.id || '').toLowerCase() === code),
         );
-        if (!p) throw new Error('Không tìm thấy sản phẩm với mã này.');
-        addCart(p.id);
+        if (!p) throw new Error(`Không tìm thấy sản phẩm đang kinh doanh với mã "${v.code.trim()}".`);
+        addCart(p.id, 1);
         closeModal();
-        notify(`Đã thêm ${p.name}`);
+        notify(`Đã thêm ${p.name} (${p.sku}) vào giỏ POS.`);
         break;
       }
       case 'import-csv-form': {

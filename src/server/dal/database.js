@@ -62,6 +62,7 @@ const ROLE_PERMISSION_MATRIX = {
   ADMIN: PERMISSION_DEFINITIONS.map((p) => p.code),
   MANAGER: [
     'DASHBOARD_VIEW',
+    'POS_SELL',
     'ORDER_VIEW',
     'RETURN_CREATE',
     'RETURN_APPROVE',
@@ -381,7 +382,7 @@ CREATE TABLE IF NOT EXISTS promotions (
   end_date TEXT NOT NULL,
   usage_limit INTEGER NOT NULL DEFAULT 1000 CHECK (usage_limit >= 1),
   used_count INTEGER NOT NULL DEFAULT 0 CHECK (used_count >= 0),
-  status TEXT NOT NULL DEFAULT 'DangDienRa' CHECK (status IN ('SapDienRa', 'DangDienRa', 'KetThuc', 'DaHuy')),
+  status TEXT NOT NULL DEFAULT 'DangDienRa' CHECK (status IN ('SapDienRa', 'DangDienRa', 'TamDung', 'KetThuc', 'DaHuy')),
   created_at TEXT NOT NULL
 );
 
@@ -532,6 +533,13 @@ CREATE INDEX IF NOT EXISTS idx_stock_movements_created ON stock_movements(create
 CREATE INDEX IF NOT EXISTS idx_purchases_status_created ON purchases(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_purchases_supplier ON purchases(supplier_id);
 CREATE INDEX IF NOT EXISTS idx_stock_audits_status_created ON stock_audits(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_promotions_code ON promotions(code);
+CREATE INDEX IF NOT EXISTS idx_promotions_status ON promotions(status);
+CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id);
+CREATE INDEX IF NOT EXISTS idx_returns_order ON returns(order_id);
+CREATE INDEX IF NOT EXISTS idx_returns_status_created ON returns(status, created_at DESC);
 
 -- ============================================================================
 -- TRIGGERS BẤT BIẾN (APPEND-ONLY) TẠI TẦNG CSDL CHO AUDIT_LOGS & STOCK_MOVEMENTS
@@ -765,6 +773,48 @@ function seedCoreData(db) {
             );
           }
         }
+      }
+    }
+
+    // Seed default customers & promotions for M4 POS (does not create orders or extra stock_movements)
+    const customerCount = db.prepare('SELECT COUNT(*) AS cnt FROM customers').get().cnt;
+    if (customerCount === 0) {
+      const insertCustomer = db.prepare(`
+        INSERT OR IGNORE INTO customers (id, name, phone, email, status, created_at)
+        VALUES (?, ?, ?, ?, 'HoatDong', ?)
+      `);
+      const seedCustomers = [
+        ['KH001', 'Nguyễn Minh Anh', '0901234567', 'minhanh@gmail.com'],
+        ['KH002', 'Trần Thanh Tùng', '0912345678', 'thanhtung@gmail.com'],
+        ['KH003', 'Lê Thảo Vy', '0987654321', 'thaovy@gmail.com'],
+        ['KH004', 'Phạm Gia Huy', '0938112233', 'giahuy@gmail.com'],
+      ];
+      for (const [cid, cname, cphone, cemail] of seedCustomers) {
+        insertCustomer.run(cid, cname, cphone, cemail, nowIso);
+      }
+    }
+
+    const promoCount = db.prepare('SELECT COUNT(*) AS cnt FROM promotions').get().cnt;
+    if (promoCount === 0) {
+      const dayMs = 86400000;
+      const toYmd = (d) => d.toISOString().slice(0, 10);
+      const startActive = toYmd(new Date(Date.now() - 30 * dayMs));
+      const endActive = toYmd(new Date(Date.now() + 180 * dayMs));
+      const startFuture = toYmd(new Date(Date.now() + 30 * dayMs));
+      const endFuture = toYmd(new Date(Date.now() + 90 * dayMs));
+      const insertPromo = db.prepare(`
+        INSERT OR IGNORE INTO promotions (
+          id, code, name, discount_type, discount_value, min_order_amount,
+          max_discount, start_date, end_date, usage_limit, used_count, status, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+      `);
+      const seedPromos = [
+        ['KM001', 'GIAM10', 'Giảm 10% hóa đơn từ 100.000 ₫ (tối đa 50.000 ₫)', 'PERCENT', 10, 100000, 50000, startActive, endActive, 500, 'DangDienRa'],
+        ['KM002', 'GIAM20K', 'Giảm thẳng 20.000 ₫ cho đơn từ 150.000 ₫', 'FIXED', 20000, 150000, 0, startActive, endActive, 300, 'DangDienRa'],
+        ['KM003', 'SAPMO15', 'Ưu đãi sắp mở giảm 15% (tối đa 80.000 ₫)', 'PERCENT', 15, 200000, 80000, startFuture, endFuture, 200, 'SapDienRa'],
+      ];
+      for (const p of seedPromos) {
+        insertPromo.run(...p, nowIso);
       }
     }
 

@@ -66,6 +66,22 @@ const apiState = {
   },
   stockAuditsLoaded: false,
   stockAuditError: '',
+  // M4 POS, Promotions, Customers, Orders & Returns caches
+  promotions: [],
+  promotionsSummary: { total: 0, activeCount: 0, upcomingCount: 0, pausedCount: 0, endedCount: 0 },
+  promotionsLoaded: false,
+  activePromotions: [],
+  activePromotionsLoaded: false,
+  customers: [],
+  customersLoaded: false,
+  orders: [],
+  ordersSummary: { total: 0, paidCount: 0, returnedCount: 0, grossRevenue: 0, refundedTotal: 0, netRevenue: 0 },
+  ordersLoaded: false,
+  orderError: '',
+  returns: [],
+  returnsSummary: { total: 0, pendingCount: 0, approvedCount: 0, rejectedCount: 0, totalRefunded: 0 },
+  returnsLoaded: false,
+  returnError: '',
   loading: {},
 };
 
@@ -147,6 +163,21 @@ function resetApiCaches() {
   };
   apiState.stockAuditsLoaded = false;
   apiState.stockAuditError = '';
+  apiState.promotions = [];
+  apiState.promotionsSummary = { total: 0, activeCount: 0, upcomingCount: 0, pausedCount: 0, endedCount: 0 };
+  apiState.promotionsLoaded = false;
+  apiState.activePromotions = [];
+  apiState.activePromotionsLoaded = false;
+  apiState.customers = [];
+  apiState.customersLoaded = false;
+  apiState.orders = [];
+  apiState.ordersSummary = { total: 0, paidCount: 0, returnedCount: 0, grossRevenue: 0, refundedTotal: 0, netRevenue: 0 };
+  apiState.ordersLoaded = false;
+  apiState.orderError = '';
+  apiState.returns = [];
+  apiState.returnsSummary = { total: 0, pendingCount: 0, approvedCount: 0, rejectedCount: 0, totalRefunded: 0 };
+  apiState.returnsLoaded = false;
+  apiState.returnError = '';
   apiState.loading = {};
 }
 
@@ -280,6 +311,31 @@ const api = {
   approveStockAudit: (id) => apiRequest('POST', `/api/stock-audits/${encodeURIComponent(id)}/approve`, {}),
   cancelStockAudit: (id, reason = '') =>
     apiRequest('POST', `/api/stock-audits/${encodeURIComponent(id)}/cancel`, { reason }),
+
+  // M4 Promotions, Customers, POS Checkout, Orders & Returns
+  listPromotions: (params = {}) => apiRequest('GET', `/api/promotions${buildQuery(params)}`),
+  createPromotion: (data) => apiRequest('POST', '/api/promotions', data),
+  updatePromotion: (id, data) => apiRequest('PUT', `/api/promotions/${encodeURIComponent(id)}`, data),
+  setPromotionStatus: (id, status) =>
+    apiRequest('PATCH', `/api/promotions/${encodeURIComponent(id)}/status`, { status }),
+  validatePromotion: (code, subtotal) =>
+    apiRequest('POST', '/api/promotions/validate', { code, subtotal }),
+
+  listCustomers: (params = {}) => apiRequest('GET', `/api/customers${buildQuery(params)}`),
+  createCustomer: (data) => apiRequest('POST', '/api/customers', data),
+  updateCustomer: (id, data) => apiRequest('PUT', `/api/customers/${encodeURIComponent(id)}`, data),
+  getCustomerHistory: (id) => apiRequest('GET', `/api/customers/${encodeURIComponent(id)}/history`),
+
+  checkoutPos: (data) => apiRequest('POST', '/api/pos/checkout', data),
+  listOrders: (params = {}) => apiRequest('GET', `/api/orders${buildQuery(params)}`),
+  getOrder: (id) => apiRequest('GET', `/api/orders/${encodeURIComponent(id)}`),
+
+  listReturns: (params = {}) => apiRequest('GET', `/api/returns${buildQuery(params)}`),
+  getReturn: (id) => apiRequest('GET', `/api/returns/${encodeURIComponent(id)}`),
+  createReturn: (data) => apiRequest('POST', '/api/returns', data),
+  approveReturn: (id) => apiRequest('POST', `/api/returns/${encodeURIComponent(id)}/approve`, {}),
+  rejectReturn: (id, reason = '') =>
+    apiRequest('POST', `/api/returns/${encodeURIComponent(id)}/reject`, { reason }),
 };
 
 async function loadStaffData(force = false) {
@@ -422,7 +478,7 @@ async function loadProductsData(force = false) {
     notify(err.message, true);
   } finally {
     apiState.loading.products = false;
-    if (['products', 'inventory', 'purchases'].includes(page) && $('#content')) render();
+    if (['products', 'inventory', 'purchases', 'pos'].includes(page) && $('#content')) render();
   }
 }
 
@@ -546,5 +602,145 @@ async function loadStockAuditsData(force = false) {
   } finally {
     apiState.loading.stockAudits = false;
     if (page === 'inventory' && $('#content')) render();
+  }
+}
+
+async function loadPosData(force = false) {
+  if (!store.hasPermission('POS_SELL')) return;
+  if (apiState.loading.pos && !force) return;
+  apiState.loading.pos = true;
+  try {
+    const jobs = [
+      api.listProducts({ status: 'DangKinhDoanh' }).then((res) => {
+        apiState.products = res.items || [];
+        apiState.productsSummary = res.summary || apiState.productsSummary;
+        apiState.productsLoaded = true;
+      }),
+      api.listPromotions({ activeOnly: 'true' }).then((res) => {
+        apiState.activePromotions = res.items || [];
+        apiState.activePromotionsLoaded = true;
+      }),
+      api.getStoreConfig().then((cfg) => {
+        syncStoreSettingsFromServer(cfg.storeConfig);
+      }),
+    ];
+    if (store.hasPermission('CUSTOMER_MANAGE')) {
+      jobs.push(
+        api.listCustomers().then((res) => {
+          apiState.customers = res.items || [];
+          apiState.customersLoaded = true;
+        }),
+      );
+    }
+    await Promise.all(jobs);
+  } catch (err) {
+    notify(err.message, true);
+  } finally {
+    apiState.loading.pos = false;
+    if (page === 'pos' && $('#content')) render();
+  }
+}
+
+async function loadPromotionsData(force = false) {
+  if (!store.hasPermission('PROMOTION_MANAGE')) return;
+  if (apiState.loading.promotions && !force) return;
+  apiState.loading.promotions = true;
+  try {
+    const res = await api.listPromotions({
+      search: filters.promotions || '',
+      status: filters.promoStatus || '',
+    });
+    apiState.promotions = res.items || [];
+    apiState.promotionsSummary = res.summary || apiState.promotionsSummary;
+    apiState.promotionsLoaded = true;
+  } catch (err) {
+    notify(err.message, true);
+  } finally {
+    apiState.loading.promotions = false;
+    if (page === 'promotions' && $('#content')) render();
+  }
+}
+
+async function loadCustomersData(force = false) {
+  if (!store.hasPermission('CUSTOMER_MANAGE')) return;
+  if (apiState.loading.customers && !force) return;
+  apiState.loading.customers = true;
+  try {
+    const res = await api.listCustomers({
+      search: filters.customers || '',
+      status: filters.customerStatus || '',
+    });
+    apiState.customers = res.items || [];
+    apiState.customersLoaded = true;
+  } catch (err) {
+    notify(err.message, true);
+  } finally {
+    apiState.loading.customers = false;
+    if (['customers', 'pos'].includes(page) && $('#content')) render();
+  }
+}
+
+async function loadOrdersData(force = false) {
+  if (!store.hasPermission('ORDER_VIEW')) return;
+  if (apiState.loading.orders && !force) return;
+  const fromDate = filters.orderFrom || '';
+  const toDate = filters.orderTo || '';
+  if (fromDate && toDate && fromDate > toDate) {
+    apiState.orderError = 'Khoảng thời gian không hợp lệ: "Từ ngày" phải nhỏ hơn hoặc bằng "Đến ngày" (BR-08).';
+    apiState.ordersLoaded = true;
+    if (page === 'orders' && $('#content')) render();
+    return;
+  }
+  apiState.orderError = '';
+  apiState.loading.orders = true;
+  try {
+    const res = await api.listOrders({
+      search: filters.orders || '',
+      status: filters.orderStatus || '',
+      paymentMethod: filters.orderPayment || '',
+      fromDate,
+      toDate,
+    });
+    apiState.orders = res.items || [];
+    apiState.ordersSummary = res.summary || apiState.ordersSummary;
+    apiState.ordersLoaded = true;
+  } catch (err) {
+    apiState.orderError = err.message;
+    notify(err.message, true);
+  } finally {
+    apiState.loading.orders = false;
+    if (page === 'orders' && $('#content')) render();
+  }
+}
+
+async function loadReturnsData(force = false) {
+  if (!store.hasPermission('RETURN_CREATE')) return;
+  if (apiState.loading.returns && !force) return;
+  const fromDate = filters.returnFrom || '';
+  const toDate = filters.returnTo || '';
+  if (fromDate && toDate && fromDate > toDate) {
+    apiState.returnError = 'Khoảng thời gian không hợp lệ: "Từ ngày" phải nhỏ hơn hoặc bằng "Đến ngày" (BR-08).';
+    apiState.returnsLoaded = true;
+    if (page === 'returns' && $('#content')) render();
+    return;
+  }
+  apiState.returnError = '';
+  apiState.loading.returns = true;
+  try {
+    const res = await api.listReturns({
+      search: filters.returns || '',
+      status: filters.returnStatus || '',
+      fromDate,
+      toDate,
+    });
+    apiState.returns = res.items || [];
+    apiState.returnsSummary = res.summary || apiState.returnsSummary;
+    apiState.returnsLoaded = true;
+  } catch (err) {
+    apiState.returnError = err.message;
+    notify(err.message, true);
+  } finally {
+    apiState.loading.returns = false;
+    if (page === 'returns' && $('#content')) render();
   }
 }

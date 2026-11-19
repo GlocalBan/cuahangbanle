@@ -94,6 +94,7 @@ const icons = {
   key: 'M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4',
   lock: 'M7 11V7a5 5 0 0 1 10 0v4M5 11h14v10H5z',
   unlock: 'M7 11V7a5 5 0 0 1 9.9-1M5 11h14v10H5z',
+  tag: 'M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82ZM7 7h.01',
 };
 const icon = (name) =>
   `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${icons[name] || icons.box}"/></svg>`;
@@ -142,6 +143,15 @@ const statusLabels = {
   ChoDuyet: ['Chờ duyệt', 'yellow'],
   DaDuyet: ['Đã duyệt', 'green'],
   DaHuy: ['Đã hủy', 'red'],
+  SapDienRa: ['Sắp diễn ra', 'blue'],
+  DangDienRa: ['Đang diễn ra', 'green'],
+  TamDung: ['Tạm dừng', 'yellow'],
+  KetThuc: ['Đã kết thúc', 'gray'],
+  DaThanhToan: ['Đã thanh toán', 'green'],
+  TraMotPhan: ['Trả một phần', 'yellow'],
+  DaHoanTra: ['Đã hoàn trả', 'red'],
+  DaXacNhan: ['Đã xác nhận', 'green'],
+  TuChoi: ['Đã từ chối', 'red'],
 };
 const status = (value) => badge(...(statusLabels[value] || [e(value), 'gray']));
 const stats = (values) =>
@@ -165,6 +175,7 @@ const pages = [
   ['products', 'Sản phẩm & Bảng giá', 'box', 'QUẢN LÝ HÀNG HÓA'],
   ['inventory', 'Kho & Kiểm kê', 'warehouse', 'QUẢN LÝ KHO'],
   ['purchases', 'Nhập hàng', 'truck', 'QUẢN LÝ KHO'],
+  ['promotions', 'Khuyến mãi', 'tag', 'KHUYẾN MÃI & ĐỐI TÁC'],
   ['suppliers', 'Nhà cung cấp', 'branch', 'KHUYẾN MÃI & ĐỐI TÁC'],
   ['customers', 'Khách hàng', 'users', 'KHUYẾN MÃI & ĐỐI TÁC'],
   ['reports', 'Báo cáo & Thống kê', 'chart', 'BÁO CÁO & THỐNG KÊ'],
@@ -185,3 +196,12 @@ let page = 'dashboard',
   inventoryTab = 'stock';
 let purchaseLines = [];
 let auditLines = [];
+let posCart = {
+  items: [],
+  customerId: '',
+  promotionCode: '',
+  appliedPromotion: null,
+  promoError: '',
+  note: '',
+};
+let posHeldOrders = [];

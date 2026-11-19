@@ -18,6 +18,18 @@ document.addEventListener('input', (event) => {
     } else if (el.dataset.filter === 'auditListSearch') {
       clearTimeout(window.__auditListSearchTimer);
       window.__auditListSearchTimer = setTimeout(() => loadStockAuditsData(true), 220);
+    } else if (el.dataset.filter === 'promotions') {
+      clearTimeout(window.__promotionsSearchTimer);
+      window.__promotionsSearchTimer = setTimeout(() => loadPromotionsData(true), 220);
+    } else if (el.dataset.filter === 'customers') {
+      clearTimeout(window.__customersSearchTimer);
+      window.__customersSearchTimer = setTimeout(() => loadCustomersData(true), 220);
+    } else if (el.dataset.filter === 'orders') {
+      clearTimeout(window.__ordersSearchTimer);
+      window.__ordersSearchTimer = setTimeout(() => loadOrdersData(true), 220);
+    } else if (el.dataset.filter === 'returns') {
+      clearTimeout(window.__returnsSearchTimer);
+      window.__returnsSearchTimer = setTimeout(() => loadReturnsData(true), 220);
     } else {
       render();
     }
@@ -28,16 +40,23 @@ document.addEventListener('input', (event) => {
   }
   if (el.id === 'global-search') globalSearch(el.value);
   if (el.id === 'cash-input') updateCash();
+  if (el.id === 'pos-promo-code') {
+    posCart.promotionCode = el.value.toUpperCase();
+  }
+  if (el.id === 'cart-note') {
+    posCart.note = el.value;
+  }
   if (el.dataset.input === 'cart-direct-qty') {
     const qty = Math.max(1, Number(el.value) || 1);
-    const prod = store.data.products.find((p) => p.id === el.dataset.id);
-    const max = prod ? prod.stock : 999;
+    const prod = (apiState.products || []).find((p) => p.id === el.dataset.id);
+    const max = prod ? Number(prod.stockQty) : 999;
     const finalQty = Math.min(max, qty);
     el.value = finalQty;
-    changeDraft((d) => {
-      const item = d.items.find((i) => i.id === el.dataset.id);
-      if (item) item.qty = finalQty;
-    });
+    const item = posCart.items.find((i) => i.productId === el.dataset.id);
+    if (item) {
+      item.qty = finalQty;
+      render();
+    }
   }
   if (el.id === 'customer-phone-search') {
     try {
@@ -63,23 +82,21 @@ document.addEventListener('change', async (event) => {
         loadPurchasesData(true);
       } else if (['auditListStatus', 'auditListFrom', 'auditListTo'].includes(el.dataset.filter)) {
         loadStockAuditsData(true);
+      } else if (el.dataset.filter === 'promoStatus') {
+        loadPromotionsData(true);
+      } else if (el.dataset.filter === 'customerStatus') {
+        loadCustomersData(true);
+      } else if (['orderStatus', 'orderPayment', 'orderFrom', 'orderTo'].includes(el.dataset.filter)) {
+        loadOrdersData(true);
+      } else if (['returnStatus', 'returnFrom', 'returnTo'].includes(el.dataset.filter)) {
+        loadReturnsData(true);
       } else {
         render();
       }
     }
-    if (el.id === 'promo-select' || el.dataset.input === 'pos-select-promotion') {
-      changeDraft((d) => {
-        d.promotionId = el.value || null;
-      });
+    if (el.id === 'cart-note') {
+      posCart.note = el.value;
     }
-    if (el.id === 'cart-discount') {
-      const value = Number(el.value);
-      changeDraft((d) => {
-        totals(d.items, value, store.data.settings.taxRate);
-        d.discount = value;
-      });
-    }
-    if (el.id === 'cart-note') changeDraft((d) => (d.note = el.value));
     if (el.id === 'purchase-supplier') updatePurchaseOptions(true);
     if (el.id === 'purchase-product') {
       const prod = (apiState.products || []).find((p) => p.id === el.value);

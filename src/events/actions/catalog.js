@@ -205,6 +205,14 @@ function handleCatalogAction(a) {
       break;
     }
 
+    case 'customer-new':
+      customerApiModal('');
+      break;
+
+    case 'customer-edit':
+      customerApiModal(a.id);
+      break;
+
     case 'entity-new':
       entityModal(a.type);
       break;

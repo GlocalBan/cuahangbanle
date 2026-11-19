@@ -126,6 +126,8 @@ function navigate(target, options = {}) {
   apiState.stockMovementError = '';
   apiState.purchaseError = '';
   apiState.stockAuditError = '';
+  apiState.orderError = '';
+  apiState.returnError = '';
   document.body.classList.remove('menu-open');
   $('.sidebar')?.classList.remove('open');
   $$('.nav-item').forEach((n) => {
@@ -151,6 +153,16 @@ function navigate(target, options = {}) {
     loadCatalogMeta();
     loadProductsData(true);
     loadPurchasesData(true);
+  } else if (page === 'pos') {
+    loadPosData(true);
+  } else if (page === 'promotions') {
+    loadPromotionsData(true);
+  } else if (page === 'customers') {
+    loadCustomersData(true);
+  } else if (page === 'orders') {
+    loadOrdersData(true);
+  } else if (page === 'returns') {
+    loadReturnsData(true);
   }
   render();
   window.scrollTo(0, 0);
@@ -170,6 +182,7 @@ function render() {
     orders: ordersView,
     inventory: inventoryView,
     purchases: purchasesView,
+    promotions: promotionsView,
     suppliers: () => entitiesView('suppliers'),
     customers: () => entitiesView('customers'),
     staff: staffView,
@@ -227,21 +240,21 @@ function globalSearch(query) {
         `<button type="button" data-action="navigate" data-page="${key}">${icon(ico)}${e(label)}</button>`,
     );
   if (store.can('orders'))
-    store.data.orders
-      .filter((o) => match(`${o.id} ${o.customer}`, query))
+    (apiState.orders || [])
+      .filter((o) => match(`${o.id} ${o.customerName} ${o.cashierName}`, query))
       .slice(0, 4)
       .forEach((o) =>
         targets.push(
-          `<button type="button" data-action="order-detail" data-id="${e(o.id)}">${icon('receipt')}<span>${e(o.id)}<small class="sub"> · ${e(o.customer)} · ${money(o.total)}</small></span></button>`,
+          `<button type="button" data-action="order-detail" data-id="${e(o.id)}">${icon('receipt')}<span>${e(o.id)}<small class="sub"> · ${e(o.customerName)} · ${money(o.totalAmount)}</small></span></button>`,
         ),
       );
   if (store.can('pos'))
-    store.data.products
-      .filter((p) => p.active && match(`${p.name} ${p.barcode}`, query))
+    (apiState.products || [])
+      .filter((p) => p.status === 'DangKinhDoanh' && match(`${p.name} ${p.sku} ${p.barcode}`, query))
       .slice(0, 4)
       .forEach((p) =>
         targets.push(
-          `<button type="button" data-action="search-product" data-id="${e(p.id)}">${e(p.icon)} ${e(p.name)} · ${money(p.price)}</button>`,
+          `<button type="button" data-action="search-product" data-id="${e(p.id)}">${icon('box')}<span>${e(p.name)}<small class="sub"> · ${e(p.sku)} · ${money(p.salePrice)}</small></span></button>`,
         ),
       );
   container.innerHTML =

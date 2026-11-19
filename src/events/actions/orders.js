@@ -1,3 +1,6 @@
+/* M4: Click Actions cho Hóa đơn (SQLite API). */
+'use strict';
+
 function handleOrdersAction(a) {
   switch (a.action) {
     case 'order-detail':
@@ -12,8 +15,24 @@ function handleOrdersAction(a) {
       printInvoice(a.id);
       break;
 
-    case 'export-orders':
-      store.require('orders');
+    case 'orders-reset':
+      delete filters.orders;
+      delete filters.orderStatus;
+      delete filters.orderPayment;
+      delete filters.orderFrom;
+      delete filters.orderTo;
+      apiState.orderError = '';
+      pagination.orders = 1;
+      loadOrdersData(true);
+      render();
+      break;
+
+    case 'export-orders': {
+      if (!store.hasPermission('ORDER_VIEW')) {
+        notify('Bạn không có quyền xuất danh sách hóa đơn.', true);
+        return true;
+      }
+      const list = apiState.orders || [];
       exportCSV(
         [
           [
@@ -21,23 +40,32 @@ function handleOrdersAction(a) {
             'Thời gian',
             'Khách hàng',
             'Thu ngân',
-            'Thanh toán',
-            'Tổng tiền',
+            'Phương thức',
+            'Tạm tính',
+            'Giảm giá KM',
+            'Thuế VAT',
+            'Tổng thanh toán',
+            'Đã hoàn tiền',
             'Trạng thái',
           ],
-          ...store.data.orders.map((o) => [
+          ...list.map((o) => [
             o.id,
-            date(o.time),
-            o.customer,
-            o.staffName,
-            METHODS[o.payment],
-            o.total,
-            statusLabels[o.status][0],
+            date(o.createdAt),
+            o.customerName,
+            o.cashierName,
+            METHODS[o.paymentMethod] || o.paymentMethod,
+            o.subtotal,
+            o.invoiceDiscount,
+            o.taxAmount,
+            o.totalAmount,
+            o.refundedAmount,
+            o.statusLabel || statusLabels[o.status]?.[0] || o.status,
           ]),
         ],
         'RetailFlow-hoa-don.csv',
       );
       break;
+    }
 
     default:
       return false;

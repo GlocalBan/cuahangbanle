@@ -432,3 +432,62 @@ test('M3-05: Atomic transaction rollback on confirmPurchase/approveStockAudit fa
     await srv.close();
   }
 });
+
+test('M3-06: approveStockAudit rejects stale stock with 409 Conflict when concurrent movement occurs (no overwrite)', async () => {
+  const srv = await startTestServer();
+  try {
+    const warehouseToken = await srv.loginAs('kho');
+    const managerToken = await srv.loginAs('quanly');
+
+    // Initial stock of SP006 is 8, SP001 is 154
+    const sp6Initial = (await srv.reqJson('GET', '/api/products/SP006', { token: managerToken })).data.item.stockQty;
+    const sp1Initial = (await srv.reqJson('GET', '/api/products/SP001', { token: managerToken })).data.item.stockQty;
+
+    // 1. Warehouse creates multi-item Stock Audit (ChoDuyet) with SP001 and SP006
+    const auditRes = await srv.reqJson('POST', '/api/stock-audits', {
+      token: warehouseToken,
+      body: {
+        note: 'Kiểm kê trước khi nhập thêm SP006',
+        items: [
+          { productId: 'SP001', actualQty: sp1Initial - 1, reason: 'Hao hụt 1 hộp trên kệ' },
+          { productId: 'SP006', actualQty: sp6Initial - 1, reason: 'Móp 1 hộp cà phê' },
+        ],
+      },
+    });
+    assert.equal(auditRes.status, 201);
+    const auditId = auditRes.data.item.id;
+
+    // 2. Concurrent stock movement happens on SP006 (create + confirm PO +10 units)
+    const poRes = await srv.reqJson('POST', '/api/purchases', {
+      token: warehouseToken,
+      body: {
+        supplierId: 'NCC003',
+        note: 'Nhập chen ngang trước khi duyệt kiểm kê',
+        items: [{ productId: 'SP006', qty: 10, unitCost: 45000 }],
+      },
+    });
+    assert.equal(poRes.status, 201);
+    assert.equal(
+      (await srv.reqJson('POST', `/api/purchases/${poRes.data.item.id}/confirm`, { token: managerToken })).status,
+      200,
+    );
+
+    const sp6AfterPo = (await srv.reqJson('GET', '/api/products/SP006', { token: managerToken })).data.item.stockQty;
+    assert.equal(sp6AfterPo, sp6Initial + 10);
+
+    // 3. Manager tries to approve stale audit -> MUST return 409 Conflict and NOT overwrite SP006 or SP001
+    const approveRes = await srv.reqJson('POST', `/api/stock-audits/${auditId}/approve`, { token: managerToken });
+    assert.equal(approveRes.status, 409);
+    assert.match(approveRes.data.error?.message || '', /SP006/);
+
+    // Verify audit stays ChoDuyet, neither SP001 nor SP006 overwritten, and 0 KIEM_KE movements appended
+    const auditAfter = (await srv.reqJson('GET', `/api/stock-audits/${auditId}`, { token: managerToken })).data.item;
+    assert.equal(auditAfter.status, 'ChoDuyet');
+    assert.equal((await srv.reqJson('GET', '/api/products/SP006', { token: managerToken })).data.item.stockQty, sp6AfterPo);
+    assert.equal((await srv.reqJson('GET', '/api/products/SP001', { token: managerToken })).data.item.stockQty, sp1Initial);
+    const kiemKeMoves = await srv.reqJson('GET', '/api/stock-movements?docType=KIEM_KE', { token: managerToken });
+    assert.equal(kiemKeMoves.data.items.length, 0);
+  } finally {
+    await srv.close();
+  }
+});

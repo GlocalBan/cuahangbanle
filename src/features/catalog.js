@@ -180,100 +180,119 @@ async function supplierApiHistory(supplierId) {
   }
 }
 
+function customersApiView() {
+  if (!apiState.customersLoaded && !apiState.loading.customers) {
+    loadCustomersData();
+  }
+  const entries = apiState.customers || [];
+  const p = paginate(entries, 'customers');
+  const activeCount = entries.filter((x) => x.active).length;
+  const repeatCount = entries.filter((x) => Number(x.orderCount || 0) > 1).length;
+  const totalNet = entries.reduce((s, x) => s + Number(x.netSpent || 0), 0);
+
+  return (
+    heading(
+      'KHUYẾN MÃI & ĐỐI TÁC / KHÁCH HÀNG',
+      'Khách hàng',
+      'Quản lý hồ sơ khách hàng thân thiết (SQLite) và tra cứu lịch sử hóa đơn mua sắm.',
+      action('customer-new', 'Thêm khách hàng', 'plus', 'primary'),
+    ) +
+    stats([
+      ['Tổng khách hàng', number(entries.length), 'Đồng bộ từ CSDL SQLite', 'users'],
+      ['Đang hoạt động', number(activeCount), 'Có thể gắn vào hóa đơn POS', 'check'],
+      ['Khách quay lại', number(repeatCount), 'Đã phát sinh từ 2 hóa đơn trở lên', 'return'],
+      ['Tổng chi tiêu ròng', money(totalNet), 'Đã trừ tiền hoàn trả xác nhận', 'receipt'],
+    ]) +
+    `<section class="panel">
+      <div class="panel-head"><h2>Danh sách khách hàng (${number(entries.length)})</h2></div>
+      <div class="table-tools">
+        ${filterInput('customers', 'Tìm mã KH, họ tên, số điện thoại, email…')}
+        ${filterSelect('customerStatus', [
+          ['', 'Tất cả trạng thái'],
+          ['HoatDong', 'Đang hoạt động'],
+          ['TamNgung', 'Tạm ngừng'],
+        ])}
+      </div>
+      ${
+        apiState.loading.customers && !apiState.customersLoaded
+          ? '<div class="panel-body"><div class="note">Đang tải danh sách khách hàng…</div></div>'
+          : table(
+              ['Mã KH', 'Họ tên', 'Điện thoại', 'Email', 'Số hóa đơn', 'Tổng mua ròng', 'Trạng thái', 'Thao tác'],
+              p.items.map(
+                (x) => `<tr>
+                  <td><code>${e(x.id)}</code></td>
+                  <td class="name">${e(x.name)}</td>
+                  <td>${e(x.phone)}</td>
+                  <td>${e(x.email || '—')}</td>
+                  <td>${number(x.orderCount || 0)}</td>
+                  <td class="money name">${money(x.netSpent || 0)}</td>
+                  <td>${x.active ? badge('Hoạt động', 'green') : badge('Tạm ngừng', 'gray')}</td>
+                  <td>
+                    <div class="action-group">
+                      ${action('customer-edit', 'Sửa', 'edit', 'xs', `data-id="${e(x.id)}"`)}
+                      ${action('customer-history', 'Lịch sử', 'receipt', 'xs', `data-id="${e(x.id)}"`)}
+                    </div>
+                  </td>
+                </tr>`,
+              ),
+            ) + p.foot
+      }
+    </section>`
+  );
+}
+
+function customerApiModal(recordId = '') {
+  if (!store.hasPermission('CUSTOMER_MANAGE')) {
+    notify('Bạn không có quyền quản lý khách hàng (CUSTOMER_MANAGE).', true);
+    return;
+  }
+  const v = (recordId && (apiState.customers || []).find((x) => x.id === recordId)) || {
+    name: '',
+    phone: '',
+    email: '',
+    status: 'HoatDong',
+  };
+  modalContext = { type: 'customer-api', id: recordId };
+  showModal(
+    recordId ? `Sửa khách hàng · ${e(v.id)}` : 'Thêm khách hàng mới',
+    `<form id="customer-api-form">
+      <div class="modal-content form-grid">
+        ${field('Họ và tên (*)', 'name', v.name, 'text', 'required minlength="2" maxlength="150"', true)}
+        ${field('Số điện thoại (*)', 'phone', v.phone, 'tel', 'required minlength="8" maxlength="20"')}
+        ${field('Email (không bắt buộc)', 'email', v.email || '', 'email', 'maxlength="150"')}
+        ${
+          recordId
+            ? selectField(
+                'Trạng thái',
+                'status',
+                [
+                  ['HoatDong', 'Đang hoạt động'],
+                  ['TamNgung', 'Tạm ngừng'],
+                ],
+                v.status,
+                '',
+                true,
+              )
+            : ''
+        }
+        ${formError()}
+      </div>
+      <div class="modal-footer">
+        ${action('close-modal', 'Hủy')}
+        <button class="btn primary" type="submit">${icon('check')}Lưu</button>
+      </div>
+    </form>`,
+  );
+}
+
 function entitiesView(type) {
   if (type === 'suppliers') {
     return suppliersApiView();
   }
-  const s = store.data,
-    config = {
-      customers: [
-        'KHUYẾN MÃI & ĐỐI TÁC / KHÁCH HÀNG',
-        'Khách hàng',
-        'Lưu hồ sơ khách hàng và tra cứu lịch sử mua sắm.',
-        'Thêm',
-      ],
-      staff: [
-        'QUẢN TRỊ / NHÂN VIÊN',
-        'Nhân viên & tài khoản',
-        'Quản lý hồ sơ, trạng thái và quyền truy cập theo vai trò.',
-        'Thêm',
-      ],
-    }[type];
-  const entries = s[type],
-    list = entries.filter((x) =>
-      match(`${x.name} ${x.id} ${x.phone || ''} ${x.username || ''}`, filters[type] || ''),
-    );
-  const p = paginate(list, type);
-  const metrics =
-    type === 'customers'
-      ? [
-          ['Khách hàng', entries.length, 'Hồ sơ đang lưu', 'users'],
-          [
-            'Đang hoạt động',
-            entries.filter((x) => x.active).length,
-            'Có thể gắn vào đơn hàng',
-            'check',
-          ],
-          [
-            'Khách quay lại',
-            entries.filter((c) => s.orders.filter((o) => o.customerId === c.id).length > 1)
-              .length,
-            'Đã có trên một đơn hàng',
-            'return',
-          ],
-          [
-            'Giá trị đơn trung bình',
-            money(
-              Math.round(
-                s.orders.reduce((a, o) => a + o.total, 0) / Math.max(s.orders.length, 1),
-              ),
-            ),
-            'Trên tất cả hóa đơn đã lưu',
-            'receipt',
-          ],
-        ]
-      : [
-          ['Tổng nhân viên', entries.length, 'Hồ sơ nhân sự', 'users'],
-          [
-            'Đang hoạt động',
-            entries.filter((x) => x.active).length,
-            'Tài khoản được đăng nhập',
-            'check',
-          ],
-          [
-            'Quản trị viên',
-            entries.filter((x) => x.role === 'ADMIN').length,
-            'Quyền quản trị hệ thống',
-            'shield',
-          ],
-          [
-            'Tài khoản khóa',
-            entries.filter((x) => !x.active).length,
-            'Không thể đăng nhập',
-            'logout',
-          ],
-        ];
-  let headers, rows;
   if (type === 'customers') {
-    headers = ['Mã KH', 'Họ tên', 'Điện thoại', 'Số đơn', 'Tổng mua ròng', 'Trạng thái', ''];
-    rows = p.items.map((x) => {
-      const orders = s.orders.filter((o) => o.customerId === x.id);
-      const refunds = s.returns
-        .filter((r) => r.status === 'approved' && orders.some((o) => o.id === r.orderId))
-        .reduce((a, r) => a + r.amount, 0);
-      return `<tr><td>${e(x.id)}</td><td class="name">${e(x.name)}</td><td>${e(x.phone)}</td><td>${orders.length}</td><td class="money name">${money(orders.reduce((a, o) => a + o.total, 0) - refunds)}</td><td>${x.active ? badge('Hoạt động') : badge('Tạm ngừng', 'gray')}</td><td>${ibEntity(type, x.id)}${ib('customer-history', 'receipt', 'Lịch sử mua hàng', `data-id="${e(x.id)}"`)}</td></tr>`;
-    });
+    return customersApiView();
   }
-  return (
-    heading(
-      config[0],
-      config[1],
-      config[2],
-      action('entity-new', config[3], 'plus', 'primary', `data-type="${type}"`),
-    ) +
-    stats(metrics) +
-    `<section class="panel"><div class="panel-head"><h2>Danh sách khách hàng</h2></div><div class="table-tools">${filterInput(type, 'Tìm kiếm theo tên, mã hoặc số điện thoại…')}</div>${table(headers, rows)}${p.foot}</section>`
-  );
+  return '';
 }
 
 function entityModal(type, recordId = '') {
@@ -285,47 +304,35 @@ function entityModal(type, recordId = '') {
     supplierApiModal(recordId);
     return;
   }
-  store.require(type === 'staff' ? 'staff' : type);
-  const v = store.data[type].find((x) => x.id === recordId) || { active: true };
-  modalContext = { type: 'entity', entity: type, id: recordId };
-  let fields = field(
-    'Tên / Họ tên (*)',
-    'name',
-    v.name || '',
-    'text',
-    'required maxlength="150"',
-    true,
-  );
-  if (type === 'customers')
-    fields +=
-      field('Số điện thoại (*)', 'phone', v.phone || '', 'tel', 'required maxlength="18"') +
-      field('Email (không bắt buộc)', 'email', v.email || '', 'email', 'maxlength="150"');
-  fields +=
-    selectField(
-      'Trạng thái',
-      'active',
-      [
-        ['true', 'Đang hoạt động'],
-        ['false', 'Tạm ngừng'],
-      ],
-      String(v.active),
-      '',
-      true,
-    ) + formError();
-  showModal(
-    `${recordId ? 'Sửa' : 'Thêm'} khách hàng`,
-    `<form id="entity-form"><div class="modal-content form-grid">${fields}</div><div class="modal-footer">${action('close-modal', 'Hủy')}<button class="btn primary" type="submit">${icon('check')}Lưu</button></div></form>`,
-  );
+  if (type === 'customers') {
+    customerApiModal(recordId);
+    return;
+  }
 }
 
-function customerHistory(customerId) {
-  const c = store.data.customers.find((c) => c.id === customerId);
-  const orders = store.data.orders.filter((o) => o.customerId === customerId);
-  showModal(
-    `Lịch sử mua hàng · ${e(c.name)}`,
-    `<div class="modal-content"><p class="sub mb16">${e(c.phone)} · ${orders.length} đơn hàng</p>${orderTable(orders)}</div><div class="modal-footer">${action('close-modal', 'Đóng')}</div>`,
-    true,
-  );
+async function customerHistory(customerId) {
+  if (!store.hasPermission('CUSTOMER_MANAGE')) {
+    notify('Bạn không có quyền xem lịch sử khách hàng.', true);
+    return;
+  }
+  try {
+    const res = await api.getCustomerHistory(customerId);
+    const c = res.customer;
+    const orders = res.orders || [];
+    showModal(
+      `Lịch sử mua hàng · ${e(c.name)}`,
+      `<div class="modal-content">
+        <div class="note mb16">
+          <strong>${e(c.id)}</strong> · SĐT: ${e(c.phone)} · ${number(orders.length)} hóa đơn · Tổng mua ròng: <strong class="money">${money(c.netSpent)}</strong>
+        </div>
+        ${orderTable(orders)}
+      </div>
+      <div class="modal-footer">${action('close-modal', 'Đóng')}</div>`,
+      true,
+    );
+  } catch (err) {
+    notify(err.message, true);
+  }
 }
 
 function supplierHistory(supplierId) {

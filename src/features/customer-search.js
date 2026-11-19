@@ -1,11 +1,12 @@
-// Customer lookup is separate from the POS product/cart rendering.
+/* M4: Tra cứu nhanh khách hàng theo SĐT tại POS (kết nối apiState.customers từ SQLite). */
+'use strict';
+
 const customerSearchState = { query: '', customerId: null, activeIndex: -1 };
 const phoneDigits = (value) => String(value || '').replace(/\D/g, '');
 
 function customerLookupHTML() {
-  const customer = store.data.customers.find(
-    (c) => c.id === store.data.draft.customerId && c.active,
-  );
+  const customers = apiState.customers || [];
+  const customer = customers.find((c) => c.id === posCart.customerId && c.active);
   const customerId = customer?.id || '';
   if (customerSearchState.customerId !== customerId) {
     customerSearchState.customerId = customerId;
@@ -13,20 +14,20 @@ function customerLookupHTML() {
     customerSearchState.activeIndex = -1;
   }
   return `<div class="customer-lookup">
-    <label class="field" for="customer-phone-search"><span>Tìm khách theo số điện thoại</span></label>
+    <label class="field" for="customer-phone-search"><span>Khách hàng (tìm theo SĐT)</span></label>
     <div class="cart-customer">
       <div class="customer-search-field">
         ${icon('search')}
         <input id="customer-phone-search" type="tel" inputmode="tel"
-          value="${e(customerSearchState.query)}" placeholder="Nhập số điện thoại khách…"
+          value="${e(customerSearchState.query)}" placeholder="Nhập SĐT khách hàng…"
           autocomplete="off" role="combobox" aria-autocomplete="list"
           aria-expanded="false" aria-controls="customer-phone-results" aria-describedby="customer-phone-status">
         <div id="customer-phone-results" class="customer-phone-results" role="listbox" aria-label="Khách hàng trùng số điện thoại" hidden></div>
       </div>
-      ${ib('entity-new', 'plus', 'Thêm khách hàng', 'data-type="customers"')}
+      ${ib('entity-new', 'plus', 'Thêm khách hàng mới', 'data-type="customers"')}
     </div>
     <div id="customer-phone-status" class="customer-phone-status" aria-live="polite">
-      ${customer ? selectedCustomerHTML(customer) : '<span class="muted">Chưa chọn khách · Đơn hàng tính cho khách lẻ</span>'}
+      ${customer ? selectedCustomerHTML(customer) : '<span class="muted">Khách lẻ · Chưa gắn hồ sơ thành viên</span>'}
     </div>
   </div>`;
 }
@@ -38,7 +39,7 @@ function selectedCustomerHTML(customer) {
 function matchingPhoneCustomers(query) {
   const digits = phoneDigits(query);
   if (!digits || /[^\d\s+().-]/.test(query)) return [];
-  return store.data.customers.filter((c) => c.active && phoneDigits(c.phone).startsWith(digits));
+  return (apiState.customers || []).filter((c) => c.active && phoneDigits(c.phone).startsWith(digits));
 }
 
 function hideCustomerSuggestions() {
@@ -62,10 +63,11 @@ function renderCustomerSuggestions() {
   const matches = matchingPhoneCustomers(input.value);
   if (!matches.length) {
     hideCustomerSuggestions();
-    if (!store.data.draft.customerId)
+    if (!posCart.customerId) {
       $('#customer-phone-status').innerHTML = input.value.trim()
-        ? '<span class="muted">Không có khách trùng số điện thoại · Có thể thêm khách mới</span>'
-        : '<span class="muted">Chưa chọn khách · Đơn hàng tính cho khách lẻ</span>';
+        ? '<span class="muted">Không có khách trùng SĐT · Nhấn + để thêm mới</span>'
+        : '<span class="muted">Khách lẻ · Chưa gắn hồ sơ thành viên</span>';
+    }
     return;
   }
   customerSearchState.activeIndex = -1;
@@ -86,50 +88,38 @@ function renderCustomerSuggestions() {
       : '');
   list.hidden = false;
   input.setAttribute('aria-expanded', 'true');
-  if (!store.data.draft.customerId)
-    $('#customer-phone-status').textContent =
-      `${matches.length} khách trùng số · Chọn khách để gắn với hóa đơn`;
+  if (!posCart.customerId) {
+    $('#customer-phone-status').textContent = `${matches.length} khách trùng số · Chọn khách để gắn hóa đơn`;
+  }
 }
 
 function searchCustomerPhone(input) {
   const query = input.value;
-  const customer = store.data.customers.find((c) => c.id === store.data.draft.customerId);
-  // Editing a selected phone must detach that customer before the next sale.
+  const customer = (apiState.customers || []).find((c) => c.id === posCart.customerId);
   if (customer && phoneDigits(query) !== phoneDigits(customer.phone)) {
-    const draft = clone(store.data.draft);
-    draft.customerId = '';
-    try {
-      store.saveDraft(draft);
-    } catch (error) {
-      input.value = customer.phone;
-      hideCustomerSuggestions();
-      throw error;
-    }
+    posCart.customerId = '';
     customerSearchState.customerId = '';
-    $('#customer-phone-status').innerHTML =
-      '<span class="muted">Chưa chọn khách · Đơn hàng tính cho khách lẻ</span>';
+    $('#customer-phone-status').innerHTML = '<span class="muted">Khách lẻ · Chưa gắn hồ sơ thành viên</span>';
   }
   customerSearchState.query = query;
   renderCustomerSuggestions();
 }
 
 function selectPhoneCustomer(customerId) {
-  const customer = store.data.customers.find((c) => c.id === customerId && c.active);
+  const customer = (apiState.customers || []).find((c) => c.id === customerId && c.active);
   if (!customer) throw new Error('Khách hàng không còn hoạt động.');
-  changeDraft((draft) => {
-    draft.customerId = customer.id;
-  });
+  posCart.customerId = customer.id;
   hideCustomerSuggestions();
+  render();
 }
 
 function clearPhoneCustomer() {
-  changeDraft((draft) => {
-    draft.customerId = '';
-  });
+  posCart.customerId = '';
   customerSearchState.query = '';
-  $('#customer-phone-search').value = '';
+  customerSearchState.customerId = '';
+  if ($('#customer-phone-search')) $('#customer-phone-search').value = '';
   hideCustomerSuggestions();
-  $('#customer-phone-search').focus();
+  render();
 }
 
 document.addEventListener('focusin', (event) => {

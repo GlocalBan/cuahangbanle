@@ -183,19 +183,28 @@ function handleInventoryAction(a) {
 
     case 'purchase-confirm': {
       const pid = a.id;
-      confirmation(
-        `Duyệt xác nhận nhập kho phiếu ${e(pid)}?`,
-        `Phiếu <strong>${e(pid)}</strong> sẽ chuyển sang trạng thái <strong>Đã nhập kho (Confirmed)</strong>. Trong cùng 1 Transaction, hệ thống sẽ cộng <strong>Tồn hiện tại</strong>, tính lại <strong>Giá vốn bình quân gia quyền</strong>, ghi <strong>Thẻ kho (NHAP_KHO)</strong> và khóa chỉnh sửa phiếu.`,
-        async () => {
-          const res = await api.confirmPurchase(pid);
-          notify(`Đã duyệt nhập kho phiếu ${res.item.id} thành công (tồn kho & giá vốn đã cập nhật).`);
-          await Promise.all([
-            loadPurchasesData(true),
-            loadProductsData(true),
-            loadStockMovementsData(true),
-          ]);
-        },
-      );
+      Promise.resolve(api.getPurchase(pid))
+        .then((detailRes) => {
+          const po = detailRes?.item;
+          const zeroCostItems = (po?.items || []).filter((i) => Number(i.unitCost) === 0);
+          const zeroCostWarning = zeroCostItems.length
+            ? `<div class="note yellow mt16"><strong>Cảnh báo đơn giá nhập 0 ₫:</strong> Phiếu có ${zeroCostItems.length} dòng hàng đơn giá <strong>0 ₫</strong> (${zeroCostItems.map((i) => `${e(i.sku)} · ${e(i.productName)} (×${number(i.qty)})`).join(', ')}). Nếu không phải hàng tặng kèm/khuyến mãi, hãy kiểm tra lại vì đơn giá 0 ₫ sẽ làm giảm giá vốn bình quân gia quyền.</div>`
+            : '';
+          confirmation(
+            `Duyệt xác nhận nhập kho phiếu ${e(pid)}?`,
+            `Phiếu <strong>${e(pid)}</strong> sẽ chuyển sang trạng thái <strong>Đã nhập kho (Confirmed)</strong>. Trong cùng 1 Transaction, hệ thống sẽ cộng <strong>Tồn hiện tại</strong>, tính lại <strong>Giá vốn bình quân gia quyền</strong>, ghi <strong>Thẻ kho (NHAP_KHO)</strong> và khóa chỉnh sửa phiếu.${zeroCostWarning}`,
+            async () => {
+              const res = await api.confirmPurchase(pid);
+              notify(`Đã duyệt nhập kho phiếu ${res.item.id} thành công (tồn kho & giá vốn đã cập nhật).`);
+              await Promise.all([
+                loadPurchasesData(true),
+                loadProductsData(true),
+                loadStockMovementsData(true),
+              ]);
+            },
+          );
+        })
+        .catch((err) => notify(err.message, true));
       break;
     }
 

@@ -13,7 +13,14 @@
     CASHIER: 'ThuNgan',
     WAREHOUSE: 'NhanVienKho',
   };
-  const METHODS = { cash: 'Tiền mặt', transfer: 'Chuyển khoản / VietQR', card: 'Thẻ ngân hàng' };
+  const METHODS = {
+    cash: 'Tiền mặt',
+    transfer: 'Chuyển khoản / VietQR',
+    card: 'Thẻ ngân hàng',
+    CASH: 'Tiền mặt',
+    VIETQR: 'Chuyển khoản / VietQR',
+    CARD: 'Thẻ ngân hàng',
+  };
   const ACCESS = {
     ADMIN: [
       'dashboard',
@@ -22,6 +29,7 @@
       'orders',
       'inventory',
       'purchases',
+      'promotions',
       'suppliers',
       'customers',
       'staff',
@@ -33,10 +41,12 @@
     ],
     MANAGER: [
       'dashboard',
+      'pos',
       'products',
       'orders',
       'inventory',
       'purchases',
+      'promotions',
       'suppliers',
       'customers',
       'returns',
@@ -54,6 +64,7 @@
     products: 'PRODUCT_VIEW',
     inventory: 'INVENTORY_VIEW',
     purchases: 'PURCHASE_CREATE',
+    promotions: 'PROMOTION_MANAGE',
     suppliers: 'SUPPLIER_VIEW',
     customers: 'CUSTOMER_MANAGE',
     reports: 'REPORT_VIEW',

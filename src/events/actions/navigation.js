@@ -22,9 +22,10 @@ function handleNavigationAction(a) {
       break;
 
     case 'logout': {
-      const hasUnsavedPos = store.can('pos') && (store.data.draft?.items?.length || 0) > 0;
+      const unsavedCount = (posCart?.items?.length || 0);
+      const hasUnsavedPos = store.can('pos') && unsavedCount > 0;
       const bodyMsg = hasUnsavedPos
-        ? `Cảnh báo: Đang có <strong>${store.data.draft.items.length} mặt hàng</strong> trong giỏ POS chưa thanh toán. Bạn có chắc chắn muốn đăng xuất khỏi tài khoản <strong>${e(store.user?.username || '')}</strong>?`
+        ? `Cảnh báo: Đang có <strong>${unsavedCount} dòng sản phẩm</strong> trong giỏ POS chưa thanh toán. Bạn có chắc chắn muốn đăng xuất khỏi tài khoản <strong>${e(store.user?.username || '')}</strong>?`
         : `Bạn có chắc chắn muốn đăng xuất khỏi tài khoản <strong>${e(store.user?.fullName || store.user?.name || '')}</strong>? Phiên làm việc hiện tại sẽ bị thu hồi.`;
       confirmation('Xác nhận đăng xuất?', bodyMsg, async () => {
         try {
@@ -35,6 +36,8 @@ function handleNavigationAction(a) {
         setAuthToken('');
         store.setAuthenticatedUser(null);
         resetApiCaches();
+        if (typeof resetPosCart === 'function') resetPosCart();
+        posHeldOrders = [];
         productsTab = 'products';
         inventoryTab = 'stock';
         window.location.hash = '';
@@ -73,20 +76,24 @@ function handleNavigationAction(a) {
       render();
       break;
 
-    case 'notifications':
+    case 'notifications': {
+      const lowList = apiState.productsLoaded
+        ? (apiState.products || []).filter((p) => p.status === 'DangKinhDoanh' && Number(p.stockQty) <= Number(p.minStock || 15))
+        : (store.data.products || []).filter((p) => p.active && p.stock <= p.minStock);
       showModal(
         'Thông báo cửa hàng',
         `<div class="modal-content stack">${
-          store.data.products
-            .filter((p) => p.active && p.stock <= p.minStock)
+          lowList
+            .slice(0, 12)
             .map(
               (p) =>
-                `<div class="note yellow"><strong>${e(p.name)}</strong> · Chỉ còn ${p.stock} sản phẩm.</div>`,
+                `<div class="note yellow"><strong>${e(p.name)}</strong> · Tồn hiện tại: ${number(p.stockQty ?? p.stock)} / tối thiểu ${number(p.minStock || 15)}.</div>`,
             )
-            .join('') || empty('Kho hàng đủ hàng')
-        }${store.can('purchases') ? action('navigate-modal', 'Xem phiếu nhập', 'truck', '', 'data-page="purchases"') : ''}${store.can('returns') ? action('navigate-modal', 'Xem yêu cầu hoàn trả', 'return', '', 'data-page="returns"') : ''}</div>`,
+            .join('') || empty('Kho hàng đủ hàng', 'Không có mặt hàng nào ở mức tồn kho tối thiểu.')
+        }${store.can('purchases') ? action('navigate-modal', 'Xem phiếu nhập', 'truck', '', 'data-page="purchases"') : ''}${store.can('returns') ? action('navigate-modal', 'Xem phiếu trả hàng', 'return', '', 'data-page="returns"') : ''}</div>`,
       );
       break;
+    }
 
     case 'navigate-modal':
       closeModal();

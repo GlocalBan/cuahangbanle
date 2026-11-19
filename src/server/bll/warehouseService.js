@@ -626,7 +626,8 @@ class WarehouseService {
 
   /**
    * BR-06 & BR-07: Duyệt phiếu kiểm kê (ChoDuyet -> DaDuyet) trong 1 Transaction nguyên tử:
-   * Cập nhật TonHienTai theo TonThucTe + ghi Thẻ kho (KIEM_KE) cho mọi dòng biến động + ghi AuditLog.
+   * Kiểm tra chống ghi đè tồn kho cũ (currentStock === system_qty cho mọi dòng -> sai trả 409 Conflict),
+   * sau đó cập nhật TonHienTai theo TonThucTe + ghi Thẻ kho (KIEM_KE) + ghi AuditLog.
    */
   approveStockAudit(actor, id, options = {}) {
     const approved = withTransaction(this.db, () => {
@@ -638,16 +639,36 @@ class WarehouseService {
         );
       }
 
-      const adjustments = [];
+      // Bước 1: Kiểm tra tồn kho mới nhất của toàn bộ mặt hàng trong phiếu trước khi ghi
+      const resolvedLines = [];
+      const staleDetails = [];
       for (const item of existing.items) {
         const product = this.repos.products.findById(item.product_id);
         assertRule(Boolean(product), `Sản phẩm "${item.product_id}" không tồn tại.`, 400);
 
         const currentStock = Number(product.stock_qty) || 0;
+        const expectedSystemQty = Number(item.system_qty) || 0;
         const targetStock = Number(item.actual_qty);
         assertRule(targetStock >= 0, `Tồn thực tế của "${product.name}" không được âm.`, 400);
-        const delta = targetStock - currentStock;
 
+        if (currentStock !== expectedSystemQty) {
+          staleDetails.push(
+            `${product.sku} (${product.name}: lúc lập phiếu ${expectedSystemQty}, hiện tại ${currentStock})`,
+          );
+        }
+        resolvedLines.push({ item, product, currentStock, targetStock });
+      }
+
+      if (staleDetails.length > 0) {
+        throw new ConflictException(
+          `Không thể duyệt phiếu kiểm kê "${id}" vì tồn kho đã thay đổi sau thời điểm lập phiếu: ${staleDetails.join('; ')}. Vui lòng hủy phiếu cũ và kiểm kê lại theo tồn kho mới nhất.`,
+        );
+      }
+
+      // Bước 2: Toàn bộ dòng khớp system_qty -> tiến hành cập nhật tồn và ghi Thẻ kho (KIEM_KE)
+      const adjustments = [];
+      for (const { item, product, currentStock, targetStock } of resolvedLines) {
+        const delta = targetStock - currentStock;
         if (delta !== 0) {
           this.repos.products.updateStock(product.id, targetStock);
           this.repos.stockMovements.append({

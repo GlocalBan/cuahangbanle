@@ -1,69 +1,122 @@
-function checkoutModal(method = 'cash') {
-  modalContext = { type: 'checkout', method };
-  const d = store.data.draft;
-  const promo = (store.data.promotions || []).find((p) => p.id === d.promotionId);
-  const vouch = (store.data.vouchers || []).find((v) => v.id === d.voucherId);
-  const t = totals(d.items, d.discount, store.data.settings.taxRate, {
-    promotion: promo,
-    voucher: vouch,
-    products: store.data.products,
-  });
+/* M4: Modal Thanh toán POS (BR-04 & BR-05) — Tiền mặt / VietQR / Thẻ kết nối SQLite API. */
+'use strict';
+
+const POS_PAYMENT_METHODS = [
+  ['CASH', 'Tiền mặt', 'cash'],
+  ['VIETQR', 'Chuyển khoản / VietQR', 'transfer'],
+  ['CARD', 'Thẻ ngân hàng', 'card'],
+];
+
+function checkoutModal(method = 'CASH') {
+  const normalizedMethod =
+    method === 'cash' ? 'CASH' : method === 'transfer' ? 'VIETQR' : method === 'card' ? 'CARD' : method;
+  if (!posCart.items.length) {
+    throw new Error('Chọn tối thiểu 1 sản phẩm trước khi thanh toán.');
+  }
+  modalContext = { type: 'checkout', method: normalizedMethod };
+  const t = computePosCartPricing();
+  const totalQty = posCart.items.reduce((s, i) => s + i.qty, 0);
+  const cfg = store.data.settings || {};
+  const suggestedRef = `VQR${Date.now().toString().slice(-6)}`;
+
   showModal(
-    'Thanh toán đơn hàng',
-    `<form id="checkout-form"><div class="modal-content"><div class="payment-breakdown" style="background:#f8fafc;padding:10px 14px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:12px;font-size:12.5px;display:flex;flex-direction:column;gap:5px"><div class="between"><span class="muted">Tạm tính (${d.items.reduce((s,i)=>s+i.qty,0)} sản phẩm)</span><span class="money">${money(t.subtotal)}</span></div>${t.promotionDiscount ? `<div class="between positive"><span>Giảm giá CTKM ${promo ? `(${e(promo.code)})` : ''}</span><span class="money">−${money(t.promotionDiscount)}</span></div>` : ''}${t.voucherDiscount ? `<div class="between positive"><span>Giảm giá App Voucher ${vouch ? `(${e(vouch.code)})` : ''}</span><span class="money">−${money(t.voucherDiscount)}</span></div>` : ''}${t.tax ? `<div class="between"><span class="muted">Thuế (${store.data.settings.taxRate}%)</span><span class="money">${money(t.tax)}</span></div>` : ''}</div><div class="payment-total">TỔNG SỐ TIỀN THANH TOÁN<b>${money(t.total)}</b></div><div class="payment-methods">${Object.entries(
-      METHODS,
-    )
-      .map(
-        ([key, label]) =>
-          `<button type="button" data-action="payment-method" data-method="${key}" class="${method === key ? 'active' : ''}">${icon(key === 'cash' ? 'cash' : key === 'card' ? 'card' : 'transfer')}${label}</button>`,
-      )
-      .join(
-        '',
-      )}</div><input type="hidden" name="payment" value="${method}">${
-      method === 'cash'
-        ? `<div class="stack">${field('Tiền khách đưa (₫)', 'received', t.total, 'number', 'id="cash-input" required min="0" step="1"')}<div class="cash-quick">${action('quick-cash-amount', 'Đúng số tiền', '', 'small primary', `data-amount="${t.total}" data-action="quick-cash-amount"`)}${[50000, 100000, 200000, 500000, 1000000].map((n) => action('quick-cash-amount', number(n), '', 'small', `data-amount="${n}" data-action="quick-cash-amount"`)).join('')}</div><div id="cash-warning" class="mt8" style="display:none"></div><div class="between"><span class="muted">Tiền trả lại</span><strong id="cash-change" class="positive money">0 ₫</strong></div><details><summary class="sub" style="cursor:pointer">Bàn phím số</summary><div class="numpad mt16">${['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'].map((n) => `<button type="button" data-action="numpad" data-key="${n}">${n}</button>`).join('')}</div></details></div>`
-        : `<div class="stack">${method === 'transfer' ? `<div class="note">Chuyển khoản tới <strong>${e(store.data.settings.bank)}</strong><br>STK: <strong>${e(store.data.settings.bankAccount)}</strong><br>Chủ tài khoản: ${e(store.data.settings.bankOwner)}<br>Nội dung gợi ý: RF ${Date.now().toString().slice(-6)}</div>` : '<div class="note">Thực hiện giao dịch trên máy POS của cửa hàng, sau đó nhập mã tham chiếu trên biên lai.</div>'}${field('Mã tham chiếu giao dịch', 'paymentRef', '', 'text', 'required maxlength="100" placeholder="Nhập mã giao dịch đã nhận…"')}<label class="check-label"><input type="checkbox" name="confirmed" required><span>Tôi đã kiểm tra và xác nhận cửa hàng nhận đủ <strong>${money(t.total)}</strong>.</span></label><p class="sub">Đây là bước ghi nhận thủ công, chưa kết nối ngân hàng hoặc cổng thanh toán.</p></div>`
-    }<div class="mt16">${selectField(
-      'Nhóm khách hàng (không bắt buộc)',
-      'demographic',
-      ['Không ghi nhận', 'Nam', 'Nữ', 'Khác'].map((x) => [x, x]),
-      store.data.draft.demographic,
-    )}</div>${formError()}</div>${foot('Xác nhận thanh toán', 'teal')}</form>`,
+    'Thanh toán hóa đơn POS (BR-05)',
+    `<form id="checkout-form">
+      <div class="modal-content">
+        <div class="payment-breakdown" style="background:#f8fafc;padding:12px 14px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:12px;font-size:12.5px;display:flex;flex-direction:column;gap:6px">
+          <div class="between"><span class="muted">1. Tạm tính (${number(totalQty)} sản phẩm)</span><span class="money">${money(t.subtotal)}</span></div>
+          ${
+            t.invoiceDiscount > 0
+              ? `<div class="between positive"><span>2. Giảm giá khuyến mãi (${e(posCart.appliedPromotion?.code || '')})</span><span class="money">−${money(t.invoiceDiscount)}</span></div>`
+              : ''
+          }
+          <div class="between"><span class="muted">3. Tiền sau giảm</span><span class="money">${money(t.afterDiscount)}</span></div>
+          <div class="between"><span class="muted">4. Thuế VAT (${t.taxRate}% · THAM_SO)</span><span class="money">${money(t.taxAmount)}</span></div>
+        </div>
+        <div class="payment-total">5. TỔNG THANH TOÁN<b>${money(t.totalAmount)}</b></div>
+        <div class="payment-methods">
+          ${POS_PAYMENT_METHODS.map(
+            ([key, label, ico]) =>
+              `<button type="button" data-action="payment-method" data-method="${key}" class="${normalizedMethod === key ? 'active' : ''}">${icon(ico)}${label}</button>`,
+          ).join('')}
+        </div>
+        <input type="hidden" name="paymentMethod" value="${normalizedMethod}">
+        ${
+          normalizedMethod === 'CASH'
+            ? `<div class="stack">
+                ${field('Tiền khách đưa (₫) (*)', 'cashReceived', t.totalAmount, 'number', 'id="cash-input" required min="0" step="1000"')}
+                <div class="cash-quick">
+                  ${action('quick-cash-amount', 'Đúng số tiền', '', 'small primary', `data-amount="${t.totalAmount}"`)}
+                  ${[50000, 100000, 200000, 500000, 1000000]
+                    .map((n) => action('quick-cash-amount', number(n), '', 'small', `data-amount="${n}"`))
+                    .join('')}
+                </div>
+                <div id="cash-warning" class="mt8" style="display:none"></div>
+                <div class="between">
+                  <span class="muted">Tiền thối lại cho khách</span>
+                  <strong id="cash-change" class="positive money">0 ₫</strong>
+                </div>
+                <details>
+                  <summary class="sub" style="cursor:pointer">Bàn phím số nhanh</summary>
+                  <div class="numpad mt16">
+                    ${['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫']
+                      .map((n) => `<button type="button" data-action="numpad" data-key="${n}">${n}</button>`)
+                      .join('')}
+                  </div>
+                </details>
+              </div>`
+            : `<div class="stack">
+                ${
+                  normalizedMethod === 'VIETQR'
+                    ? `<div class="note">
+                        <strong>Thông tin chuyển khoản VietQR (từ THAM_SO):</strong><br>
+                        Ngân hàng: <strong>${e(cfg.bank || 'Vietcombank')}</strong> · STK: <strong>${e(cfg.bankAccount || '0123456789')}</strong><br>
+                        Chủ tài khoản: <strong>${e(cfg.bankOwner || 'CUA HANG RETAILFLOW')}</strong><br>
+                        Số tiền: <strong>${money(t.totalAmount)}</strong> · Nội dung gợi ý: <code>${suggestedRef}</code>
+                      </div>`
+                    : '<div class="note">Quẹt thẻ tại máy POS ngân hàng, sau đó nhập mã giao dịch / số phê duyệt trên biên lai.</div>'
+                }
+                ${field('Mã tham chiếu giao dịch (*)', 'paymentRef', normalizedMethod === 'VIETQR' ? suggestedRef : '', 'text', 'required minlength="3" maxlength="100" placeholder="Nhập mã giao dịch VietQR / thẻ…"')}
+                <label class="check-label">
+                  <input type="checkbox" name="confirmed" required>
+                  <span>Tôi xác nhận cửa hàng đã nhận đủ <strong>${money(t.totalAmount)}</strong>.</span>
+                </label>
+              </div>`
+        }
+        ${formError()}
+      </div>
+      <div class="modal-footer">
+        ${action('close-modal', 'Hủy')}
+        <button class="btn teal" type="submit">${icon('check')}Xác nhận thanh toán</button>
+      </div>
+    </form>`,
   );
-  if (method === 'cash') updateCash();
+  if (normalizedMethod === 'CASH') updateCash();
 }
 
 function updateCash() {
   const input = $('#cash-input');
-  if (input) {
-    const d = store.data.draft;
-    const promo = (store.data.promotions || []).find((p) => p.id === d.promotionId);
-    const vouch = (store.data.vouchers || []).find((v) => v.id === d.voucherId);
-    const t = totals(d.items, d.discount, store.data.settings.taxRate, {
-      promotion: promo,
-      voucher: vouch,
-      products: store.data.products,
-    });
-    const received = Number(input.value) || 0;
-    const warning = $('#cash-warning');
-    const submitBtn = $('#checkout-form button[type="submit"]');
-    const changeEl = $('#cash-change');
+  if (!input) return;
+  const t = computePosCartPricing();
+  const received = Number(input.value) || 0;
+  const warning = $('#cash-warning');
+  const submitBtn = $('#checkout-form button[type="submit"]');
+  const changeEl = $('#cash-change');
 
-    if (received < t.total) {
-      const shortage = t.total - received;
-      if (warning) {
-        warning.style.display = 'block';
-        warning.innerHTML = `<span class="badge red">Không hỗ trợ trả 1 phần — Khách còn thiếu: ${money(shortage)}</span>`;
-      }
-      if (submitBtn) submitBtn.disabled = true;
-      if (changeEl) changeEl.textContent = '0 ₫';
-    } else {
-      if (warning) {
-        warning.style.display = 'none';
-        warning.innerHTML = '';
-      }
-      if (submitBtn) submitBtn.disabled = false;
-      if (changeEl) changeEl.textContent = money(received - t.total);
+  if (received < t.totalAmount) {
+    const shortage = t.totalAmount - received;
+    if (warning) {
+      warning.style.display = 'block';
+      warning.innerHTML = `<span class="badge red">Tiền khách đưa chưa đủ — Còn thiếu ${money(shortage)} (BR-05)</span>`;
     }
+    if (submitBtn) submitBtn.disabled = true;
+    if (changeEl) changeEl.textContent = '0 ₫';
+  } else {
+    if (warning) {
+      warning.style.display = 'none';
+      warning.innerHTML = '';
+    }
+    if (submitBtn) submitBtn.disabled = false;
+    if (changeEl) changeEl.textContent = money(received - t.totalAmount);
   }
 }
