@@ -4,6 +4,7 @@ const { AuthService } = require('../bll/authService.js');
 const { StaffService } = require('../bll/staffService.js');
 const { SystemService } = require('../bll/systemService.js');
 const { CatalogService } = require('../bll/catalogService.js');
+const { WarehouseService } = require('../bll/warehouseService.js');
 const { ForbiddenException, NotFoundException } = require('../bll/errors.js');
 const { sendJson, sendError, readJsonBody, createAuthGuards } = require('../middleware/rbac.js');
 
@@ -13,6 +14,7 @@ function createApiRouter(db) {
   const staffService = new StaffService(db, repos);
   const systemService = new SystemService(db, repos);
   const catalogService = new CatalogService(db, repos);
+  const warehouseService = new WarehouseService(db, repos);
   const { authenticate, authorize } = createAuthGuards(repos);
 
   return async function handleApiRequest(req, res, urlObj) {
@@ -399,6 +401,129 @@ function createApiRouter(db) {
         if (['DELETE', 'PUT', 'PATCH'].includes(method)) {
           authenticate(req);
           throw new ForbiddenException('Thẻ kho (LichSuTonKho) là bất biến — nghiêm cấm sửa hoặc xóa.');
+        }
+      }
+
+      // ─── M3: RESTOCK SUGGESTIONS (Gợi ý nhập hàng sắp hết từ SQLite) ───────
+      if (method === 'GET' && pathname === '/api/restock-suggestions') {
+        authorize(req, 'PURCHASE_CREATE');
+        return sendJson(res, 200, warehouseService.getRestockSuggestions());
+      }
+
+      // ─── M3: PURCHASES (Phiếu nhập hàng — BR-02 & BR-06) ───────────────────
+      if (pathname === '/api/purchases') {
+        if (method === 'GET') {
+          authorize(req, 'PURCHASE_CREATE');
+          const result = warehouseService.listPurchases({
+            search: urlObj.searchParams.get('search') || '',
+            supplierId: urlObj.searchParams.get('supplierId') || '',
+            status: urlObj.searchParams.get('status') || '',
+            fromDate: urlObj.searchParams.get('fromDate') || '',
+            toDate: urlObj.searchParams.get('toDate') || '',
+          });
+          return sendJson(res, 200, result);
+        }
+        if (method === 'POST') {
+          const auth = authorize(req, 'PURCHASE_CREATE');
+          const body = await readJsonBody(req);
+          const item = warehouseService.createPurchase(auth.user, body);
+          return sendJson(res, 201, { item });
+        }
+      }
+
+      const purchaseConfirmMatch = /^\/api\/purchases\/([^/]+)\/confirm$/.exec(pathname);
+      if (method === 'POST' && purchaseConfirmMatch) {
+        const auth = authorize(req, 'PURCHASE_APPROVE');
+        const item = warehouseService.confirmPurchase(auth.user, decodeURIComponent(purchaseConfirmMatch[1]));
+        return sendJson(res, 200, { item });
+      }
+
+      const purchaseCancelMatch = /^\/api\/purchases\/([^/]+)\/cancel$/.exec(pathname);
+      if (method === 'POST' && purchaseCancelMatch) {
+        const auth = authorize(req, 'PURCHASE_APPROVE');
+        const body = await readJsonBody(req);
+        const item = warehouseService.cancelPurchase(
+          auth.user,
+          decodeURIComponent(purchaseCancelMatch[1]),
+          body.reason || '',
+        );
+        return sendJson(res, 200, { item });
+      }
+
+      const purchaseIdMatch = /^\/api\/purchases\/([^/]+)$/.exec(pathname);
+      if (purchaseIdMatch) {
+        const targetId = decodeURIComponent(purchaseIdMatch[1]);
+        if (method === 'GET') {
+          authorize(req, 'PURCHASE_CREATE');
+          const item = warehouseService.getPurchase(targetId);
+          return sendJson(res, 200, { item });
+        }
+        if (method === 'PUT' || method === 'PATCH') {
+          const auth = authorize(req, 'PURCHASE_CREATE');
+          const body = await readJsonBody(req);
+          const item = warehouseService.updateDraftPurchase(auth.user, targetId, body);
+          return sendJson(res, 200, { item });
+        }
+        if (method === 'DELETE') {
+          authorize(req, 'PURCHASE_APPROVE');
+          throw new ForbiddenException(
+            'Không cho phép xóa cứng phiếu nhập hàng. Hãy chuyển trạng thái sang Đã hủy (Cancelled) nếu phiếu đang là Nháp.',
+          );
+        }
+      }
+
+      // ─── M3: STOCK AUDITS (Phiếu kiểm kê kho — BR-06) ──────────────────────
+      if (pathname === '/api/stock-audits') {
+        if (method === 'GET') {
+          authorize(req, 'INVENTORY_VIEW');
+          const result = warehouseService.listStockAudits({
+            search: urlObj.searchParams.get('search') || '',
+            status: urlObj.searchParams.get('status') || '',
+            fromDate: urlObj.searchParams.get('fromDate') || '',
+            toDate: urlObj.searchParams.get('toDate') || '',
+          });
+          return sendJson(res, 200, result);
+        }
+        if (method === 'POST') {
+          const auth = authorize(req, 'INVENTORY_AUDIT');
+          const body = await readJsonBody(req);
+          const item = warehouseService.createStockAudit(auth.user, body);
+          return sendJson(res, 201, { item });
+        }
+      }
+
+      const auditApproveMatch = /^\/api\/stock-audits\/([^/]+)\/approve$/.exec(pathname);
+      if (method === 'POST' && auditApproveMatch) {
+        const auth = authorize(req, 'INVENTORY_APPROVE');
+        const item = warehouseService.approveStockAudit(auth.user, decodeURIComponent(auditApproveMatch[1]));
+        return sendJson(res, 200, { item });
+      }
+
+      const auditCancelMatch = /^\/api\/stock-audits\/([^/]+)\/cancel$/.exec(pathname);
+      if (method === 'POST' && auditCancelMatch) {
+        const auth = authorize(req, 'INVENTORY_APPROVE');
+        const body = await readJsonBody(req);
+        const item = warehouseService.cancelStockAudit(
+          auth.user,
+          decodeURIComponent(auditCancelMatch[1]),
+          body.reason || '',
+        );
+        return sendJson(res, 200, { item });
+      }
+
+      const auditIdMatch = /^\/api\/stock-audits\/([^/]+)$/.exec(pathname);
+      if (auditIdMatch) {
+        const targetId = decodeURIComponent(auditIdMatch[1]);
+        if (method === 'GET') {
+          authorize(req, 'INVENTORY_VIEW');
+          const item = warehouseService.getStockAudit(targetId);
+          return sendJson(res, 200, { item });
+        }
+        if (method === 'DELETE') {
+          authorize(req, 'INVENTORY_APPROVE');
+          throw new ForbiddenException(
+            'Không cho phép xóa cứng phiếu kiểm kê. Hãy chuyển trạng thái sang Đã hủy (DaHuy) nếu phiếu đang Chờ duyệt.',
+          );
         }
       }
 

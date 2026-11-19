@@ -235,6 +235,66 @@ document.addEventListener('submit', async (event) => {
         notify('Đã lưu thông tin.');
         break;
       }
+      case 'purchase-api-form': {
+        if (!purchaseLines.length) {
+          throw new Error('Vui lòng thêm tối thiểu 1 mặt hàng vào phiếu nhập trước khi lưu (BR-02).');
+        }
+        if (submitBtn) submitBtn.disabled = true;
+        try {
+          const payload = {
+            supplierId: v.supplierId,
+            note: (v.note || '').trim(),
+            items: purchaseLines.map((l) => ({
+              productId: l.productId,
+              qty: Number(l.qty),
+              unitCost: Number(l.unitCost),
+            })),
+          };
+          if (modalContext.id) {
+            const res = await api.updatePurchase(modalContext.id, payload);
+            notify(`Đã cập nhật phiếu nhập nháp ${res.item.id}.`);
+          } else {
+            const res = await api.createPurchase(payload);
+            notify(`Đã tạo phiếu nhập nháp ${res.item.id} (chờ Quản lý duyệt nhập kho).`);
+          }
+          closeModal();
+          await loadPurchasesData(true);
+        } finally {
+          if (submitBtn) submitBtn.disabled = false;
+        }
+        break;
+      }
+      case 'audit-api-form': {
+        if (!auditLines.length) {
+          throw new Error('Vui lòng thêm tối thiểu 1 sản phẩm cần kiểm đếm vào phiếu kiểm kê.');
+        }
+        for (const line of auditLines) {
+          const diff = Number(line.actualQty) - Number(line.systemQty);
+          if (diff !== 0 && String(line.reason || '').trim().length < 3) {
+            throw new Error(
+              `Sản phẩm ${line.sku} có chênh lệch ${diff > 0 ? `+${diff}` : diff}: bắt buộc nhập Lý do chênh lệch tối thiểu 3 ký tự (BR-06).`,
+            );
+          }
+        }
+        if (submitBtn) submitBtn.disabled = true;
+        try {
+          const res = await api.createStockAudit({
+            note: (v.note || '').trim(),
+            items: auditLines.map((l) => ({
+              productId: l.productId,
+              actualQty: Number(l.actualQty),
+              reason: String(l.reason || '').trim(),
+            })),
+          });
+          closeModal();
+          inventoryTab = 'audits';
+          notify(`Đã lập phiếu kiểm kê ${res.item.id} (trạng thái Chờ duyệt).`);
+          await loadStockAuditsData(true);
+        } finally {
+          if (submitBtn) submitBtn.disabled = false;
+        }
+        break;
+      }
       case 'audit-form': {
         const auditStatus = v.status || 'resolved';
         store.audit(

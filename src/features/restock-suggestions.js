@@ -1,79 +1,101 @@
-function pendingPurchaseQuantity(productId) {
-  return store.data.purchases
-    .filter((p) => p.status === 'pending')
-    .reduce(
-      (total, p) =>
-        total + p.items.filter((i) => i.id === productId).reduce((n, i) => n + i.qty, 0),
-      0,
-    );
-}
-
-function restockQuantity(product) {
-  const target = Math.max(1, product.minStock * 2);
-  return Math.max(0, target - product.stock - pendingPurchaseQuantity(product.id));
-}
-
-function lowStockProducts(supplierId = '') {
-  return store.data.products
-    .filter(
-      (p) => p.active && p.stock <= p.minStock && (!supplierId || p.supplierId === supplierId),
-    )
-    .sort((a, b) => a.stock - b.stock || a.name.localeCompare(b.name, 'vi'));
-}
+/* M3: Gợi ý nhập hàng sắp hết (BR-01 & BR-02) đọc trực tiếp từ SQLite API. */
+'use strict';
 
 function restockSuggestionsHTML() {
-  const products = lowStockProducts();
-  if (!products.length) return '';
-  return `<section class="panel restock-panel"><div class="panel-head"><div>
-    <h2>Gợi ý nhập hàng sắp hết</h2><p class="sub">${products.length} mặt hàng bằng hoặc dưới ngưỡng tồn tối thiểu · Chọn hàng để lập phiếu nhập ngay</p>
-    </div>${badge(`${products.length} cần chú ý`, 'yellow')}</div>
-    <div class="restock-grid">${products
-      .map((p) => {
-        const supplier = store.data.suppliers.find((s) => s.id === p.supplierId);
-        const pending = pendingPurchaseQuantity(p.id),
-          recommended = restockQuantity(p);
-        return `<article class="restock-card"><div class="row"><span class="product-thumb">${e(p.icon)}</span><div>
-        <h3>${e(p.name)}</h3><p class="sub">${e(supplier?.name || 'Chưa có nhà cung cấp')}</p>
-        </div></div><div class="restock-levels"><span>Còn <b class="negative">${p.stock}</b></span><span>Ngưỡng tối thiểu <b>${p.minStock}</b></span></div>
-        ${pending ? `<p class="sub">Đang chờ nhập: <strong>${pending}</strong> sản phẩm</p>` : ''}
-        <p class="restock-recommended">${recommended ? `Gợi ý nhập thêm <strong>${recommended}</strong> sản phẩm` : 'Hàng chờ nhập đã đủ mức bổ sung gợi ý'}</p>
-        ${action('purchase-restock', recommended ? 'Nhập mặt hàng này' : 'Nhập thêm', 'plus', 'primary small', `data-id="${e(p.id)}" ${supplier?.active ? '' : 'disabled'}`)}
-        ${!supplier?.active ? '<p class="sub negative">Nhà cung cấp đã ngừng hợp tác</p>' : ''}
-      </article>`;
-      })
-      .join(
-        '',
-      )}</div><p class="restock-explanation sub">Số lượng gợi ý đưa tồn kho lên 2 lần ngưỡng tối thiểu, đã trừ hàng trong phiếu chờ nhận. Bạn có thể chỉnh lại trước khi lập phiếu.</p></section>`;
+  const items = apiState.restockSuggestions || [];
+  if (!items.length) return '';
+  return `<section class="panel restock-panel">
+    <div class="panel-head">
+      <div>
+        <h2>Gợi ý nhập hàng sắp hết (BR-01)</h2>
+        <p class="sub">${items.length} mặt hàng đang có tồn kho &le; ngưỡng tối thiểu · Chọn để lập phiếu nhập nháp (Draft) ngay</p>
+      </div>
+      ${badge(`${items.length} cần nhập`, 'yellow')}
+    </div>
+    <div class="restock-grid">${items
+      .map(
+        (p) => `<article class="restock-card">
+          <div class="row">
+            <div class="product-thumb">${productImage({ imageUrl: p.imageUrl, name: p.name }, 'product-thumb-img')}</div>
+            <div>
+              <h3>${e(p.name)}</h3>
+              <p class="sub"><code>${e(p.sku)}</code> · ${e(p.supplierName)}</p>
+            </div>
+          </div>
+          <div class="restock-levels">
+            <span>Còn <b class="negative">${number(p.stockQty)}</b> ${e(p.unitName)}</span>
+            <span>Tối thiểu <b>${number(p.minStock)}</b></span>
+          </div>
+          ${p.pendingDraftQty > 0 ? `<p class="sub">Đang có trong phiếu nháp: <strong>${number(p.pendingDraftQty)}</strong></p>` : ''}
+          <p class="restock-recommended">${
+            p.recommendedQty > 0
+              ? `Gợi ý nhập thêm <strong>${number(p.recommendedQty)}</strong> ${e(p.unitName)}`
+              : 'Lượng trong phiếu nháp đã đạt mức bổ sung gợi ý'
+          }</p>
+          ${action(
+            'purchase-restock',
+            p.recommendedQty > 0 ? 'Nhập mặt hàng này' : 'Lập phiếu thêm',
+            'plus',
+            'primary small',
+            `data-id="${e(p.productId)}" ${p.supplierActive ? '' : 'disabled'}`,
+          )}
+          ${!p.supplierActive ? '<p class="sub negative">NCC đã ngừng hợp tác (BR-02)</p>' : ''}
+        </article>`,
+      )
+      .join('')}</div>
+    <p class="restock-explanation sub">Số lượng gợi ý = 2 × Tồn tối thiểu − Tồn hiện tại − SL đang ở phiếu Nháp. Bạn có thể điều chỉnh lại trước khi lưu.</p>
+  </section>`;
 }
 
 function renderSupplierRestockSuggestions() {
   const container = $('#purchase-restock-suggestions');
-  if (!container) return;
-  const products = lowStockProducts($('#purchase-supplier').value);
-  container.hidden = !products.length;
-  container.innerHTML = `<h3>Hàng sắp hết của nhà cung cấp này</h3><p class="sub">Chọn để thêm nhanh vào phiếu · Có thể chỉnh số lượng ở ô bên dưới trước khi thêm thủ công</p>
-    <div class="supplier-restock-list">${products
+  const supplierSelect = $('#purchase-supplier');
+  if (!container || !supplierSelect) return;
+  const sid = supplierSelect.value;
+  const items = (apiState.restockSuggestions || []).filter((p) => p.supplierId === sid);
+  container.hidden = !items.length;
+  if (!items.length) {
+    container.innerHTML = '';
+    return;
+  }
+  container.innerHTML = `<h3>Mặt hàng sắp hết của nhà cung cấp này</h3>
+    <p class="sub">Nhấn để thêm nhanh vào danh sách dòng nhập bên dưới</p>
+    <div class="supplier-restock-list">${items
       .map((p) => {
-        const added = purchaseLines.some((i) => i.id === p.id);
-        return `<button type="button" class="supplier-restock-item" data-action="purchase-add-suggestion" data-id="${e(p.id)}" ${added ? 'disabled' : ''}>
-        <span><strong>${e(p.name)}</strong><small>Còn ${p.stock} · Ngưỡng ${p.minStock} · Chờ nhập ${pendingPurchaseQuantity(p.id)}</small></span>
-        <span>${added ? 'Đã thêm' : `+ ${restockQuantity(p) || 1}`}</span></button>`;
+        const added = purchaseLines.some((i) => i.productId === p.productId);
+        return `<button type="button" class="supplier-restock-item" data-action="purchase-add-suggestion" data-id="${e(p.productId)}" ${added ? 'disabled' : ''}>
+          <span><strong>${e(p.name)}</strong><small>Còn ${number(p.stockQty)} / Ngưỡng ${number(p.minStock)} · Nháp ${number(p.pendingDraftQty)}</small></span>
+          <span>${added ? 'Đã thêm' : `+ ${number(p.recommendedQty || 1)}`}</span>
+        </button>`;
       })
       .join('')}</div>`;
 }
 
 function addSuggestedPurchase(productId) {
-  store.require('purchases');
-  const product = store.data.products.find((p) => p.id === productId && p.active);
-  const supplierId = $('#purchase-supplier').value;
-  if (!product || product.supplierId !== supplierId)
+  const supplierSelect = $('#purchase-supplier');
+  const supplierId = supplierSelect ? supplierSelect.value : '';
+  const prod = (apiState.products || []).find((p) => p.id === productId && p.status === 'DangKinhDoanh');
+  const sug = (apiState.restockSuggestions || []).find((s) => s.productId === productId);
+  const item = prod || sug;
+  if (!item) throw new Error('Không tìm thấy sản phẩm đang kinh doanh.');
+  if (supplierId && item.supplierId !== supplierId) {
     throw new Error('Sản phẩm không thuộc nhà cung cấp đang chọn.');
-  if (purchaseLines.some((i) => i.id === product.id))
-    throw new Error('Mặt hàng đã có trong phiếu.');
-  const qty = restockQuantity(product) || 1;
-  $('#purchase-product').value = product.id;
-  $('#purchase-qty').value = qty;
-  $('#purchase-price').value = product.cost;
-  purchaseLines.push({ id: product.id, name: product.name, qty, price: product.cost });
+  }
+  if (purchaseLines.some((i) => i.productId === productId)) {
+    throw new Error('Mặt hàng đã có trong danh sách nhập.');
+  }
+  const qty = Math.max(1, Number(sug?.recommendedQty) || Math.max(1, (item.minStock || 15) * 2 - (item.stockQty || 0)));
+  const unitCost = Math.max(0, Number(item.costPrice) || 0);
+  if ($('#purchase-product')) $('#purchase-product').value = productId;
+  if ($('#purchase-qty')) $('#purchase-qty').value = qty;
+  if ($('#purchase-price')) $('#purchase-price').value = unitCost;
+  purchaseLines.push({
+    productId,
+    sku: item.sku || productId,
+    name: item.name,
+    unitName: item.unitName || '',
+    qty,
+    unitCost,
+  });
   renderPurchaseLines();
 }

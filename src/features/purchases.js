@@ -1,189 +1,287 @@
+/* M3: Quản lý Nhập hàng (BR-02 & BR-06) — 3 tầng OOD kết nối SQLite API. */
+'use strict';
+
 function purchasesView() {
-  const s = store.data,
-    p = paginate(
-      s.purchases.filter(
-        (p) =>
-          match(`${p.id} ${p.supplier}`, filters.purchases || '') &&
-          (!filters.status || p.status === filters.status),
-      ),
-      'purchases',
-    );
+  if (!apiState.catalogMetaLoaded && !apiState.suppliersLoaded && !apiState.loading.catalogMeta) {
+    loadCatalogMeta();
+  }
+  if (!apiState.productsLoaded && !apiState.loading.products) {
+    loadProductsData();
+  }
+  if (!apiState.purchasesLoaded && !apiState.loading.purchases) {
+    loadPurchasesData();
+  }
+
+  const canApprove = store.hasPermission('PURCHASE_APPROVE');
+  const summary = apiState.purchasesSummary || {};
+  const list = apiState.purchases || [];
+  const p = paginate(list, 'purchases');
+
+  const supplierOptions = [
+    ['', 'Tất cả nhà cung cấp'],
+    ...(apiState.suppliers || []).map((s) => [s.id, s.name]),
+  ];
+
   return (
     heading(
-      'KHO HÀNG / NHẬP HÀNG',
+      'QUẢN LÝ KHO / NHẬP HÀNG',
       'Quản lý nhập hàng',
-      'Quy trình nhập hàng tương tác 2 chiều (Cửa hàng ⇄ NCC), đàm phán số lượng và kiểm nhận GRN.',
+      'Lập phiếu nhập (Draft) từ NCC đang hoạt động; chỉ cộng tồn kho & tính giá vốn bình quân khi duyệt (Confirmed) trong 1 Transaction (BR-02).',
       action('purchase-new', 'Tạo phiếu nhập', 'plus', 'primary'),
     ) +
     stats([
-      ['Phiếu nhập', s.purchases.length, 'Tất cả phiếu đã lập', 'receipt'],
-      [
-        'Đã nhập kho',
-        s.purchases.filter((p) => p.status === 'received').length,
-        'Đã cộng số lượng vào kho',
-        'check',
-      ],
-      [
-        'Đang xử lý / Chờ nhận',
-        s.purchases.filter((p) => ['pending', 'sent_to_supplier', 'supplier_responded', 'store_approved'].includes(p.status)).length,
-        'Chưa ảnh hưởng tồn kho',
-        'truck',
-      ],
-      [
-        'Phiếu nháp',
-        s.purchases.filter((p) => p.status === 'draft').length,
-        'Có thể gửi xác nhận',
-        'box',
-      ],
+      ['Tổng phiếu nhập', number(summary.total || 0), 'Lưu trữ trong SQLite', 'receipt'],
+      ['Phiếu nháp (Chờ duyệt)', number(summary.draftCount || 0), 'Chưa ảnh hưởng tồn kho', 'clock'],
+      ['Đã nhập kho (Confirmed)', number(summary.confirmedCount || 0), 'Đã cộng tồn & giá vốn BQ', 'check'],
+      ['Tổng giá trị đã nhập', money(summary.totalConfirmedAmount || 0), 'Chỉ tính phiếu Confirmed', 'truck'],
     ]) +
     restockSuggestionsHTML() +
-    `<section class="panel"><div class="panel-head"><h2>Danh sách phiếu nhập hàng</h2></div><div class="table-tools wrap">${filterInput('purchases', 'Tìm mã phiếu, nhà cung cấp…')}${filterSelect('status', [['', 'Tất cả trạng thái'], ...['draft', 'pending', 'sent_to_supplier', 'supplier_responded', 'store_approved', 'received', 'cancelled'].map((x) => [x, statusLabels[x] ? statusLabels[x][0] : x])])}</div>${table(
-      ['Mã phiếu', 'Nhà cung cấp', 'Ngày lập', 'Số mặt hàng', 'Tổng tiền', 'Trạng thái', ''],
-      p.items.map(
-        (p) =>
-          `<tr><td class="name">${e(p.id)}</td><td>${e(p.supplier)}</td><td>${date(p.time)}</td><td>${p.items.length}</td><td class="money">${money(p.total)}</td><td>${status(p.status)}</td><td>${action('purchase-detail', 'Xem', '', 'small', `data-id="${e(p.id)}"`)}</td></tr>`,
-      ),
-    )}${p.foot}</section><div class="note mt16">Phiếu qua các bước: Gửi NCC → NCC phản hồi xác nhận → Cửa hàng duyệt → Kiểm nhận kho thực tế (GRN). Chỉ số lượng đạt chuẩn mới cộng vào tồn kho và cập nhật giá vốn.</div>`
+    `<section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Danh sách phiếu nhập hàng</h2>
+          <p class="sub">${
+            canApprove
+              ? 'Bạn có quyền Quản lý/Admin: được lập nháp, sửa nháp, duyệt nhập kho hoặc hủy phiếu nháp.'
+              : 'Vai trò Nhân viên kho: được lập & sửa phiếu nháp (Draft); cần Quản lý duyệt để cộng tồn kho.'
+          }</p>
+        </div>
+      </div>
+      <div class="table-tools">
+        ${filterInput('purchases', 'Tìm mã phiếu, nhà cung cấp, người lập, ghi chú…')}
+        ${filterSelect('purchaseSupplier', supplierOptions)}
+        ${filterSelect('purchaseStatus', [
+          ['', 'Tất cả trạng thái'],
+          ['Draft', 'Phiếu nháp (Chờ duyệt)'],
+          ['Confirmed', 'Đã nhập kho (Confirmed)'],
+          ['Cancelled', 'Đã hủy (Cancelled)'],
+        ])}
+        <input id="filter-purchaseFrom" data-filter="purchaseFrom" type="date" value="${e(filters.purchaseFrom || '')}" aria-label="Từ ngày" title="Từ ngày">
+        <input id="filter-purchaseTo" data-filter="purchaseTo" type="date" value="${e(filters.purchaseTo || '')}" aria-label="Đến ngày" title="Đến ngày">
+        ${action('purchases-reset', 'Đặt lại', 'return', 'small')}
+      </div>
+      ${
+        apiState.purchaseError
+          ? `<div class="panel-body"><div class="note yellow" role="alert"><strong>Lỗi bộ lọc:</strong> ${e(apiState.purchaseError)}</div></div>`
+          : ''
+      }
+      ${
+        apiState.loading.purchases && !apiState.purchasesLoaded
+          ? '<div class="panel-body"><div class="note">Đang tải danh sách phiếu nhập từ CSDL…</div></div>'
+          : table(
+              ['Mã phiếu', 'Nhà cung cấp', 'Ngày lập', 'Người lập', 'Mặt hàng / SL', 'Tổng tiền', 'Trạng thái', 'Thao tác'],
+              p.items.map(
+                (po) => `<tr>
+                  <td class="name"><code>${e(po.id)}</code></td>
+                  <td class="name">${e(po.supplierName)}</td>
+                  <td>${date(po.createdAt)}</td>
+                  <td>${e(po.createdByName)}</td>
+                  <td>${number(po.itemCount)} SP · <strong>${number(po.totalQty)}</strong> đv</td>
+                  <td class="money">${money(po.totalAmount)}</td>
+                  <td>${status(po.status)}</td>
+                  <td>
+                    <div class="action-group">
+                      ${action('purchase-detail', 'Xem', '', 'xs', `data-id="${e(po.id)}"`)}
+                      ${po.status === 'Draft' ? action('purchase-edit', 'Sửa', '', 'xs', `data-id="${e(po.id)}"`) : ''}
+                      ${
+                        po.status === 'Draft' && canApprove
+                          ? action('purchase-confirm', 'Duyệt nhập', 'check', 'xs primary', `data-id="${e(po.id)}"`)
+                          : ''
+                      }
+                    </div>
+                  </td>
+                </tr>`,
+              ),
+            ) + p.foot
+      }
+    </section>
+    <div class="note mt16">
+      <strong>Quy tắc BR-02:</strong> Chỉ lập phiếu từ NCC trạng thái <em>Hoạt động</em>, tối thiểu 1 dòng chi tiết (SL &gt; 0, Đơn giá &ge; 0). Phiếu <em>Nháp (Draft)</em> chưa cộng tồn kho; khi Quản lý duyệt sang <em>Đã nhập kho (Confirmed)</em>, hệ thống cộng tồn kho, cập nhật giá vốn bình quân gia quyền, ghi <code>LichSuTonKho</code> (<code>NHAP_KHO</code>) trong 1 Transaction nguyên tử và khóa phiếu.
+    </div>`
   );
 }
 
-function purchaseModal(productId = '') {
-  store.require('purchases');
-  purchaseLines = [];
-  modalContext = { type: 'purchase' };
-  const suppliers = store.data.suppliers.filter((s) => s.active);
-  const chosen = store.data.products.find((p) => p.id === productId && p.active);
-  if (productId && (!chosen || !suppliers.some((s) => s.id === chosen.supplierId)))
-    throw new Error('Mặt hàng hoặc nhà cung cấp không còn hoạt động.');
+async function purchaseModal(prefillProductId = '', editPurchaseId = '') {
+  if (!apiState.suppliersLoaded || !apiState.productsLoaded) {
+    await Promise.all([loadCatalogMeta(true), loadProductsData(true)]);
+  }
+  let editingPo = null;
+  if (editPurchaseId) {
+    const res = await api.getPurchase(editPurchaseId);
+    editingPo = res.item;
+    if (!editingPo || editingPo.status !== 'Draft') {
+      throw new Error('Chỉ được chỉnh sửa phiếu nhập đang ở trạng thái Nháp (Draft).');
+    }
+  }
+
+  const activeSuppliers = (apiState.suppliers || []).filter((s) => s.status === 'HoatDong');
+  if (!activeSuppliers.length) {
+    throw new Error('Chưa có nhà cung cấp nào đang ở trạng thái Hoạt động (BR-02).');
+  }
+
+  const prefillProd = prefillProductId
+    ? (apiState.products || []).find((p) => p.id === prefillProductId && p.status === 'DangKinhDoanh')
+    : null;
+  if (prefillProductId && (!prefillProd || !activeSuppliers.some((s) => s.id === prefillProd.supplierId))) {
+    throw new Error('Sản phẩm hoặc nhà cung cấp đã ngừng hoạt động, không thể nhập hàng (BR-02).');
+  }
+
+  const initialSupplierId = editingPo?.supplierId || prefillProd?.supplierId || activeSuppliers[0].id;
+  purchaseLines = editingPo
+    ? (editingPo.items || []).map((i) => ({
+        productId: i.productId,
+        sku: i.sku,
+        name: i.productName,
+        unitName: i.unitName,
+        qty: i.qty,
+        unitCost: i.unitCost,
+      }))
+    : [];
+
+  modalContext = { type: 'purchase-api', id: editingPo?.id || '' };
   showModal(
-    'Tạo phiếu đặt / nhập hàng',
-    `<form id="purchase-form"><div class="modal-content stack">${selectField(
-      'Nhà cung cấp',
-      'supplierId',
-      suppliers.map((s) => [s.id, s.name]),
-      chosen?.supplierId || suppliers[0]?.id,
-      'id="purchase-supplier" required',
-    )}<div id="purchase-restock-suggestions"></div><div class="form-grid">${selectField('Sản phẩm', 'productId', [], '', 'id="purchase-product"', true)}${field('Số lượng nhập', 'qty', 1, 'number', 'id="purchase-qty" min="1" step="1"')}${field('Đơn giá nhập (₫)', 'price', 0, 'number', 'id="purchase-price" min="0" step="1"')}</div>${action('purchase-line-add', 'Thêm mặt hàng', 'plus', 'small')}<div id="purchase-lines"></div>${textField('Ghi chú', 'note')}${selectField(
-      'Quy trình xử lý phiếu',
-      'status',
-      [
-        ['pending', 'Gửi phiếu chờ nhận hàng trực tiếp'],
-        ['sent_to_supplier', 'Gửi đơn đặt hàng tới NCC (Chờ NCC xác nhận)'],
-        ['draft', 'Lưu bản nháp'],
-      ],
-      'pending',
-    )}${formError()}</div>${foot('Lưu & Gửi phiếu nhập')}</form>`,
+    editingPo ? `Sửa phiếu nhập nháp · ${e(editingPo.id)}` : 'Tạo phiếu nhập hàng (Draft)',
+    `<form id="purchase-api-form">
+      <div class="modal-content stack">
+        <div class="note">
+          Phiếu nhập được lưu ở trạng thái <strong>Nháp (Draft)</strong> — chưa cộng tồn kho cho đến khi Quản lý/Admin duyệt <strong>Xác nhận nhập kho (Confirmed)</strong>.
+        </div>
+        ${selectField(
+          'Nhà cung cấp đang hoạt động (*)',
+          'supplierId',
+          activeSuppliers.map((s) => [s.id, `${s.name} (${s.id})`]),
+          initialSupplierId,
+          'id="purchase-supplier" required',
+        )}
+        <div id="purchase-restock-suggestions"></div>
+        <div class="form-grid">
+          ${selectField('Sản phẩm thuộc NCC (*)', 'productId', [], '', 'id="purchase-product"', true)}
+          ${field('Số lượng nhập (*)', 'qty', 10, 'number', 'id="purchase-qty" min="1" step="1"')}
+          ${field('Đơn giá nhập (₫) (*)', 'unitCost', 0, 'number', 'id="purchase-price" min="0" step="100"')}
+        </div>
+        <div>
+          ${action('purchase-line-add', 'Thêm vào phiếu', 'plus', 'small')}
+        </div>
+        <div id="purchase-lines"></div>
+        ${textField('Ghi chú chứng từ nhập hàng', 'note', editingPo?.note || '')}
+        ${formError()}
+      </div>
+      <div class="modal-footer">
+        ${action('close-modal', 'Hủy')}
+        <button class="btn primary" type="submit">${icon('check')}${editingPo ? 'Lưu thay đổi' : 'Lưu phiếu nháp'}</button>
+      </div>
+    </form>`,
     true,
   );
-  updatePurchaseOptions();
-  if (chosen) addSuggestedPurchase(chosen.id);
+
+  updatePurchaseOptions(!editingPo);
+  if (prefillProd && !editingPo) {
+    addSuggestedPurchase(prefillProd.id);
+  }
 }
 
-function updatePurchaseOptions() {
-  const sid = $('#purchase-supplier').value;
-  const products = store.data.products.filter((p) => p.active && p.supplierId === sid);
-  $('#purchase-product').innerHTML = products
-    .map((p) => `<option value="${e(p.id)}">${e(p.name)} · Tồn ${p.stock}</option>`)
-    .join('');
-  $('#purchase-price').value = products[0]?.costPrice !== undefined ? products[0].costPrice : (products[0]?.cost || 0);
-  purchaseLines = [];
+function updatePurchaseOptions(resetLines = true) {
+  const sid = $('#purchase-supplier')?.value || '';
+  const products = (apiState.products || []).filter(
+    (p) => p.status === 'DangKinhDoanh' && p.supplierId === sid,
+  );
+  const select = $('#purchase-product');
+  if (select) {
+    select.innerHTML = products.length
+      ? products
+          .map(
+            (p) =>
+              `<option value="${e(p.id)}">${e(p.sku)} · ${e(p.name)} (Tồn: ${number(p.stockQty)} ${e(p.unitName)})</option>`,
+          )
+          .join('')
+      : '<option value="">— NCC này chưa có sản phẩm đang kinh doanh —</option>';
+  }
+  const priceInput = $('#purchase-price');
+  if (priceInput) {
+    priceInput.value = products[0] ? Number(products[0].costPrice || 0) : 0;
+  }
+  if (resetLines) {
+    purchaseLines = [];
+  }
   renderPurchaseLines();
 }
 
 function renderPurchaseLines() {
-  $('#purchase-lines').innerHTML =
+  const host = $('#purchase-lines');
+  if (!host) return;
+  const totalAmount = purchaseLines.reduce((sum, i) => sum + i.qty * i.unitCost, 0);
+  host.innerHTML =
     table(
-      ['Mặt hàng', 'SL', 'Đơn giá', 'Thành tiền', ''],
+      ['Mã SKU', 'Mặt hàng', 'SL nhập (*)', 'Đơn giá nhập (₫) (*)', 'Thành tiền', ''],
       purchaseLines.map(
-        (i, index) =>
-          `<tr><td>${e(i.name)}</td><td><input class="purchase-line-input" type="number" min="1" step="1" required value="${i.qty}" data-purchase-field="qty" data-index="${index}" aria-label="Số lượng nhập ${e(i.name)}"></td><td><input class="purchase-line-input purchase-line-price" type="number" min="0" step="1" required value="${i.price}" data-purchase-field="price" data-index="${index}" aria-label="Giá nhập ${e(i.name)}"></td><td>${money(i.price * i.qty)}</td><td>${ib('purchase-line-delete', 'trash', 'Xóa mặt hàng', `data-index="${index}"`)}</td></tr>`,
+        (i, index) => `<tr>
+          <td><code>${e(i.sku)}</code></td>
+          <td class="name">${e(i.name)}</td>
+          <td><input class="purchase-line-input" type="number" min="1" step="1" required value="${i.qty}" data-purchase-field="qty" data-index="${index}" aria-label="Số lượng nhập ${e(i.name)}"></td>
+          <td><input class="purchase-line-input purchase-line-price" type="number" min="0" step="100" required value="${i.unitCost}" data-purchase-field="unitCost" data-index="${index}" aria-label="Đơn giá nhập ${e(i.name)}"></td>
+          <td class="money">${money(i.qty * i.unitCost)}</td>
+          <td>${ib('purchase-line-delete', 'trash', 'Xóa dòng hàng', `data-index="${index}"`)}</td>
+        </tr>`,
       ),
     ) +
-    `<div class="right mt16"><strong>Tổng nhập: ${money(purchaseLines.reduce((s, i) => s + i.qty * i.price, 0))}</strong></div>`;
+    `<div class="right mt16"><strong>Tổng tiền phiếu nhập: ${money(totalAmount)}</strong></div>`;
   renderSupplierRestockSuggestions();
 }
 
-function purchaseDetail(purchaseId) {
-  const p = store.data.purchases.find((p) => p.id === purchaseId);
-  if (!p) throw new Error('Không tìm thấy phiếu nhập.');
-  showModal(
-    'Chi tiết phiếu nhập hàng (PO)',
-    `<div class="modal-content"><div class="detail-grid"><div><small>Mã phiếu</small><strong>${e(p.id)}</strong></div><div><small>Trạng thái</small>${status(p.status)}</div><div><small>Nhà cung cấp</small><strong>${e(p.supplier)}</strong></div><div><small>Ngày lập</small><strong>${date(p.time)}</strong></div></div>${table(
-      ['Sản phẩm', 'SL Cửa hàng đặt', 'Giá dự kiến', 'NCC Xác nhận', 'Giá NCC báo', 'Thực nhận (GRN)'],
-      p.items.map(
-        (i) =>
-          `<tr><td class="name">${e(i.name)}</td><td>${i.qty}</td><td>${money(i.price)}</td><td>${i.confirmedQty !== undefined ? `<strong class="${i.confirmedQty !== i.qty ? 'warning' : ''}">${i.confirmedQty}</strong>` : '<span class="muted">Chờ NCC</span>'}</td><td>${i.confirmedCost !== undefined ? `<span class="${i.confirmedCost !== i.price ? 'negative' : ''}">${money(i.confirmedCost)}</span>` : money(i.price)}</td><td>${i.acceptedQty !== undefined ? `<span class="positive"><strong>${i.acceptedQty}</strong></span>${i.rejectedQty ? ` <span class="negative">(-${i.rejectedQty})</span>` : ''}` : '<span class="muted">Chưa nhận</span>'}</td></tr>`,
-      ),
-    )}<div class="right mt16"><strong>Tổng tiền: ${money(p.total)}</strong></div><p class="sub">${e(p.note || 'Không có ghi chú')}${p.supplierNote ? `<br><strong>Phản hồi NCC:</strong> ${e(p.supplierNote)}` : ''}${p.storeApprovalNote ? `<br><strong>Duyệt cửa hàng:</strong> ${e(p.storeApprovalNote)}` : ''}${p.receivedAt ? `<br>Nhập kho lúc ${date(p.receivedAt)} bởi ${e(p.receiver)}` : ''}</p></div><div class="modal-footer">${['draft', 'pending', 'sent_to_supplier', 'supplier_responded', 'store_approved'].includes(p.status) ? action('cancel-purchase', 'Từ chối & Hủy phiếu', '', 'danger', `data-id="${e(p.id)}" data-action="cancel-purchase" data-action-alt="purchase-cancel"`) : ''}${['draft', 'pending'].includes(p.status) ? action('send-po-to-supplier', 'Gửi yêu cầu đặt hàng cho NCC', 'truck', 'primary', `data-id="${e(p.id)}" data-action="send-po-to-supplier" data-action-alt="purchase-send"`) : ''}${['sent_to_supplier', 'pending'].includes(p.status) ? action('open-supplier-response', 'Cổng phản hồi NCC (Tương tác 2 chiều)', 'edit', 'warning', `data-id="${e(p.id)}" data-action="open-supplier-response"`) : ''}${p.status === 'supplier_responded' ? action('approve-supplier-response', 'Chấp nhận phương án NCC & Chờ nhận hàng', 'check', 'primary', `data-id="${e(p.id)}" data-action="approve-supplier-response"`) + action('open-supplier-response', 'Sửa phản hồi NCC', 'edit', 'ghost', `data-id="${e(p.id)}"`) : ''}${['store_approved', 'pending'].includes(p.status) ? action('confirm-purchase-receipt', 'Kiểm nhận thực tế & Nhập kho (GRN)', 'check', 'teal', `data-id="${e(p.id)}" data-action="confirm-purchase-receipt" data-action-alt="open-purchase-receipt"`) : ''}${['pending', 'store_approved'].includes(p.status) ? action('purchase-receive', 'Xác nhận nhập kho trực tiếp', 'check', 'teal', `data-id="${e(p.id)}"`) : ''}${action('close-modal', 'Đóng')}</div>`,
-    true,
-  );
-}
+async function purchaseDetail(purchaseId) {
+  const res = await api.getPurchase(purchaseId);
+  const po = res.item;
+  if (!po) throw new Error('Không tìm thấy phiếu nhập hàng.');
+  const canApprove = store.hasPermission('PURCHASE_APPROVE');
+  const isDraft = po.status === 'Draft';
 
-function supplierResponseModal(purchaseId) {
-  const p = store.data.purchases.find((p) => p.id === purchaseId);
-  if (!p) throw new Error('Không tìm thấy phiếu nhập.');
-  modalContext = { type: 'supplier-response', purchaseId };
   showModal(
-    'Cổng Phản hồi Nhà cung cấp (Tương tác 2 chiều NCC ⇄ Cửa hàng)',
-    `<form id="supplier-response-form"><div class="modal-content stack">
-      <div class="note yellow">NCC <strong>${e(p.supplier)}</strong> xác nhận số lượng thực giao, báo giá mới và khai báo HSD/Mã lô cho đơn đặt hàng <strong>${e(p.id)}</strong>.</div>
+    `Chi tiết phiếu nhập hàng · ${e(po.id)}`,
+    `<div class="modal-content stack">
+      <div class="detail-grid">
+        <div><small>Mã phiếu nhập</small><strong><code>${e(po.id)}</code></strong></div>
+        <div><small>Trạng thái</small><div>${status(po.status)}</div></div>
+        <div><small>Nhà cung cấp</small><strong>${e(po.supplierName)}</strong></div>
+        <div><small>Người lập phiếu</small><strong>${e(po.createdByName)}</strong></div>
+        <div><small>Thời gian lập</small><strong>${date(po.createdAt)}</strong></div>
+        <div><small>${po.status === 'Cancelled' ? 'Người / Ngày hủy' : 'Người / Ngày duyệt'}</small><strong>${
+          po.approvedByName ? `${e(po.approvedByName)} · ${date(po.confirmedAt)}` : 'Chưa duyệt'
+        }</strong></div>
+      </div>
       ${table(
-        ['Mặt hàng', 'SL Đặt', 'Khả năng cung ứng', 'SL Xác nhận', 'Giá vốn chốt (₫)', 'Hạn sử dụng', 'Mã lô NCC'],
-        p.items.map((i, idx) => {
-          const prod = store.data.products.find((x) => x.id === i.id);
-          const defExp = i.expiryDate || prod?.expiryDate || '';
-          const defBatch = i.batchCode || prod?.batchCode || '';
-          return `<tr>
-            <td class="name">${e(i.name)}<input type="hidden" name="item_id_${idx}" value="${e(i.id)}"></td>
-            <td><strong>${i.qty}</strong></td>
-            <td>
-              <select class="purchase-line-input" name="supplier_status_${idx}" onchange="if(this.value==='out_of_stock'){const q=this.closest('tr').querySelector('[name^=confirmed_qty]');if(q)q.value=0;}">
-                <option value="full" ${i.confirmedQty === i.qty ? 'selected' : ''}>Giao đủ</option>
-                <option value="partial" ${(i.confirmedQty !== undefined && i.confirmedQty < i.qty && i.confirmedQty > 0) ? 'selected' : ''}>Giao một phần</option>
-                <option value="out_of_stock" ${(i.confirmedQty === 0) ? 'selected' : ''}>Hết hàng (Không giao)</option>
-              </select>
+        ['Sản phẩm', 'Mã SKU', 'ĐVT', 'SL nhập', 'Đơn giá nhập', 'Thành tiền'],
+        (po.items || []).map(
+          (i) => `<tr>
+            <td class="name">
+              <div class="product-cell">
+                <div class="product-thumb">${productImage({ imageUrl: i.imageUrl, name: i.productName }, 'product-thumb-img')}</div>
+                <div><strong>${e(i.productName)}</strong></div>
+              </div>
             </td>
-            <td><input type="number" class="purchase-line-input" min="0" step="1" name="confirmed_qty_${idx}" value="${i.confirmedQty !== undefined ? i.confirmedQty : i.qty}" required></td>
-            <td><input type="number" class="purchase-line-input purchase-line-price" min="0" step="1" name="confirmed_cost_${idx}" value="${i.confirmedCost !== undefined ? i.confirmedCost : i.price}" required></td>
-            <td><input type="date" name="expiry_date_${idx}" value="${defExp}"></td>
-            <td><input type="text" name="batch_code_${idx}" value="${e(defBatch)}" placeholder="Mã lô NCC"></td>
-          </tr>`;
-        }),
+            <td><code>${e(i.sku)}</code></td>
+            <td>${e(i.unitName)}</td>
+            <td class="right"><strong>${number(i.qty)}</strong></td>
+            <td class="money">${money(i.unitCost)}</td>
+            <td class="money"><strong>${money(i.lineTotal)}</strong></td>
+          </tr>`,
+        ),
       )}
-      ${textField('Ghi chú phản hồi của Nhà cung cấp', 'supplierNote', p.supplierNote || 'Xác nhận giao hàng đúng hẹn.')}
-      ${formError()}
-    </div>${foot('Gửi phản hồi xác nhận tới Cửa hàng', 'primary')}</form>`,
-    true,
-  );
-}
-
-function purchaseReceiptModal(purchaseId) {
-  const p = store.data.purchases.find((p) => p.id === purchaseId);
-  if (!p) throw new Error('Không tìm thấy phiếu nhập.');
-  modalContext = { type: 'purchase-receipt', purchaseId };
-  showModal(
-    'Kiểm nhận thực tế tại cửa hàng (GRN / Goods Receipt Note)',
-    `<form id="purchase-receipt-form"><div class="modal-content stack">
-      <div class="note teal">Nhân viên kho kiểm tra quy cách, date và số lượng hàng thực nhận cho phiếu <strong>${e(p.id)}</strong>. Chỉ số lượng đạt chuẩn mới được nhập vào tồn kho bán lẻ.</div>
-      ${table(
-        ['Mặt hàng', 'NCC Xác nhận', 'Giá chốt', 'SL Đạt chuẩn (Nhập kho)', 'SL Lỗi (Trả lại NCC)', 'Lý do từ chối', 'Hạn dùng'],
-        p.items.map((i, idx) => {
-          const expectedQty = i.confirmedQty !== undefined ? i.confirmedQty : i.qty;
-          const cost = i.confirmedCost !== undefined ? i.confirmedCost : i.price;
-          return `<tr>
-            <td class="name">${e(i.name)}<input type="hidden" name="rec_item_id_${idx}" value="${e(i.id)}"></td>
-            <td><strong>${expectedQty}</strong></td>
-            <td class="money">${money(cost)}</td>
-            <td><input type="number" class="purchase-line-input" min="0" max="${expectedQty}" step="1" name="accepted_qty_${idx}" value="${expectedQty}" required></td>
-            <td><input type="number" class="purchase-line-input" min="0" max="${expectedQty}" step="1" name="rejected_qty_${idx}" value="${i.rejectedQty || 0}"></td>
-            <td><input type="text" class="purchase-line-input" name="reject_reason_${idx}" value="${e(i.rejectReason || '')}" placeholder="Lý do lỗi/trả lại"></td>
-            <td>${i.expiryDate ? `<span class="badge ${getExpiryInfo ? getExpiryInfo(i.expiryDate).color : 'green'}">${i.expiryDate}</span>` : '<span class="muted">Theo lô</span>'}</td>
-          </tr>`;
-        }),
-      )}
-      ${textField('Ghi chú kiểm nhận của kho', 'receiverNote', 'Kiểm nhận đầy đủ, chất lượng đạt chuẩn.')}
-      ${formError()}
-    </div>${foot('Hoàn tất kiểm nhận & Cập nhật kho (GRN)', 'teal')}</form>`,
+      <div class="right"><strong>Tổng cộng (${number(po.totalQty)} sản phẩm): ${money(po.totalAmount)}</strong></div>
+      <p class="sub"><strong>Ghi chú:</strong> ${e(po.note || 'Không có ghi chú.')}</p>
+      ${
+        po.status === 'Confirmed'
+          ? '<div class="note green"><strong>Đã khóa chứng từ (BR-02):</strong> Phiếu đã xác nhận nhập kho, cộng tồn, cập nhật giá vốn bình quân và ghi Thẻ kho bất biến — không được sửa hoặc hủy.</div>'
+          : isDraft && !canApprove
+            ? '<div class="note yellow">Phiếu đang ở trạng thái <strong>Nháp (Draft)</strong>. Đang chờ <strong>Quản lý cửa hàng</strong> hoặc <strong>Admin</strong> duyệt xác nhận nhập kho.</div>'
+            : ''
+      }
+    </div>
+    <div class="modal-footer">
+      ${isDraft ? action('purchase-edit', 'Sửa phiếu nháp', 'edit', '', `data-id="${e(po.id)}"`) : ''}
+      ${isDraft && canApprove ? action('purchase-cancel', 'Hủy phiếu', 'trash', 'danger', `data-id="${e(po.id)}"`) : ''}
+      ${isDraft && canApprove ? action('purchase-confirm', 'Duyệt nhập kho', 'check', 'primary', `data-id="${e(po.id)}"`) : ''}
+      ${action('close-modal', 'Đóng')}
+    </div>`,
     true,
   );
 }

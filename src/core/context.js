@@ -136,6 +136,12 @@ const statusLabels = {
   draft: ['Bản nháp', 'gray'],
   received: ['Đã nhập kho', 'green'],
   active: ['Đang hoạt động', 'green'],
+  Draft: ['Phiếu nháp', 'yellow'],
+  Confirmed: ['Đã nhập kho', 'green'],
+  Cancelled: ['Đã hủy', 'red'],
+  ChoDuyet: ['Chờ duyệt', 'yellow'],
+  DaDuyet: ['Đã duyệt', 'green'],
+  DaHuy: ['Đã hủy', 'red'],
 };
 const status = (value) => badge(...(statusLabels[value] || [e(value), 'gray']));
 const stats = (values) =>
@@ -178,3 +184,4 @@ let page = 'dashboard',
   productsTab = 'products',
   inventoryTab = 'stock';
 let purchaseLines = [];
+let auditLines = [];

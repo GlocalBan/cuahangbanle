@@ -55,7 +55,11 @@ function handleNavigationAction(a) {
     case 'confirm': {
       const fn = modalContext.onConfirm;
       closeModal();
-      if (typeof fn === 'function') fn();
+      if (typeof fn === 'function') {
+        Promise.resolve()
+          .then(() => fn())
+          .catch((err) => notify(err?.message || 'Thao tác thất bại.', true));
+      }
       break;
     }
 

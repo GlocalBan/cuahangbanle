@@ -314,6 +314,10 @@ const {
   ProductRepository,
   StockMovementRepository,
 } = require('./catalogRepositories.js');
+const {
+  PurchaseRepository,
+  StockAuditRepository,
+} = require('./warehouseRepositories.js');
 
 function createRepositories(db) {
   return {
@@ -327,6 +331,8 @@ function createRepositories(db) {
     suppliers: new SupplierRepository(db),
     products: new ProductRepository(db),
     stockMovements: new StockMovementRepository(db),
+    purchases: new PurchaseRepository(db),
+    stockAudits: new StockAuditRepository(db),
   };
 }
 
@@ -341,5 +347,7 @@ module.exports = {
   SupplierRepository,
   ProductRepository,
   StockMovementRepository,
+  PurchaseRepository,
+  StockAuditRepository,
   createRepositories,
 };

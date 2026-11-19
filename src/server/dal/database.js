@@ -529,6 +529,9 @@ CREATE INDEX IF NOT EXISTS idx_products_supplier ON products(supplier_id);
 CREATE INDEX IF NOT EXISTS idx_products_status ON products(status);
 CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements(product_id);
 CREATE INDEX IF NOT EXISTS idx_stock_movements_created ON stock_movements(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_purchases_status_created ON purchases(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_purchases_supplier ON purchases(supplier_id);
+CREATE INDEX IF NOT EXISTS idx_stock_audits_status_created ON stock_audits(status, created_at DESC);
 
 -- ============================================================================
 -- TRIGGERS BẤT BIẾN (APPEND-ONLY) TẠI TẦNG CSDL CHO AUDIT_LOGS & STOCK_MOVEMENTS

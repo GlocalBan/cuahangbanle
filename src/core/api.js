@@ -44,6 +44,28 @@ const apiState = {
   },
   stockMovementsLoaded: false,
   stockMovementError: '',
+  // M3 Warehouse (Purchases & Stock Audits) caches
+  purchases: [],
+  purchasesSummary: {
+    total: 0,
+    draftCount: 0,
+    confirmedCount: 0,
+    cancelledCount: 0,
+    totalConfirmedAmount: 0,
+  },
+  purchasesLoaded: false,
+  purchaseError: '',
+  restockSuggestions: [],
+  restockLoaded: false,
+  stockAudits: [],
+  stockAuditsSummary: {
+    total: 0,
+    pendingCount: 0,
+    approvedCount: 0,
+    cancelledCount: 0,
+  },
+  stockAuditsLoaded: false,
+  stockAuditError: '',
   loading: {},
 };
 
@@ -104,6 +126,27 @@ function resetApiCaches() {
   };
   apiState.stockMovementsLoaded = false;
   apiState.stockMovementError = '';
+  apiState.purchases = [];
+  apiState.purchasesSummary = {
+    total: 0,
+    draftCount: 0,
+    confirmedCount: 0,
+    cancelledCount: 0,
+    totalConfirmedAmount: 0,
+  };
+  apiState.purchasesLoaded = false;
+  apiState.purchaseError = '';
+  apiState.restockSuggestions = [];
+  apiState.restockLoaded = false;
+  apiState.stockAudits = [];
+  apiState.stockAuditsSummary = {
+    total: 0,
+    pendingCount: 0,
+    approvedCount: 0,
+    cancelledCount: 0,
+  };
+  apiState.stockAuditsLoaded = false;
+  apiState.stockAuditError = '';
   apiState.loading = {};
 }
 
@@ -220,6 +263,23 @@ const api = {
   getSupplierHistory: (id) => apiRequest('GET', `/api/suppliers/${encodeURIComponent(id)}/history`),
 
   queryStockMovements: (params = {}) => apiRequest('GET', `/api/stock-movements${buildQuery(params)}`),
+
+  // M3 Purchases, Restock Suggestions & Stock Audits
+  listRestockSuggestions: () => apiRequest('GET', '/api/restock-suggestions'),
+  listPurchases: (params = {}) => apiRequest('GET', `/api/purchases${buildQuery(params)}`),
+  getPurchase: (id) => apiRequest('GET', `/api/purchases/${encodeURIComponent(id)}`),
+  createPurchase: (data) => apiRequest('POST', '/api/purchases', data),
+  updatePurchase: (id, data) => apiRequest('PUT', `/api/purchases/${encodeURIComponent(id)}`, data),
+  confirmPurchase: (id) => apiRequest('POST', `/api/purchases/${encodeURIComponent(id)}/confirm`, {}),
+  cancelPurchase: (id, reason = '') =>
+    apiRequest('POST', `/api/purchases/${encodeURIComponent(id)}/cancel`, { reason }),
+
+  listStockAudits: (params = {}) => apiRequest('GET', `/api/stock-audits${buildQuery(params)}`),
+  getStockAudit: (id) => apiRequest('GET', `/api/stock-audits/${encodeURIComponent(id)}`),
+  createStockAudit: (data) => apiRequest('POST', '/api/stock-audits', data),
+  approveStockAudit: (id) => apiRequest('POST', `/api/stock-audits/${encodeURIComponent(id)}/approve`, {}),
+  cancelStockAudit: (id, reason = '') =>
+    apiRequest('POST', `/api/stock-audits/${encodeURIComponent(id)}/cancel`, { reason }),
 };
 
 async function loadStaffData(force = false) {
@@ -320,7 +380,7 @@ async function loadCatalogMeta(force = false) {
     notify(err.message, true);
   } finally {
     apiState.loading.catalogMeta = false;
-    if (['products', 'suppliers', 'inventory'].includes(page) && $('#content')) render();
+    if (['products', 'suppliers', 'inventory', 'purchases'].includes(page) && $('#content')) render();
   }
 }
 
@@ -362,7 +422,7 @@ async function loadProductsData(force = false) {
     notify(err.message, true);
   } finally {
     apiState.loading.products = false;
-    if (['products', 'inventory'].includes(page) && $('#content')) render();
+    if (['products', 'inventory', 'purchases'].includes(page) && $('#content')) render();
   }
 }
 
@@ -415,6 +475,76 @@ async function loadStockMovementsData(force = false) {
     notify(err.message, true);
   } finally {
     apiState.loading.stockMovements = false;
+    if (page === 'inventory' && $('#content')) render();
+  }
+}
+
+async function loadPurchasesData(force = false) {
+  if (!store.hasPermission('PURCHASE_CREATE')) return;
+  if (apiState.loading.purchases && !force) return;
+  const fromDate = filters.purchaseFrom || '';
+  const toDate = filters.purchaseTo || '';
+  if (fromDate && toDate && fromDate > toDate) {
+    apiState.purchaseError = 'Khoảng thời gian không hợp lệ: "Từ ngày" phải nhỏ hơn hoặc bằng "Đến ngày" (BR-08).';
+    apiState.purchasesLoaded = true;
+    if (page === 'purchases' && $('#content')) render();
+    return;
+  }
+  apiState.purchaseError = '';
+  apiState.loading.purchases = true;
+  try {
+    const [poRes, restockRes] = await Promise.all([
+      api.listPurchases({
+        search: filters.purchases || '',
+        supplierId: filters.purchaseSupplier || '',
+        status: filters.purchaseStatus || '',
+        fromDate,
+        toDate,
+      }),
+      api.listRestockSuggestions(),
+    ]);
+    apiState.purchases = poRes.items || [];
+    apiState.purchasesSummary = poRes.summary || apiState.purchasesSummary;
+    apiState.purchasesLoaded = true;
+    apiState.restockSuggestions = restockRes.items || [];
+    apiState.restockLoaded = true;
+  } catch (err) {
+    apiState.purchaseError = err.message;
+    notify(err.message, true);
+  } finally {
+    apiState.loading.purchases = false;
+    if (page === 'purchases' && $('#content')) render();
+  }
+}
+
+async function loadStockAuditsData(force = false) {
+  if (!store.hasPermission('INVENTORY_VIEW')) return;
+  if (apiState.loading.stockAudits && !force) return;
+  const fromDate = filters.auditListFrom || '';
+  const toDate = filters.auditListTo || '';
+  if (fromDate && toDate && fromDate > toDate) {
+    apiState.stockAuditError = 'Khoảng thời gian không hợp lệ: "Từ ngày" phải nhỏ hơn hoặc bằng "Đến ngày" (BR-08).';
+    apiState.stockAuditsLoaded = true;
+    if (page === 'inventory' && $('#content')) render();
+    return;
+  }
+  apiState.stockAuditError = '';
+  apiState.loading.stockAudits = true;
+  try {
+    const res = await api.listStockAudits({
+      search: filters.auditListSearch || '',
+      status: filters.auditListStatus || '',
+      fromDate,
+      toDate,
+    });
+    apiState.stockAudits = res.items || [];
+    apiState.stockAuditsSummary = res.summary || apiState.stockAuditsSummary;
+    apiState.stockAuditsLoaded = true;
+  } catch (err) {
+    apiState.stockAuditError = err.message;
+    notify(err.message, true);
+  } finally {
+    apiState.loading.stockAudits = false;
     if (page === 'inventory' && $('#content')) render();
   }
 }

@@ -569,17 +569,17 @@ td .icon-btn svg {
 .table-tools input:not([type]),
 .table-tools input[type='text'],
 .table-tools input[type='search'] {
-  flex: 1 1 240px;
-  min-width: 200px;
+  flex: 1 1 210px;
+  min-width: 180px;
   background: #fafbfe;
 }
 .table-tools select {
-  flex: 0 1 190px;
-  min-width: 155px;
+  flex: 0 1 175px;
+  min-width: 145px;
 }
 .table-tools input[type='date'] {
-  flex: 0 1 155px;
-  min-width: 140px;
+  flex: 0 1 142px;
+  min-width: 132px;
 }
 .table-tools input[type='number'] {
   flex: 0 1 135px;
@@ -729,7 +729,13 @@ td.wrap-cell {
 }
 .note.yellow {
   background: #fffaeb;
-  color: #b2a06a;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+.note.green {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
 }
 .rules .rule {
   display: flex;

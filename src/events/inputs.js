@@ -12,9 +12,19 @@ document.addEventListener('input', (event) => {
     } else if (el.dataset.filter === 'moveSearch') {
       clearTimeout(window.__moveSearchTimer);
       window.__moveSearchTimer = setTimeout(() => loadStockMovementsData(true), 220);
+    } else if (el.dataset.filter === 'purchases') {
+      clearTimeout(window.__purchasesSearchTimer);
+      window.__purchasesSearchTimer = setTimeout(() => loadPurchasesData(true), 220);
+    } else if (el.dataset.filter === 'auditListSearch') {
+      clearTimeout(window.__auditListSearchTimer);
+      window.__auditListSearchTimer = setTimeout(() => loadStockAuditsData(true), 220);
     } else {
       render();
     }
+  }
+  if (el.dataset.auditField === 'reason') {
+    const line = auditLines[Number(el.dataset.index)];
+    if (line) line.reason = el.value;
   }
   if (el.id === 'global-search') globalSearch(el.value);
   if (el.id === 'cash-input') updateCash();
@@ -49,6 +59,10 @@ document.addEventListener('change', async (event) => {
         loadProductsData(true);
       } else if (['moveDocType', 'moveFrom', 'moveTo'].includes(el.dataset.filter)) {
         loadStockMovementsData(true);
+      } else if (['purchaseSupplier', 'purchaseStatus', 'purchaseFrom', 'purchaseTo'].includes(el.dataset.filter)) {
+        loadPurchasesData(true);
+      } else if (['auditListStatus', 'auditListFrom', 'auditListTo'].includes(el.dataset.filter)) {
+        loadStockAuditsData(true);
       } else {
         render();
       }
@@ -66,13 +80,19 @@ document.addEventListener('change', async (event) => {
       });
     }
     if (el.id === 'cart-note') changeDraft((d) => (d.note = el.value));
-    if (el.id === 'purchase-supplier') updatePurchaseOptions();
-    if (el.id === 'purchase-product')
-      $('#purchase-price').value = store.data.products.find((p) => p.id === el.value)?.cost || 0;
+    if (el.id === 'purchase-supplier') updatePurchaseOptions(true);
+    if (el.id === 'purchase-product') {
+      const prod = (apiState.products || []).find((p) => p.id === el.value);
+      if ($('#purchase-price')) $('#purchase-price').value = prod ? Number(prod.costPrice || 0) : 0;
+    }
+    if (el.id === 'audit-product-select') {
+      const prod = (apiState.products || []).find((p) => p.id === el.value);
+      if ($('#audit-actual-input') && prod) $('#audit-actual-input').value = Number(prod.stockQty || 0);
+    }
     if (el.dataset.purchaseField) {
       const key = el.dataset.purchaseField,
         line = purchaseLines[Number(el.dataset.index)];
-      if (!line || !['qty', 'price'].includes(key))
+      if (!line || !['qty', 'unitCost', 'price'].includes(key))
         throw new Error('Mặt hàng không còn trong phiếu.');
       const value = Number(el.value),
         minimum = key === 'qty' ? 1 : 0;
@@ -81,11 +101,22 @@ document.addEventListener('change', async (event) => {
         throw new Error(
           key === 'qty'
             ? 'Số lượng nhập phải là số nguyên lớn hơn 0.'
-            : 'Giá nhập phải là số nguyên không âm.',
+            : 'Đơn giá nhập phải là số nguyên không âm.',
         );
       }
       line[key] = value;
       renderPurchaseLines();
+    }
+    if (el.dataset.auditField === 'actualQty') {
+      const line = auditLines[Number(el.dataset.index)];
+      if (!line) throw new Error('Dòng kiểm kê không tồn tại.');
+      const value = Number(el.value);
+      if (!el.value.trim() || !Number.isSafeInteger(value) || value < 0) {
+        el.value = line.actualQty;
+        throw new Error('Tồn thực tế phải là số nguyên không âm (>= 0).');
+      }
+      line.actualQty = value;
+      renderAuditLines();
     }
     if (el.id === 'report-period') {
       reportDays = Number(el.value);

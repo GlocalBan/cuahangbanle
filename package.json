@@ -8,10 +8,11 @@
     "dev": "node server.js",
     "lint": "node scripts/check-syntax.js",
     "build": "node scripts/check-syntax.js",
-    "test": "node --test tests/store.test.js tests/m1-rbac-api.test.js tests/m2-catalog-api.test.js",
+    "test": "node --test tests/store.test.js tests/m1-rbac-api.test.js tests/m2-catalog-api.test.js tests/m3-warehouse-api.test.js",
     "test:store": "node --test tests/store.test.js",
     "test:m1": "node --test tests/m1-rbac-api.test.js",
     "test:m2": "node --test tests/m2-catalog-api.test.js",
+    "test:m3": "node --test tests/m3-warehouse-api.test.js",
     "test:browser": "node tests/browser.cjs"
   },
   "devDependencies": {
