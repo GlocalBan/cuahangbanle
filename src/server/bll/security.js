@@ -3,8 +3,45 @@ const crypto = require('node:crypto');
 
 const SCRYPT_KEYLEN = 64;
 const SCRYPT_PARAMS = { N: 16384, r: 8, p: 1 };
-const DEFAULT_SECRET = process.env.JWT_SECRET || 'retailflow-ood-841111-jwt-secret-key';
+const MIN_PRODUCTION_SECRET_LEN = 32;
+const DEV_FALLBACK_SECRET = 'retailflow-ood-841111-dev-fallback-secret-key';
 const DEFAULT_TTL_SEC = Number(process.env.JWT_EXPIRES_SECONDS || 28800); // 8 hours
+
+let warnedDevFallback = false;
+
+function resolveJwtSecret(env = process.env, { warn = true } = {}) {
+  const nodeEnv = String(env.NODE_ENV || 'development').trim().toLowerCase();
+  const rawSecret = typeof env.JWT_SECRET === 'string' ? env.JWT_SECRET.trim() : '';
+
+  if (nodeEnv === 'production') {
+    if (!rawSecret || rawSecret.length < MIN_PRODUCTION_SECRET_LEN) {
+      throw new Error(
+        `[Security] Biến môi trường JWT_SECRET là bắt buộc ở môi trường production và phải dài tối thiểu ${MIN_PRODUCTION_SECRET_LEN} ký tự.`,
+      );
+    }
+    return rawSecret;
+  }
+
+  if (rawSecret.length >= MIN_PRODUCTION_SECRET_LEN) {
+    return rawSecret;
+  }
+
+  if (warn && !warnedDevFallback) {
+    warnedDevFallback = true;
+    const reason = rawSecret
+      ? `JWT_SECRET hiện tại chỉ có ${rawSecret.length} ký tự (< ${MIN_PRODUCTION_SECRET_LEN})`
+      : 'chưa cấu hình JWT_SECRET';
+    console.warn(
+      `[RetailFlow Security Warning] Đang chạy ở môi trường "${nodeEnv}" (${reason}). Sử dụng khóa fallback chỉ dành cho development/test; BẮT BUỘC đặt JWT_SECRET >= ${MIN_PRODUCTION_SECRET_LEN} ký tự khi triển khai production.`,
+    );
+  }
+  return rawSecret || DEV_FALLBACK_SECRET;
+}
+
+// Fail-fast khi khởi động ở môi trường production nếu thiếu/yếu JWT_SECRET
+if (String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production') {
+  resolveJwtSecret(process.env, { warn: false });
+}
 
 function hashPassword(plainPassword) {
   if (typeof plainPassword !== 'string' || plainPassword.length < 6) {
@@ -40,7 +77,8 @@ function base64UrlDecode(str) {
   return Buffer.from(padded, 'base64').toString('utf8');
 }
 
-function signToken(payload, secret = DEFAULT_SECRET, ttlSeconds = DEFAULT_TTL_SEC) {
+function signToken(payload, secret, ttlSeconds = DEFAULT_TTL_SEC) {
+  const signingSecret = secret !== undefined ? secret : resolveJwtSecret(process.env);
   const nowSec = Math.floor(Date.now() / 1000);
   const header = { alg: 'HS256', typ: 'JWT' };
   const body = {
@@ -53,7 +91,7 @@ function signToken(payload, secret = DEFAULT_SECRET, ttlSeconds = DEFAULT_TTL_SE
   const encodedPayload = base64UrlEncode(JSON.stringify(body));
   const signingInput = `${encodedHeader}.${encodedPayload}`;
   const signature = crypto
-    .createHmac('sha256', secret)
+    .createHmac('sha256', signingSecret)
     .update(signingInput)
     .digest('base64')
     .replace(/=/g, '')
@@ -66,14 +104,15 @@ function signToken(payload, secret = DEFAULT_SECRET, ttlSeconds = DEFAULT_TTL_SE
   };
 }
 
-function verifyToken(token, secret = DEFAULT_SECRET) {
+function verifyToken(token, secret) {
   if (typeof token !== 'string') return null;
+  const signingSecret = secret !== undefined ? secret : resolveJwtSecret(process.env);
   const parts = token.split('.');
   if (parts.length !== 3) return null;
   const [encodedHeader, encodedPayload, signature] = parts;
   const signingInput = `${encodedHeader}.${encodedPayload}`;
   const expectedSig = crypto
-    .createHmac('sha256', secret)
+    .createHmac('sha256', signingSecret)
     .update(signingInput)
     .digest('base64')
     .replace(/=/g, '')
@@ -101,4 +140,6 @@ module.exports = {
   verifyPassword,
   signToken,
   verifyToken,
+  resolveJwtSecret,
+  MIN_PRODUCTION_SECRET_LEN,
 };

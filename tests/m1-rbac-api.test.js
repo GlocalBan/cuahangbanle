@@ -1,8 +1,11 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { execFileSync } = require('node:child_process');
+const path = require('node:path');
 const { createServer } = require('../server.js');
 const { withTransaction } = require('../src/server/dal/database.js');
+const { resolveJwtSecret, signToken, verifyToken } = require('../src/server/bll/security.js');
 
 async function startTestServer() {
   const server = createServer({ dbPath: ':memory:' });
@@ -310,4 +313,72 @@ test('M1-5: Change password, logout token revocation, THAM_SO validation, immuta
     server.close();
     db.close();
   }
+});
+
+test('M1-6: DB-level SQLite triggers enforce append-only immutability on audit_logs (blocks raw SQL UPDATE/DELETE)', async () => {
+  const { server, db } = await startTestServer();
+  try {
+    const triggers = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='audit_logs' ORDER BY name")
+      .all()
+      .map((r) => r.name);
+    assert.deepEqual(triggers, ['trg_audit_logs_no_delete', 'trg_audit_logs_no_update']);
+
+    const beforeRow = db.prepare("SELECT id, detail FROM audit_logs WHERE id = 'AUD-SEED-001'").get();
+    assert.ok(beforeRow, 'Seeded audit log row must exist');
+
+    assert.throws(
+      () => {
+        db.prepare("UPDATE audit_logs SET detail = 'TAMPERED' WHERE id = 'AUD-SEED-001'").run();
+      },
+      /bất biến|append-only|cấm UPDATE/i,
+    );
+
+    assert.throws(
+      () => {
+        db.prepare("DELETE FROM audit_logs WHERE id = 'AUD-SEED-001'").run();
+      },
+      /bất biến|append-only|cấm DELETE/i,
+    );
+
+    const afterRow = db.prepare("SELECT id, detail FROM audit_logs WHERE id = 'AUD-SEED-001'").get();
+    assert.equal(afterRow.detail, beforeRow.detail, 'audit_logs row must remain untouched after blocked SQL UPDATE/DELETE');
+  } finally {
+    server.close();
+    db.close();
+  }
+});
+
+test('M1-7: JWT_SECRET policy rejects missing/weak secret in production and allows warned fallback only in dev/test', () => {
+  // Missing or < 32 chars in production MUST throw
+  assert.throws(
+    () => resolveJwtSecret({ NODE_ENV: 'production' }, { warn: false }),
+    /JWT_SECRET.*production.*32/i,
+  );
+  assert.throws(
+    () => resolveJwtSecret({ NODE_ENV: 'production', JWT_SECRET: 'too-short-secret-12345' }, { warn: false }),
+    /JWT_SECRET.*production.*32/i,
+  );
+
+  // Valid >= 32 chars in production succeeds
+  const prodSecret = 'prod-retailflow-super-secure-secret-key-2026';
+  assert.equal(resolveJwtSecret({ NODE_ENV: 'production', JWT_SECRET: prodSecret }, { warn: false }), prodSecret);
+  const signed = signToken({ sub: 'NV001', role: 'ADMIN' }, prodSecret);
+  const verified = verifyToken(signed.token, prodSecret);
+  assert.equal(verified.sub, 'NV001');
+
+  // Development and test environments allow fallback secret
+  const devSecret = resolveJwtSecret({ NODE_ENV: 'development' }, { warn: false });
+  const testSecret = resolveJwtSecret({ NODE_ENV: 'test' }, { warn: false });
+  assert.ok(devSecret.length >= 32);
+  assert.equal(devSecret, testSecret);
+
+  // Fail-fast check when loading security.js in a fresh NODE_ENV=production process without JWT_SECRET
+  const securityModulePath = path.resolve(__dirname, '../src/server/bll/security.js');
+  assert.throws(() => {
+    execFileSync(process.execPath, ['-e', `require(${JSON.stringify(securityModulePath)})`], {
+      env: { PATH: process.env.PATH, NODE_ENV: 'production' },
+      stdio: 'pipe',
+    });
+  });
 });

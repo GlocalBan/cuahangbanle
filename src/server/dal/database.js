@@ -529,6 +529,33 @@ CREATE INDEX IF NOT EXISTS idx_products_supplier ON products(supplier_id);
 CREATE INDEX IF NOT EXISTS idx_products_status ON products(status);
 CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements(product_id);
 CREATE INDEX IF NOT EXISTS idx_stock_movements_created ON stock_movements(created_at DESC);
+
+-- ============================================================================
+-- TRIGGERS BẤT BIẾN (APPEND-ONLY) TẠI TẦNG CSDL CHO AUDIT_LOGS & STOCK_MOVEMENTS
+-- ============================================================================
+CREATE TRIGGER IF NOT EXISTS trg_audit_logs_no_update
+BEFORE UPDATE ON audit_logs
+BEGIN
+  SELECT RAISE(ABORT, 'audit_logs là bảng bất biến (append-only), cấm UPDATE.');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_audit_logs_no_delete
+BEFORE DELETE ON audit_logs
+BEGIN
+  SELECT RAISE(ABORT, 'audit_logs là bảng bất biến (append-only), cấm DELETE.');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_stock_movements_no_update
+BEFORE UPDATE ON stock_movements
+BEGIN
+  SELECT RAISE(ABORT, 'stock_movements (LichSuTonKho) là bảng bất biến (append-only), cấm UPDATE.');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_stock_movements_no_delete
+BEFORE DELETE ON stock_movements
+BEGIN
+  SELECT RAISE(ABORT, 'stock_movements (LichSuTonKho) là bảng bất biến (append-only), cấm DELETE.');
+END;
 `;
 
 function openDatabase(dbPath) {

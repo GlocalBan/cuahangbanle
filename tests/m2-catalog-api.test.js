@@ -1,6 +1,8 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const http = require('node:http');
 const { openDatabase } = require('../src/server/dal/database.js');
 const { createApiRouter } = require('../src/server/routes/api.js');
@@ -400,6 +402,79 @@ test('M2-05: Category, Unit & Supplier CRUD + Soft-Delete + referential hard-del
 
     const supDelUsed = await srv.reqJson('DELETE', '/api/suppliers/NCC001', { token: managerToken });
     assert.equal(supDelUsed.status, 409);
+  } finally {
+    await srv.close();
+  }
+});
+
+test('M2-06: DB-level SQLite triggers enforce append-only immutability on stock_movements (blocks raw SQL UPDATE/DELETE)', async () => {
+  const srv = await startTestServer();
+  try {
+    const triggers = srv.db
+      .prepare("SELECT name FROM sqlite_master WHERE type='trigger' AND tbl_name='stock_movements' ORDER BY name")
+      .all()
+      .map((r) => r.name);
+    assert.deepEqual(triggers, ['trg_stock_movements_no_delete', 'trg_stock_movements_no_update']);
+
+    const beforeRow = srv.db
+      .prepare("SELECT id, delta, stock_after, note FROM stock_movements WHERE id = 'STK-SEED-SP001'")
+      .get();
+    assert.ok(beforeRow, 'Opening KHOI_TAO_TON movement for SP001 must exist');
+
+    assert.throws(
+      () => {
+        srv.db.prepare("UPDATE stock_movements SET delta = 9999 WHERE id = 'STK-SEED-SP001'").run();
+      },
+      /bất biến|append-only|cấm UPDATE/i,
+    );
+
+    assert.throws(
+      () => {
+        srv.db.prepare("DELETE FROM stock_movements WHERE id = 'STK-SEED-SP001'").run();
+      },
+      /bất biến|append-only|cấm DELETE/i,
+    );
+
+    const afterRow = srv.db
+      .prepare("SELECT id, delta, stock_after, note FROM stock_movements WHERE id = 'STK-SEED-SP001'")
+      .get();
+    assert.deepEqual(afterRow, beforeRow, 'stock_movements row must remain untouched after blocked SQL UPDATE/DELETE');
+  } finally {
+    await srv.close();
+  }
+});
+
+test('M2-07: Product image integrity & 1-1 uniqueness audit (no missing files, no default.jpg, tracks pending duplicate pairs)', async () => {
+  const srv = await startTestServer();
+  try {
+    const imgDir = path.resolve(__dirname, '../assets/images/products');
+    const diskFiles = new Set(fs.readdirSync(imgDir).filter((f) => /\.(jpg|jpeg|png|webp)$/i.test(f)));
+    const rows = srv.db.prepare('SELECT id, sku, name, image_url FROM products ORDER BY id').all();
+    assert.equal(rows.length, 93);
+
+    const byImage = new Map();
+    for (const row of rows) {
+      assert.ok(
+        row.image_url.startsWith('assets/images/products/') && !row.image_url.endsWith('default.jpg'),
+        `Invalid placeholder image on ${row.sku}: ${row.image_url}`,
+      );
+      const fileName = row.image_url.replace(/^assets\/images\/products\//, '');
+      assert.ok(diskFiles.has(fileName), `Missing image file on disk for ${row.sku}: ${fileName}`);
+      if (!byImage.has(fileName)) byImage.set(fileName, []);
+      byImage.get(fileName).push(row.sku);
+    }
+
+    const duplicateGroups = [...byImage.entries()].filter(([, skus]) => skus.length > 1);
+    // Không cho phép phát sinh thêm ảnh trùng vượt quá 12 cặp đang chờ chủ dự án bổ sung ảnh thật đối chứng 1-1
+    assert.ok(
+      duplicateGroups.length <= 12,
+      `Số cặp sản phẩm trùng ảnh tăng bất thường: ${duplicateGroups.length} > 12`,
+    );
+    if (duplicateGroups.length > 0) {
+      console.warn(
+        `[Product Image Audit] Còn ${duplicateGroups.length} cặp sản phẩm dùng chung file ảnh chờ bổ sung ảnh thật đối chứng 1-1 (${rows.length - byImage.size} sản phẩm thiếu ảnh riêng).`,
+      );
+    }
   } finally {
     await srv.close();
   }
