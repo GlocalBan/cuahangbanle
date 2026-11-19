@@ -93,7 +93,11 @@ class ReportRepository {
                 r.created_at, r.resolved_at,
                 COALESCE(r.resolved_at, r.created_at) AS effective_at,
                 o.payment_method,
-                o.created_at AS order_created_at
+                o.created_at AS order_created_at,
+                o.subtotal AS order_subtotal,
+                o.invoice_discount AS order_invoice_discount,
+                o.tax_amount AS order_tax_amount,
+                o.total_amount AS order_total_amount
          FROM returns r
          JOIN orders o ON o.id = r.order_id
          ${where}
@@ -120,6 +124,10 @@ class ReportRepository {
                 r.order_id, r.restock, r.status,
                 COALESCE(r.resolved_at, r.created_at) AS effective_at,
                 o.payment_method,
+                o.subtotal AS order_subtotal,
+                o.invoice_discount AS order_invoice_discount,
+                o.tax_amount AS order_tax_amount,
+                o.total_amount AS order_total_amount,
                 oi.unit_cost_snapshot, oi.unit_price_snapshot, oi.product_name_snapshot,
                 p.sku, p.category_code,
                 c.name AS category_name,

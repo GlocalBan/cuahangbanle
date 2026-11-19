@@ -1,4 +1,4 @@
-/* M5: Tổng quan cửa hàng (Dashboard) — 100% kết nối SQLite API (/api/reports/dashboard, BR-08). */
+/* M5: Tổng quan cửa hàng (Dashboard) — 100% kết nối SQLite API (/api/reports/dashboard, BR-08 chuẩn kế toán). */
 'use strict';
 
 function dashboardView() {
@@ -16,7 +16,7 @@ function dashboardView() {
   const headerHTML = heading(
     e(dateLabel),
     'Tổng quan cửa hàng',
-    'Tổng hợp doanh thu ròng, lợi nhuận gộp, cơ cấu thanh toán và cảnh báo vận hành trực tiếp từ CSDL SQLite (BR-08).',
+    'Tổng hợp doanh thu thuần trước VAT, thuế VAT ròng, lợi nhuận gộp, cơ cấu thu tiền và cảnh báo vận hành trực tiếp từ SQLite (BR-08).',
     `<div class="row gap8">
       ${store.can('reports') ? action('navigate', 'Báo cáo chi tiết', 'chart', '', 'data-page="reports"') : ''}
       ${store.can('pos') ? action('navigate', 'Tạo đơn bán mới', 'plus', 'primary', 'data-page="pos"') : ''}
@@ -40,13 +40,13 @@ function dashboardView() {
     ...m,
     color: payColors[m.method] || '#64748b',
   }));
-  const totalPayNet = methods.reduce((s, m) => s + Math.max(0, Number(m.netRevenue) || 0), 0);
+  const totalPayCollected = methods.reduce((s, m) => s + Math.max(0, Number(m.netCollected ?? m.netRevenue) || 0), 0);
   let angle = 0;
   const gradient = methods
     .map((m) => {
       const start = angle;
-      const val = Math.max(0, Number(m.netRevenue) || 0);
-      angle += totalPayNet > 0 ? (val / totalPayNet) * 360 : 120;
+      const val = Math.max(0, Number(m.netCollected ?? m.netRevenue) || 0);
+      angle += totalPayCollected > 0 ? (val / totalPayCollected) * 360 : 120;
       return `${m.color} ${start.toFixed(1)}deg ${angle.toFixed(1)}deg`;
     })
     .join(',');
@@ -57,21 +57,21 @@ function dashboardView() {
     headerHTML +
     stats([
       [
-        `Doanh thu ròng (${days} ngày)`,
-        money(summary.netRevenue || 0),
-        `Hôm nay: ${money(today.netRevenue || 0)} · ${number(today.orderCount || 0)} đơn`,
+        `DT thuần trước VAT (${days} ngày)`,
+        money(summary.netRevenuePreTax ?? summary.netRevenue ?? 0),
+        `Hôm nay: ${money(today.netRevenuePreTax ?? today.netRevenue ?? 0)} · VAT ròng: ${money(summary.netTax || 0)}`,
         'receipt',
       ],
       [
         `Lợi nhuận gộp (${days} ngày)`,
         money(summary.grossProfit || 0),
-        `Biên LN ${summary.grossMarginPct ?? 0}% · Giá vốn ${money(summary.netCogs || 0)}`,
+        `Biên LN ${summary.grossMarginPct ?? 0}% · Giá vốn ${money(summary.netCogs || 0)}${summary.nonRestockedReturnCogs > 0 ? ` · Hao hụt ${money(summary.nonRestockedReturnCogs)}` : ''}`,
         'chart',
       ],
       [
-        `Hóa đơn & Hoàn trả (${days} ngày)`,
-        `${number(summary.orderCount || 0)} đơn`,
-        `Hoàn ${number(summary.returnCount || 0)} phiếu (−${money(summary.refundTotal || 0)})`,
+        `Tổng thu gồm VAT (${days} ngày)`,
+        money(summary.netCollected ?? 0),
+        `${number(summary.orderCount || 0)} đơn · Hoàn ${number(summary.returnCount || 0)} phiếu (−${money(summary.refundTotal || 0)})`,
         'cart',
       ],
       [
@@ -91,8 +91,8 @@ function dashboardView() {
       <section class="panel">
         <div class="panel-head">
           <div>
-            <h2>Xu hướng doanh thu ròng & lợi nhuận</h2>
-            <p class="sub">Kỳ ${dateOnly(d.period?.fromDate)} – ${dateOnly(d.period?.toDate)} · Đã khấu trừ hoàn trả & giá vốn (BR-08)</p>
+            <h2>Xu hướng doanh thu thuần &amp; lợi nhuận gộp</h2>
+            <p class="sub">Kỳ ${dateOnly(d.period?.fromDate)} – ${dateOnly(d.period?.toDate)} · Tính trước thuế VAT &amp; đã trừ giá vốn hàng bán (BR-08)</p>
           </div>
           <div class="segmented">
             ${[7, 30]
@@ -104,7 +104,7 @@ function dashboardView() {
           </div>
         </div>
         <div class="panel-body">
-          ${revenueTrendChart(d.series || [], { showProfit: true, ariaLabel: `Xu hướng doanh thu và lợi nhuận ${days} ngày` })}
+          ${revenueTrendChart(d.series || [], { showProfit: true, ariaLabel: `Xu hướng doanh thu thuần trước VAT và lợi nhuận gộp ${days} ngày` })}
         </div>
       </section>
 
@@ -112,7 +112,7 @@ function dashboardView() {
         <div class="panel-head">
           <div>
             <h2>Cơ cấu thanh toán</h2>
-            <p class="sub">Theo doanh thu ròng ${days} ngày gần nhất</p>
+            <p class="sub">Theo tổng thu ròng gồm VAT (${days} ngày gần nhất)</p>
           </div>
           ${icon('card')}
         </div>
@@ -130,7 +130,7 @@ function dashboardView() {
                   (m) => `<div>
                     <i class="dot" style="color:${m.color}"></i>
                     <span>${e(m.label)} <small class="muted">(${number(m.orderCount)} đơn)</small></span>
-                    <strong class="money">${money(m.netRevenue)} (${m.sharePct}%)</strong>
+                    <strong class="money">${money(m.netCollected ?? m.netRevenue)} (${m.sharePct}%)</strong>
                   </div>`,
                 )
                 .join('')}
@@ -156,7 +156,7 @@ function dashboardView() {
         <div class="panel-head">
           <div>
             <h2>Hàng đợi cần xử lý</h2>
-            <p class="sub">Đồng bộ trạng thái kho, nhập hàng & hoàn trả</p>
+            <p class="sub">Đồng bộ trạng thái kho, nhập hàng &amp; hoàn trả</p>
           </div>
           <span class="badge ${queues.totalAttentionCount > 0 ? 'yellow' : 'green'}">${number(queues.totalAttentionCount || 0)} cần xử lý</span>
         </div>
@@ -183,7 +183,7 @@ function dashboardView() {
             queues.pendingReturns > 0
               ? `<div class="alert-item">
                   <div class="stat-icon">${icon('return')}</div>
-                  <div><strong>${number(queues.pendingReturns)} phiếu trả hàng chờ duyệt</strong><small>Cần Quản lý xác nhận hoàn tiền & hoàn tồn kho</small></div>
+                  <div><strong>${number(queues.pendingReturns)} phiếu trả hàng chờ duyệt</strong><small>Cần Quản lý xác nhận hoàn tiền &amp; hoàn tồn kho</small></div>
                   ${store.can('returns') ? ib('navigate', 'arrow', 'Mở Đổi trả', 'data-page="returns"') : ''}
                 </div>`
               : ''
