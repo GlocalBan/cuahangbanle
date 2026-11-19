@@ -146,35 +146,8 @@ document.addEventListener('change', async (event) => {
       line.actualQty = value;
       renderAuditLines();
     }
-    if (el.id === 'report-period') {
-      reportDays = Number(el.value);
-      render();
-    }
-    if (el.id === 'restore-file' && el.files.length) {
-      store.admin();
-      const file = el.files[0];
-      if (file.size > 20 * 1024 * 1024) throw new Error('Tệp sao lưu quá lớn (tối đa 20 MB).');
-      const value = JSON.parse(await file.text());
-      Retail.validateBackup(value);
-      confirmation(
-        'Khôi phục bản sao lưu?',
-        `Tệp <strong>${e(file.name)}</strong> có ${value.orders.length} hóa đơn và ${value.products.length} sản phẩm. Dữ liệu hiện tại sẽ được thay thế. Hãy tải bản sao lưu hiện tại trước khi xác nhận.`,
-        () => {
-          store.importBackup(value);
-          if (store.user) {
-            shell();
-          } else {
-            sessionStorage.removeItem('retailflow-user');
-            loginScreen();
-          }
-          notify('Đã khôi phục dữ liệu từ bản sao lưu.');
-        },
-      );
-      el.value = '';
-    }
   } catch (error) {
     notify(error.message, true);
     if (['cart-discount', 'cart-note', 'cart-customer'].includes(el.id)) render();
-    if (el.id === 'restore-file') el.value = '';
   }
 });

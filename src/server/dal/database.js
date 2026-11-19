@@ -605,7 +605,16 @@ function withTransaction(db, fn) {
 }
 
 function seedCoreData(db) {
-  const nowIso = new Date().toISOString();
+  const nowMs = Date.now();
+  const dayMs = 86400000;
+  const nowIso = new Date(nowMs).toISOString();
+  const isoDaysAgo = (daysAgo, vnHour = 10, minute = 15) => {
+    const d = new Date(nowMs - daysAgo * dayMs);
+    const utcHour = Math.max(1, Math.min(22, Number(vnHour) - 7));
+    d.setUTCHours(utcHour, minute, 0, 0);
+    return d.toISOString();
+  };
+  const openingIso = isoDaysAgo(7, 8, 0);
   withTransaction(db, () => {
     const upsertRole = db.prepare(`
       INSERT INTO roles (code, display_name, short_name, description)
@@ -777,7 +786,7 @@ function seedCoreData(db) {
               stockQty,
               `INIT-${prod.id}`,
               `Khởi tạo tồn kho đầu kỳ cho ${prod.name}`,
-              nowIso,
+              openingIso,
             );
           }
         }
@@ -834,12 +843,6 @@ function seedCoreData(db) {
       const prodById = new Map(prods.map((p) => [p.id, p]));
       const pick = (id, fallbackIdx) => prodById.get(id) || prods[fallbackIdx % prods.length];
       if (prods.length >= 12) {
-        const dayMs = 86400000;
-        const isoDaysAgo = (daysAgo, hour = 10, minute = 15) => {
-          const d = new Date(Date.now() - daysAgo * dayMs);
-          d.setUTCHours(hour - 7 < 0 ? hour + 17 : hour - 7, minute, 0, 0);
-          return d.toISOString();
-        };
 
         const sampleOrders = [
           {
@@ -930,8 +933,8 @@ function seedCoreData(db) {
             cashierId: 'NV003',
             method: 'CASH',
             ref: '',
-            daysAgo: 0,
-            hour: 8,
+            daysAgo: 1,
+            hour: 9,
             lines: [
               { prod: pick('SP002', 1), qty: 12 },
               { prod: pick('SP003', 2), qty: 2 },
@@ -944,8 +947,8 @@ function seedCoreData(db) {
             cashierId: 'NV002',
             method: 'VIETQR',
             ref: 'VQR260504',
-            daysAgo: 0,
-            hour: 10,
+            daysAgo: 1,
+            hour: 11,
             lines: [
               { prod: pick('SP004', 3), qty: 4 },
               { prod: pick('SP045', 44), qty: 2 },
@@ -1013,8 +1016,8 @@ function seedCoreData(db) {
             (hd0006Ref.totalAmount * (retLine.qty * Number(retLine.prod.sale_price))) / hd0006Ref.subtotal,
           );
           const refundAmt = Math.floor((linePaidTotal * 1) / retLine.qty);
-          const retCreatedAt = isoDaysAgo(1, 17, 10);
-          const retResolvedAt = isoDaysAgo(0, 9, 5);
+          const retCreatedAt = isoDaysAgo(1, 16, 10);
+          const retResolvedAt = isoDaysAgo(1, 17, 5);
           db.prepare(`
             INSERT INTO returns (
               id, order_id, created_by, approved_by, reason, restock, refund_amount, status, created_at, resolved_at

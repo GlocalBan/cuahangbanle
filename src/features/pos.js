@@ -284,8 +284,8 @@ function posView() {
           </div>
 
           <div class="cart-actions">
-            ${action('hold', 'Lưu đơn (F4)', 'save', '', posCart.items.length ? '' : 'disabled')}
-            ${action('checkout', 'Thanh toán (F8)', 'card', 'teal', posCart.items.length && !t.hasLineDiscountViolation ? '' : 'disabled')}
+            ${action('hold', 'Lưu đơn <kbd class="kbd-hint">F4</kbd>', 'save', '', posCart.items.length ? '' : 'disabled')}
+            ${action('checkout', 'Thanh toán <kbd class="kbd-hint">F8</kbd>', 'card', 'teal', posCart.items.length && !t.hasLineDiscountViolation ? '' : 'disabled')}
           </div>
           <div class="cart-notice">${icon('shield')} Checkout lưu nguyên tử trên SQLite · Cấm xuất âm kho (BR-03)</div>
         </div>

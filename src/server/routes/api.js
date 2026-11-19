@@ -144,6 +144,11 @@ function createApiRouter(db) {
         }
       }
 
+      if (method === 'GET' && pathname === '/api/system/backup') {
+        const auth = authorize(req, 'THAM_SO_MANAGE');
+        return sendJson(res, 200, systemService.exportBackupSnapshot(auth.user));
+      }
+
       // ─── IMMUTABLE AUDIT LOGS (Admin read-only; forbid delete/edit) ────────
       if (pathname === '/api/audit-logs' || pathname.startsWith('/api/audit-logs/')) {
         if (method === 'GET' && pathname === '/api/audit-logs') {

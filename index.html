@@ -14,7 +14,11 @@
       content="Hệ thống Quản lý Cửa hàng Bán lẻ kiến trúc 3 tầng hướng đối tượng, phân quyền RBAC 3 lớp và chuẩn nghiệp vụ bán lẻ."
     />
     <title>RetailFlow · Hệ thống Quản lý Cửa hàng Bán lẻ</title>
+    <link rel="stylesheet" href="assets/vendor/notyf.min.css" />
     <link rel="stylesheet" href="styles.css" />
+    <script defer src="assets/vendor/lucide.min.js"></script>
+    <script defer src="assets/vendor/chart.umd.min.js"></script>
+    <script defer src="assets/vendor/notyf.min.js"></script>
     <script defer src="src/domain/config.js"></script>
     <script defer src="src/domain/calculations.js"></script>
     <script defer src="src/domain/seed.js"></script>
@@ -50,7 +54,6 @@
     <script defer src="src/features/promotions.js"></script>
     <script defer src="src/features/returns.js"></script>
     <script defer src="src/features/reports.js"></script>
-    <script defer src="src/features/branches.js"></script>
     <script defer src="src/features/settings.js"></script>
     <script defer src="src/events/actions/navigation.js"></script>
     <script defer src="src/events/actions/sales.js"></script>
@@ -70,7 +73,6 @@
     <dialog id="modal" aria-labelledby="modal-title"></dialog>
     <div id="toasts" class="toasts" aria-live="polite"></div>
     <div id="print-area"></div>
-    <input id="restore-file" type="file" accept="application/json,.json" hidden />
     <noscript>Bạn cần bật JavaScript để sử dụng RetailFlow.</noscript>
   </body>
 </html>

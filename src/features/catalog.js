@@ -295,21 +295,6 @@ function entitiesView(type) {
   return '';
 }
 
-function entityModal(type, recordId = '') {
-  if (type === 'products') {
-    productApiModal(recordId);
-    return;
-  }
-  if (type === 'suppliers') {
-    supplierApiModal(recordId);
-    return;
-  }
-  if (type === 'customers') {
-    customerApiModal(recordId);
-    return;
-  }
-}
-
 async function customerHistory(customerId) {
   if (!store.hasPermission('CUSTOMER_MANAGE')) {
     notify('Bạn không có quyền xem lịch sử khách hàng.', true);
@@ -335,6 +320,3 @@ async function customerHistory(customerId) {
   }
 }
 
-function supplierHistory(supplierId) {
-  supplierApiHistory(supplierId);
-}

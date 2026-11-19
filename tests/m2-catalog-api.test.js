@@ -444,7 +444,8 @@ test('M2-06: DB-level SQLite triggers enforce append-only immutability on stock_
   }
 });
 
-test('M2-07: Product image integrity & 1-1 uniqueness audit (no missing files, no default.jpg, tracks pending duplicate pairs)', async () => {
+test('M2-07: Product image integrity & strict 93/93 1-1 uniqueness audit (no missing files, no default.jpg, 0 duplicates)', async () => {
+  const crypto = require('node:crypto');
   const srv = await startTestServer();
   try {
     const imgDir = path.resolve(__dirname, '../assets/images/products');
@@ -453,6 +454,7 @@ test('M2-07: Product image integrity & 1-1 uniqueness audit (no missing files, n
     assert.equal(rows.length, 93);
 
     const byImage = new Map();
+    const byMd5 = new Map();
     for (const row of rows) {
       assert.ok(
         row.image_url.startsWith('assets/images/products/') && !row.image_url.endsWith('default.jpg'),
@@ -462,19 +464,18 @@ test('M2-07: Product image integrity & 1-1 uniqueness audit (no missing files, n
       assert.ok(diskFiles.has(fileName), `Missing image file on disk for ${row.sku}: ${fileName}`);
       if (!byImage.has(fileName)) byImage.set(fileName, []);
       byImage.get(fileName).push(row.sku);
+
+      const md5 = crypto.createHash('md5').update(fs.readFileSync(path.join(imgDir, fileName))).digest('hex');
+      if (!byMd5.has(md5)) byMd5.set(md5, []);
+      byMd5.get(md5).push(row.sku);
     }
 
     const duplicateGroups = [...byImage.entries()].filter(([, skus]) => skus.length > 1);
-    // Không cho phép phát sinh thêm ảnh trùng vượt quá 12 cặp đang chờ chủ dự án bổ sung ảnh thật đối chứng 1-1
-    assert.ok(
-      duplicateGroups.length <= 12,
-      `Số cặp sản phẩm trùng ảnh tăng bất thường: ${duplicateGroups.length} > 12`,
-    );
-    if (duplicateGroups.length > 0) {
-      console.warn(
-        `[Product Image Audit] Còn ${duplicateGroups.length} cặp sản phẩm dùng chung file ảnh chờ bổ sung ảnh thật đối chứng 1-1 (${rows.length - byImage.size} sản phẩm thiếu ảnh riêng).`,
-      );
-    }
+    const duplicateMd5Groups = [...byMd5.entries()].filter(([, skus]) => skus.length > 1);
+    assert.equal(duplicateGroups.length, 0, `Phát hiện sản phẩm dùng chung đường dẫn ảnh: ${JSON.stringify(duplicateGroups)}`);
+    assert.equal(duplicateMd5Groups.length, 0, `Phát hiện ảnh trùng MD5: ${JSON.stringify(duplicateMd5Groups)}`);
+    assert.equal(byImage.size, 93);
+    assert.equal(byMd5.size, 93);
   } finally {
     await srv.close();
   }

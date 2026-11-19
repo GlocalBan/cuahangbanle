@@ -303,16 +303,6 @@ document.addEventListener('submit', async (event) => {
         }
         break;
       }
-      case 'entity-form': {
-        const type = modalContext.entity;
-        const values = { ...v, active: v.active === 'true' };
-        if (modalContext.id) values.id = modalContext.id;
-        store.upsert(type, values);
-        closeModal();
-        if ($('#content')) render();
-        notify('Đã lưu thông tin.');
-        break;
-      }
       case 'purchase-api-form': {
         if (!purchaseLines.length) {
           throw new Error('Vui lòng thêm tối thiểu 1 mặt hàng vào phiếu nhập trước khi lưu (BR-02).');
@@ -373,80 +363,6 @@ document.addEventListener('submit', async (event) => {
         }
         break;
       }
-      case 'audit-form': {
-        const auditStatus = v.status || 'resolved';
-        store.audit(
-          [
-            {
-              id: v.productId,
-              actual: Number(v.counted),
-              resolution: v.resolution || 'damage_writeoff',
-              resolutionAction: v.resolution || 'damage_writeoff',
-              responsibleStaff: v.responsibleStaff || '',
-            },
-          ],
-          v.reason || 'Kiểm kê định kỳ',
-          auditStatus,
-        );
-        closeModal();
-        render();
-        notify(
-          auditStatus === 'pending_resolution'
-            ? 'Đã lưu phiếu kiểm kê (chờ phê duyệt).'
-            : 'Đã xác nhận kiểm kê và cập nhật tồn kho.',
-        );
-        break;
-      }
-      case 'purchase-form':
-        store.createPurchase(v.supplierId, purchaseLines, v.note || '', v.status);
-        closeModal();
-        render();
-        notify('Đã lưu phiếu nhập hàng.');
-        break;
-      case 'supplier-response-form': {
-        const pid = modalContext.purchaseId;
-        const p = store.data.purchases.find((x) => x.id === pid);
-        if (!p) throw new Error('Không tìm thấy phiếu nhập.');
-        const lines = p.items.map((item, idx) => ({
-          id: item.id,
-          supplierStatus: v[`supplier_status_${idx}`] || (Number(v[`confirmed_qty_${idx}`]) === 0 ? 'out_of_stock' : Number(v[`confirmed_qty_${idx}`]) < item.qty ? 'partial' : 'full'),
-          confirmedQty: Number(
-            v[`confirmed_qty_${idx}`] !== undefined ? v[`confirmed_qty_${idx}`] : item.qty,
-          ),
-          confirmedCost: Number(
-            v[`confirmed_cost_${idx}`] !== undefined ? v[`confirmed_cost_${idx}`] : item.price,
-          ),
-          expiryDate: v[`expiry_date_${idx}`] || item.expiryDate || '',
-          batchCode: v[`batch_code_${idx}`] || item.batchCode || '',
-        }));
-        store.supplierRespond(pid, { lines, supplierNote: v.supplierNote });
-        closeModal();
-        render();
-        purchaseDetail(pid);
-        notify('Đã ghi nhận phản hồi từ Nhà cung cấp!');
-        break;
-      }
-      case 'purchase-receipt-form': {
-        const pid = modalContext.purchaseId;
-        const p = store.data.purchases.find((x) => x.id === pid);
-        if (!p) throw new Error('Không tìm thấy phiếu nhập.');
-        const lines = p.items.map((item, idx) => ({
-          id: item.id,
-          acceptedQty: Number(
-            v[`accepted_qty_${idx}`] !== undefined
-              ? v[`accepted_qty_${idx}`]
-              : item.confirmedQty || item.qty,
-          ),
-          rejectedQty: Number(v[`rejected_qty_${idx}`] || 0),
-          rejectReason: v[`reject_reason_${idx}`] || '',
-        }));
-        store.confirmPurchaseReceipt(pid, { lines, receiverNote: v.receiverNote });
-        closeModal();
-        render();
-        purchaseDetail(pid);
-        notify('Đã hoàn tất kiểm nhận hàng (GRN) và nhập kho thành công!');
-        break;
-      }
       case 'return-form': {
         if (
           !modalContext.orderId ||
@@ -483,17 +399,6 @@ document.addEventListener('submit', async (event) => {
         }
         break;
       }
-      case 'settings-form':
-        store.saveSettings({ ...v, taxRate: Number(v.taxRate) });
-        render();
-        notify('Đã lưu cấu hình cửa hàng.');
-        break;
-      case 'branch-form':
-        store.createBranch(v);
-        closeModal();
-        render();
-        notify('Địa chỉ có đối tác phục vụ. Đã lưu đề xuất chi nhánh.');
-        break;
       case 'scan-form': {
         const code = (v.code || '').trim().toLowerCase();
         const p = (apiState.products || []).find(
@@ -507,15 +412,6 @@ document.addEventListener('submit', async (event) => {
         addCart(p.id, 1);
         closeModal();
         notify(`Đã thêm ${p.name} (${p.sku}) vào giỏ POS.`);
-        break;
-      }
-      case 'import-csv-form': {
-        const content = v.csvContent || '';
-        if (!content.trim()) throw new Error('Vui lòng dán hoặc tải nội dung CSV.');
-        const res = store.importReferenceCatalogCsv(content);
-        closeModal();
-        render();
-        notify(`Đã nạp thành công đối chứng CSV (${res.updatedCount} cập nhật, ${res.addedCount} thêm mới)!`);
         break;
       }
     }

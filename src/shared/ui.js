@@ -1,17 +1,54 @@
+/* Shared UI primitives: Notyf v3.10.0 offline notifications, modals, filters, pagination & confirmations. */
+'use strict';
+
+let _notyfInstance = null;
+function getNotyf() {
+  if (_notyfInstance) return _notyfInstance;
+  if (typeof window !== 'undefined' && typeof window.Notyf === 'function') {
+    _notyfInstance = new window.Notyf({
+      duration: 3800,
+      ripple: false,
+      dismissible: true,
+      position: { x: 'right', y: 'bottom' },
+      types: [
+        {
+          type: 'success',
+          background: '#059669',
+          icon: false,
+        },
+        {
+          type: 'error',
+          background: '#dc2626',
+          duration: 5000,
+          icon: false,
+        },
+      ],
+    });
+  }
+  return _notyfInstance;
+}
+
 function notify(message, error = false) {
+  const notyf = getNotyf();
+  if (notyf) {
+    if (error) notyf.error(String(message || 'Thao tác thất bại.'));
+    else notyf.success(String(message || 'Thành công.'));
+    return;
+  }
   const n = document.createElement('div');
   n.className = 'toast' + (error ? ' error' : '');
   n.textContent = message;
-  $('#toasts').append(n);
-  setTimeout(() => n.remove(), 4500);
+  $('#toasts')?.append(n);
+  setTimeout(() => n.remove(), 4200);
 }
 
 function showModal(title, html, wide = false) {
   const modal = $('#modal');
   modal.className = wide ? 'wide-modal' : '';
-  modal.style.width = wide ? '780px' : '520px';
+  modal.style.width = wide ? '800px' : '540px';
   modal.style.maxWidth = 'calc(100vw - 28px)';
   modal.innerHTML = `<div class="modal-header"><h2 id="modal-title">${title}</h2>${ib('close-modal', 'close', 'Đóng hộp thoại')}</div>${html}`;
+  hydrateIcons();
   if (!modal.open) modal.showModal();
   setTimeout(() => {
     const el = $('input:not([type=hidden]),select,button', modal);
@@ -55,6 +92,6 @@ function confirmation(title, body, onConfirm) {
   modalContext = { type: 'confirm', onConfirm };
   showModal(
     title,
-    `<div class="modal-content"><p style="font-size:12px;line-height:1.9">${body}</p></div><div class="modal-footer">${action('close-modal', 'Quay lại')}${action('confirm', 'Xác nhận', 'check', 'primary')}</div>`,
+    `<div class="modal-content"><p class="confirm-body">${body}</p></div><div class="modal-footer">${action('close-modal', 'Hủy')}${action('confirm', 'Xác nhận', 'check', 'primary')}</div>`,
   );
 }

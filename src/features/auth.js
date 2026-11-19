@@ -1,45 +1,104 @@
 function loginScreen(initialError = '') {
+  if (typeof destroyAllCharts === 'function') destroyAllCharts();
+  document.body.classList.remove('sidebar-collapsed', 'menu-open');
   const errMsg = initialError || store.loadError || '';
+  const demoRoles = [
+    {
+      username: 'admin',
+      label: 'Quản trị viên',
+      badge: 'Admin',
+      ico: 'shield',
+      accent: 'indigo',
+      scope: 'Toàn quyền hệ thống, nhân sự, THAM_SO, Audit Log & sao lưu',
+    },
+    {
+      username: 'quanly',
+      label: 'Quản lý cửa hàng',
+      badge: 'Quản lý',
+      ico: 'chart',
+      accent: 'teal',
+      scope: 'Hàng hóa, khuyến mãi, duyệt nhập/kiểm kê/trả hàng & báo cáo P&L',
+    },
+    {
+      username: 'thungan',
+      label: 'Thu ngân POS',
+      badge: 'Thu ngân',
+      ico: 'cart',
+      accent: 'sky',
+      scope: 'Bán hàng tại quầy, VietQR/tiền mặt, lập phiếu đổi trả trong hạn',
+    },
+    {
+      username: 'kho',
+      label: 'Nhân viên Kho',
+      badge: 'Kho',
+      ico: 'warehouse',
+      accent: 'amber',
+      scope: 'Tạo phiếu nhập Draft, kiểm kê chênh lệch, tra cứu Thẻ kho & NCC',
+    },
+  ];
+
   $('#root').innerHTML = `<main class="login">
     <section class="login-story">
-      ${logo()}
-      <h1>Quản lý thông minh.<br><span>Vận hành tinh gọn.</span></h1>
-      <p>Hệ thống Quản lý Cửa hàng Bán lẻ kiến trúc 3 tầng chuẩn hướng đối tượng — bảo mật RBAC 3 lớp (DB · API · UI) và đồng bộ quy tắc nghiệp vụ bán lẻ.</p>
-      <div class="login-preview">
-        <div class="preview-bar"></div>
-        <div class="preview-cards">
-          <div><b>4 Vai trò</b><small>RBAC 3 lớp chặt chẽ</small></div>
-          <div><b>THAM_SO</b><small>Cấu hình động từ CSDL</small></div>
-          <div><b>Audit Log</b><small>Truy vết bất biến</small></div>
+      <div class="login-story-inner">
+        ${logo()}
+        <div class="login-kicker">RETAIL OPERATIONS PLATFORM · OOD 3-TIER</div>
+        <h1>Quản trị bán lẻ chuẩn mực.<br><span>Chính xác đến từng giao dịch.</span></h1>
+        <p class="login-lead">Kiến trúc 3 tầng tách biệt (Presentation · BLL · DAL), bảo mật RBAC 3 lớp, giao dịch SQLite nguyên tử và chuẩn hạch toán doanh thu – lợi nhuận tách VAT.</p>
+        <div class="login-metrics">
+          <div class="login-metric-card">
+            <div class="login-metric-ico">${icon('shield')}</div>
+            <div><b>RBAC 3 lớp</b><small>DB · API Guard · UI Route</small></div>
+          </div>
+          <div class="login-metric-card">
+            <div class="login-metric-ico">${icon('box')}</div>
+            <div><b>93 SKU thật</b><small>Đối chứng 1-1 siêu thị VN</small></div>
+          </div>
+          <div class="login-metric-card">
+            <div class="login-metric-ico">${icon('receipt')}</div>
+            <div><b>Transaction ACID</b><small>Chặn xuất âm &amp; khóa bất biến</small></div>
+          </div>
         </div>
-        <svg viewBox="0 0 350 60"><path d="M0 45 Q40 52 80 44 T160 35 T250 28 T350 7" fill="none" stroke="#79d8cb" stroke-opacity=".5" stroke-width="1.5"/></svg>
       </div>
-      <p style="font-size:9px;margin-top:35px;color:#6882a1">KIẾN TRÚC 3 TẦNG · BẢO MẬT RBAC · GIAO DỊCH NGUYÊN TỬ.</p>
+      <div class="login-story-foot">RETAILFLOW · KIẾN TRÚC 3 TẦNG · BẢO MẬT RBAC · VẬN HÀNH 100% OFFLINE</div>
     </section>
     <section class="login-form-wrap">
       <div class="login-form">
-        ${logo()}
+        <div class="login-form-mobile-logo">${logo()}</div>
         <h2>Đăng nhập hệ thống</h2>
-        <p>Xác thực tài khoản qua máy chủ để truy cập đúng phạm vi vai trò của bạn.</p>
+        <p class="login-sub">Xác thực tài khoản qua máy chủ để truy cập đúng phạm vi vai trò được phân quyền.</p>
         <form id="login-form">
           ${field('Tên đăng nhập (*)', 'username', 'admin', 'text', 'required autocomplete="username"')}
           ${field('Mật khẩu (*)', 'password', '123456', 'password', 'required autocomplete="current-password"')}
           <div id="login-error" class="error-text" role="alert">${e(errMsg)}</div>
-          <button type="submit" class="btn primary wide">Đăng nhập ${icon('arrow')}</button>
+          <button type="submit" class="btn primary wide login-submit">Đăng nhập ${icon('arrow')}</button>
         </form>
         <div class="login-hint">
-          <div style="margin-bottom:8px"><strong>4 tài khoản mẫu (mật khẩu chung: <code>123456</code>):</strong></div>
-          <div class="quick-roles">
-            <button type="button" class="btn small" data-action="fill-login" data-username="admin">Admin (admin)</button>
-            <button type="button" class="btn small" data-action="fill-login" data-username="quanly">Quản lý (quanly)</button>
-            <button type="button" class="btn small" data-action="fill-login" data-username="thungan">Thu ngân (thungan)</button>
-            <button type="button" class="btn small" data-action="fill-login" data-username="kho">Kho (kho)</button>
+          <div class="login-hint-head">
+            <strong>4 tài khoản trải nghiệm theo vai trò</strong>
+            <span class="badge gray">Mật khẩu chung: <code>123456</code></span>
+          </div>
+          <div class="role-cards">
+            ${demoRoles
+              .map(
+                (r) => `<button type="button" class="role-card role-${r.accent}" data-action="fill-login" data-username="${r.username}">
+                  <div class="role-card-icon">${icon(r.ico)}</div>
+                  <div class="role-card-body">
+                    <div class="role-card-top">
+                      <strong>${r.label}</strong>
+                      <code>${r.username}</code>
+                    </div>
+                    <small>${r.scope}</small>
+                  </div>
+                </button>`,
+              )
+              .join('')}
           </div>
         </div>
         <div class="login-footer">© 2026 RetailFlow · Hệ thống Quản lý Cửa hàng Bán lẻ</div>
       </div>
     </section>
   </main>`;
+  if (typeof hydrateIcons === 'function') hydrateIcons();
 }
 
 function changePasswordModal() {

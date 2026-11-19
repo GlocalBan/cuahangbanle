@@ -1,169 +1,361 @@
-/* SVG charts for Dashboard & Financial Reports (M5 SQLite API + legacy helpers preserved). */
+/* Interactive offline Chart.js v4.6.1 visualizations for Dashboard & Financial Reports (BR-08). */
 'use strict';
 
-function periodData(days) {
-  const start = new Date();
-  start.setDate(start.getDate() - days + 1);
-  start.setHours(0, 0, 0, 0);
-  const orders = store.data.orders.filter(
-    (o) => o.status !== 'cancelled' && dayKey(o.time) >= dayKey(start),
-  );
-  const refunds = store.data.returns.filter(
-    (r) => r.status === 'approved' && dayKey(r.resolvedAt) >= dayKey(start),
-  );
-  return {
-    orders,
-    refunds,
-    gross: orders.reduce((s, o) => s + o.total, 0),
-    refund: refunds.reduce((s, r) => s + r.amount, 0),
-  };
+const _chartInstances = new Map();
+let _pendingChartConfigs = [];
+
+function destroyAllCharts() {
+  for (const inst of _chartInstances.values()) {
+    try {
+      inst.destroy();
+    } catch {
+      // ignore destroy errors
+    }
+  }
+  _chartInstances.clear();
 }
 
-function lineChart(days = 7) {
-  const points = [];
-  for (let n = days - 1; n >= 0; n--) {
-    const d = new Date();
-    d.setDate(d.getDate() - n);
-    const key = dayKey(d);
-    points.push({
-      label: d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }),
-      value: store.data.orders
-        .filter((o) => o.status !== 'cancelled' && dayKey(o.time) === key)
-        .reduce((s, o) => s + o.total, 0),
-    });
+function resetPendingCharts() {
+  _pendingChartConfigs = [];
+}
+
+function mountCharts() {
+  destroyAllCharts();
+  const pending = _pendingChartConfigs;
+  _pendingChartConfigs = [];
+  if (typeof window === 'undefined' || typeof window.Chart !== 'function') return;
+
+  window.Chart.defaults.font.family = "'Be Vietnam Pro', system-ui, -apple-system, sans-serif";
+  window.Chart.defaults.color = '#64748b';
+
+  for (const spec of pending) {
+    const canvas = document.getElementById(spec.id);
+    if (!canvas) continue;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) continue;
+    const config = typeof spec.build === 'function' ? spec.build(ctx) : spec.config;
+    if (!config) continue;
+    try {
+      const chart = new window.Chart(ctx, config);
+      _chartInstances.set(spec.id, chart);
+    } catch {
+      // fail gracefully without disrupting view
+    }
   }
-  const max = Math.max(...points.map((p) => p.value), 100000),
-    top = 30,
-    left = 48,
-    w = 620,
-    h = 175;
-  const coordinates = points.map((p, i) => [
-    left + (i * w) / Math.max(1, points.length - 1),
-    top + h - (p.value / max) * h,
-  ]);
-  const path = coordinates.map(([x, y], i) => `${i ? 'L' : 'M'}${x},${y}`).join(' ');
-  return `<svg class="chart" viewBox="0 0 700 245" role="img" aria-label="Biểu đồ doanh thu ${days} ngày"><defs><linearGradient id="chart-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#7770df" stop-opacity=".2"/><stop offset="100%" stop-color="#7770df" stop-opacity="0"/></linearGradient></defs>${[
-    0, 1, 2, 3,
-  ]
-    .map((i) => {
-      const y = top + (i * h) / 3;
-      return `<path class="chart-grid" d="M${left} ${y}H680"/><text x="0" y="${y + 4}" class="chart-label">${number(Math.round((max * (1 - i / 3)) / 1000))}k</text>`;
-    })
-    .join(
-      '',
-    )}<path d="${path}L${left + w},${top + h}H${left}Z" fill="url(#chart-fill)"/><path d="${path}" fill="none" stroke="#7971db" stroke-width="2.5" stroke-linejoin="round"/>${coordinates.map(([x, y], i) => `<circle cx="${x}" cy="${y}" r="${days === 7 ? 3.5 : 2}" fill="#7971db" stroke="white" stroke-width="1.7"><title>${points[i].label}: ${money(points[i].value)}</title></circle>`).join('')}${points.map((p, i) => (i % Math.ceil(days / 7) === 0 ? `<text x="${coordinates[i][0]}" y="231" class="chart-label" text-anchor="middle">${p.label}</text>` : '')).join('')}</svg>`;
 }
 
 /**
- * M5: Biểu đồ SVG Xu hướng Doanh thu ròng & Lợi nhuận gộp từ dữ liệu SQLite (hỗ trợ gom theo ngày hoặc tháng).
+ * Biểu đồ đường + vùng tương tác (Chart.js): Xu hướng Doanh thu thuần trước VAT & Lợi nhuận gộp.
  */
-function revenueTrendChart(series = [], { showProfit = true, ariaLabel = 'Biểu đồ doanh thu ròng và lợi nhuận gộp' } = {}) {
+function revenueTrendChart(
+  series = [],
+  { showProfit = true, ariaLabel = 'Biểu đồ doanh thu thuần trước VAT và lợi nhuận gộp', id = '' } = {},
+) {
   if (!Array.isArray(series) || !series.length) {
     return empty('Chưa có dữ liệu doanh thu trong kỳ', 'Thử mở rộng khoảng thời gian lọc để xem xu hướng.', 'chart');
   }
-  const values = series.flatMap((p) =>
-    showProfit ? [Math.max(0, Number(p.netRevenue) || 0), Math.max(0, Number(p.grossProfit) || 0)] : [Math.max(0, Number(p.netRevenue) || 0)],
-  );
-  const maxVal = Math.max(...values, 100000);
-  const top = 34;
-  const left = 56;
-  const w = 616;
-  const h = 172;
-  const baseY = top + h;
-  const n = series.length;
-  const gradId = `rev-grad-${n}-${showProfit ? 'p' : 'r'}`;
 
-  const xAt = (i) => (n === 1 ? left + w / 2 : left + (i * w) / (n - 1));
-  const yAt = (v) => baseY - (Math.max(0, Number(v) || 0) / maxVal) * h;
+  const canvasId = id || `rf-trend-${_pendingChartConfigs.length + 1}`;
+  const labels = series.map((p) => p.label);
+  const netRevenueData = series.map((p) => Math.max(0, Number(p.netRevenuePreTax ?? p.netRevenue) || 0));
+  const grossProfitData = series.map((p) => Math.max(0, Number(p.grossProfit) || 0));
+  const isSinglePoint = series.length === 1;
 
-  const revCoords = series.map((p, i) => [xAt(i), yAt(p.netRevenue)]);
-  const profCoords = series.map((p, i) => [xAt(i), yAt(p.grossProfit)]);
-  const revPath = revCoords.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
-  const profPath = profCoords.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
-  const labelStep = Math.max(1, Math.ceil(n / 7));
+  _pendingChartConfigs.push({
+    id: canvasId,
+    build(ctx) {
+      const gradIndigo = ctx.createLinearGradient(0, 0, 0, 260);
+      gradIndigo.addColorStop(0, 'rgba(79, 70, 229, 0.22)');
+      gradIndigo.addColorStop(1, 'rgba(79, 70, 229, 0.0)');
 
-  const areaSVG =
-    n > 1
-      ? `<path d="${revPath}L${revCoords[n - 1][0].toFixed(1)},${baseY}H${revCoords[0][0].toFixed(1)}Z" fill="url(#${gradId})"/>`
-      : `<rect x="${(revCoords[0][0] - 24).toFixed(1)}" y="${revCoords[0][1].toFixed(1)}" width="48" height="${Math.max(2, baseY - revCoords[0][1]).toFixed(1)}" rx="6" fill="url(#${gradId})" stroke="#5b54d6" stroke-width="1.5"/>`;
+      const gradTeal = ctx.createLinearGradient(0, 0, 0, 260);
+      gradTeal.addColorStop(0, 'rgba(13, 148, 136, 0.16)');
+      gradTeal.addColorStop(1, 'rgba(13, 148, 136, 0.0)');
 
-  const linesSVG =
-    n > 1
-      ? `<path d="${revPath}" fill="none" stroke="#5b54d6" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>${
-          showProfit
-            ? `<path d="${profPath}" fill="none" stroke="#16a394" stroke-width="2.2" stroke-dasharray="5 3" stroke-linejoin="round" stroke-linecap="round"/>`
-            : ''
-        }`
-      : '';
+      const datasets = [
+        {
+          label: 'Doanh thu thuần (trước VAT)',
+          data: netRevenueData,
+          borderColor: '#4f46e5',
+          backgroundColor: isSinglePoint ? 'rgba(79, 70, 229, 0.78)' : gradIndigo,
+          borderWidth: 2.4,
+          fill: !isSinglePoint,
+          tension: 0.32,
+          pointRadius: series.length <= 14 ? 4 : 2.5,
+          pointHoverRadius: 6,
+          pointBackgroundColor: '#4f46e5',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 2,
+          borderRadius: isSinglePoint ? 8 : 0,
+        },
+      ];
 
-  const legendSVG = `<g transform="translate(410, 12)">
-    <rect x="0" y="0" width="12" height="4" rx="2" fill="#5b54d6"/><text x="17" y="5" class="chart-label">Doanh thu ròng</text>
-    ${showProfit ? '<rect x="122" y="0" width="12" height="4" rx="2" fill="#16a394"/><text x="139" y="5" class="chart-label">Lợi nhuận gộp</text>' : ''}
-  </g>`;
+      if (showProfit) {
+        datasets.push({
+          label: 'Lợi nhuận gộp',
+          data: grossProfitData,
+          borderColor: '#0d9488',
+          backgroundColor: isSinglePoint ? 'rgba(13, 148, 136, 0.78)' : gradTeal,
+          borderWidth: 2.2,
+          borderDash: isSinglePoint ? [] : [5, 4],
+          fill: !isSinglePoint,
+          tension: 0.32,
+          pointRadius: series.length <= 14 ? 3.5 : 2,
+          pointHoverRadius: 5.5,
+          pointBackgroundColor: '#0d9488',
+          pointBorderColor: '#ffffff',
+          pointBorderWidth: 1.8,
+          borderRadius: isSinglePoint ? 8 : 0,
+        });
+      }
 
-  const gridSVG = [0, 1, 2, 3]
-    .map((i) => {
-      const y = top + (i * h) / 3;
-      const tick = Math.round((maxVal * (1 - i / 3)) / 1000);
-      return `<path class="chart-grid" d="M${left} ${y.toFixed(1)}H680"/><text x="0" y="${(y + 4).toFixed(1)}" class="chart-label">${number(tick)}k</text>`;
-    })
-    .join('');
+      return {
+        type: isSinglePoint ? 'bar' : 'line',
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: {
+              display: true,
+              position: 'top',
+              align: 'end',
+              labels: {
+                usePointStyle: true,
+                pointStyle: 'circle',
+                boxWidth: 8,
+                boxHeight: 8,
+                padding: 16,
+                font: { size: 12, weight: '600' },
+                color: '#334155',
+              },
+            },
+            tooltip: {
+              backgroundColor: '#0f172a',
+              titleColor: '#f8fafc',
+              bodyColor: '#e2e8f0',
+              borderColor: 'rgba(148, 163, 184, 0.25)',
+              borderWidth: 1,
+              padding: 12,
+              cornerRadius: 10,
+              displayColors: true,
+              boxPadding: 5,
+              callbacks: {
+                title(items) {
+                  const idx = items[0]?.dataIndex ?? 0;
+                  const pt = series[idx];
+                  return pt ? `${pt.label} · ${number(pt.orderCount || 0)} hóa đơn` : '';
+                },
+                label(item) {
+                  return ` ${item.dataset.label}: ${money(item.parsed.y)}`;
+                },
+              },
+            },
+          },
+          scales: {
+            x: {
+              grid: { display: false },
+              border: { display: false },
+              ticks: {
+                color: '#64748b',
+                font: { size: 11.5 },
+                maxRotation: 0,
+                autoSkip: true,
+                maxTicksLimit: 8,
+              },
+            },
+            y: {
+              beginAtZero: true,
+              border: { display: false },
+              grid: { color: '#eef2f7' },
+              ticks: {
+                color: '#64748b',
+                font: { size: 11.5 },
+                maxTicksLimit: 5,
+                callback(val) {
+                  const num = Number(val) || 0;
+                  if (num >= 1000000) return `${(num / 1000000).toFixed(num % 1000000 === 0 ? 0 : 1)}tr`;
+                  if (num >= 1000) return `${Math.round(num / 1000)}k`;
+                  return String(num);
+                },
+              },
+            },
+          },
+        },
+      };
+    },
+  });
 
-  const dotRadius = n <= 12 ? 3.8 : 2.3;
-  const dotsSVG = revCoords
-    .map(([x, y], i) => {
-      const p = series[i];
-      const tip = `${p.label} · ${number(p.orderCount)} đơn · DT ròng: ${money(p.netRevenue)} · LN gộp: ${money(p.grossProfit)}`;
-      const profDot = showProfit
-        ? `<circle cx="${profCoords[i][0].toFixed(1)}" cy="${profCoords[i][1].toFixed(1)}" r="${Math.max(2, dotRadius - 0.6)}" fill="#16a394" stroke="#fff" stroke-width="1.4"><title>${e(tip)}</title></circle>`
-        : '';
-      return `${profDot}<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${dotRadius}" fill="#5b54d6" stroke="#fff" stroke-width="1.6"><title>${e(tip)}</title></circle>`;
-    })
-    .join('');
-
-  const xLabelsSVG = series
-    .map((p, i) =>
-      i % labelStep === 0 || i === n - 1
-        ? `<text x="${xAt(i).toFixed(1)}" y="232" class="chart-label" text-anchor="middle">${e(p.label)}</text>`
-        : '',
-    )
-    .join('');
-
-  return `<svg class="chart" viewBox="0 0 700 248" role="img" aria-label="${e(ariaLabel)}">
-    <defs>
-      <linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#5b54d6" stop-opacity=".22"/>
-        <stop offset="100%" stop-color="#5b54d6" stop-opacity="0"/>
-      </linearGradient>
-    </defs>
-    ${legendSVG}
-    ${gridSVG}
-    ${areaSVG}
-    ${linesSVG}
-    ${dotsSVG}
-    ${xLabelsSVG}
-  </svg>`;
+  return `<div class="chart-canvas-wrap chart-trend-wrap">
+    <canvas id="${canvasId}" role="img" aria-label="${e(ariaLabel)}"></canvas>
+  </div>`;
 }
 
 /**
- * M5: Biểu đồ thanh ngang cơ cấu doanh thu ròng theo Danh mục (từ SQLite).
+ * Biểu đồ Doughnut tương tác (Chart.js): Cơ cấu thanh toán theo tổng thu ròng gồm VAT.
  */
-function categoryBarChart(categories = []) {
+function paymentDonutChart(methods = [], orderCount = 0, { id = '' } = {}) {
+  if (!Array.isArray(methods) || !methods.length) {
+    return empty('Chưa có giao dịch thanh toán', 'Số liệu sẽ hiển thị sau khi phát sinh hóa đơn.', 'card');
+  }
+  const canvasId = id || `rf-donut-${_pendingChartConfigs.length + 1}`;
+  const payColors = { CASH: '#4f46e5', VIETQR: '#0d9488', CARD: '#f59e0b' };
+  const enriched = methods.map((m) => ({
+    ...m,
+    color: m.color || payColors[m.method] || '#64748b',
+    value: Math.max(0, Number(m.netCollected ?? m.netRevenue) || 0),
+  }));
+  const hasPositive = enriched.some((m) => m.value > 0);
+
+  _pendingChartConfigs.push({
+    id: canvasId,
+    config: {
+      type: 'doughnut',
+      data: {
+        labels: enriched.map((m) => m.label),
+        datasets: [
+          {
+            data: hasPositive ? enriched.map((m) => m.value) : [1],
+            backgroundColor: hasPositive ? enriched.map((m) => m.color) : ['#e2e8f0'],
+            borderColor: '#ffffff',
+            borderWidth: 3,
+            hoverOffset: 6,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '68%',
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            enabled: hasPositive,
+            backgroundColor: '#0f172a',
+            titleColor: '#f8fafc',
+            bodyColor: '#e2e8f0',
+            padding: 10,
+            cornerRadius: 9,
+            callbacks: {
+              label(ctx) {
+                const m = enriched[ctx.dataIndex];
+                if (!m) return '';
+                return ` ${m.label}: ${money(m.value)} (${m.sharePct}% · ${number(m.orderCount)} đơn)`;
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  return `<div class="donut-wrap">
+    <div class="donut-canvas-box">
+      <canvas id="${canvasId}" role="img" aria-label="Biểu đồ cơ cấu phương thức thanh toán"></canvas>
+      <div class="donut-center-overlay">
+        <b class="money">${number(orderCount)}</b>
+        <small>hóa đơn</small>
+      </div>
+    </div>
+    <div class="legend">
+      ${enriched
+        .map(
+          (m) => `<div>
+            <i class="dot" style="color:${m.color}"></i>
+            <span>${e(m.label)} <small class="muted">(${number(m.orderCount)} đơn)</small></span>
+            <strong class="money">${money(m.value)} <small class="muted">(${m.sharePct}%)</small></strong>
+          </div>`,
+        )
+        .join('')}
+    </div>
+  </div>`;
+}
+
+/**
+ * Biểu đồ cột ngang tương tác (Chart.js): Cơ cấu doanh thu thuần trước VAT theo Danh mục.
+ */
+function categoryBarChart(categories = [], { id = '' } = {}) {
   if (!Array.isArray(categories) || !categories.length) {
     return empty('Chưa có doanh thu theo danh mục', 'Chưa có đơn hàng đã thanh toán khớp bộ lọc.', 'box');
   }
-  const highest = Math.max(...categories.map((c) => Math.max(0, Number(c.netRevenue) || 0)), 1);
-  return categories
-    .slice(0, 8)
-    .map((c) => {
-      const pctWidth = Math.max(2, Math.min(100, Math.round((Math.max(0, c.netRevenue) / highest) * 100)));
-      return `<div class="progress-row">
-        <div class="between">
-          <strong>${e(c.categoryName)} <small class="muted">(${number(c.netQty)} đv)</small></strong>
-          <span class="money">${money(c.netRevenue)} <small class="muted">(${c.sharePct}%)</small></span>
-        </div>
-        <div class="progress"><div style="width:${pctWidth}%"></div></div>
-      </div>`;
-    })
-    .join('');
+  const topCats = categories.slice(0, 8);
+  const canvasId = id || `rf-catbar-${_pendingChartConfigs.length + 1}`;
+  const palette = ['#4f46e5', '#0d9488', '#0284c7', '#7c3aed', '#d97706', '#059669', '#e11d48', '#475569'];
+
+  _pendingChartConfigs.push({
+    id: canvasId,
+    config: {
+      type: 'bar',
+      data: {
+        labels: topCats.map((c) => c.categoryName),
+        datasets: [
+          {
+            label: 'DT thuần (trước VAT)',
+            data: topCats.map((c) => Math.max(0, Number(c.netRevenuePreTax ?? c.netRevenue) || 0)),
+            backgroundColor: topCats.map((_, idx) => palette[idx % palette.length]),
+            borderRadius: 6,
+            barThickness: 18,
+            maxBarThickness: 22,
+          },
+        ],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#0f172a',
+            titleColor: '#f8fafc',
+            bodyColor: '#e2e8f0',
+            padding: 11,
+            cornerRadius: 9,
+            callbacks: {
+              label(ctx) {
+                const c = topCats[ctx.dataIndex];
+                if (!c) return '';
+                return [
+                  ` DT thuần: ${money(c.netRevenuePreTax ?? c.netRevenue)} (${c.sharePct}%)`,
+                  ` Lợi nhuận gộp: ${money(c.grossProfit)} · SL ròng: ${number(c.netQty)} đv`,
+                ];
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            border: { display: false },
+            grid: { color: '#eef2f7' },
+            ticks: {
+              color: '#64748b',
+              font: { size: 11 },
+              maxTicksLimit: 5,
+              callback(val) {
+                const num = Number(val) || 0;
+                if (num >= 1000000) return `${(num / 1000000).toFixed(num % 1000000 === 0 ? 0 : 1)}tr`;
+                if (num >= 1000) return `${Math.round(num / 1000)}k`;
+                return String(num);
+              },
+            },
+          },
+          y: {
+            border: { display: false },
+            grid: { display: false },
+            ticks: {
+              color: '#334155',
+              font: { size: 12, weight: '500' },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const dynamicHeight = Math.max(220, topCats.length * 36 + 32);
+  return `<div class="chart-canvas-wrap" style="height:${dynamicHeight}px">
+    <canvas id="${canvasId}" role="img" aria-label="Biểu đồ cơ cấu doanh thu thuần theo danh mục"></canvas>
+  </div>`;
 }

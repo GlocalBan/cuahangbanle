@@ -1,136 +1,259 @@
+/* Split-Screen Login, 4 Role Cards, Modals, Payment & Receipts */
 .login {
   min-height: 100vh;
   display: grid;
-  grid-template-columns: 1.05fr 1fr;
-  background: #fff;
+  grid-template-columns: 1.08fr 1fr;
+  background: #ffffff;
 }
 .login-story {
   position: relative;
   overflow: hidden;
-  background: radial-gradient(ellipse at 90% 20%, #263f73 0, transparent 56%), #13223c;
-  padding: 10vh 12%;
+  background:
+    radial-gradient(ellipse at 85% 15%, rgba(79, 70, 229, 0.38) 0%, transparent 55%),
+    radial-gradient(ellipse at 15% 88%, rgba(13, 148, 136, 0.25) 0%, transparent 50%),
+    #0f1b33;
+  padding: 56px 9%;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  color: #fff;
+  justify-content: space-between;
+  color: #ffffff;
 }
-.login-story:before,
-.login-story:after {
-  content: '';
-  position: absolute;
-  width: 650px;
-  height: 650px;
-  border: 1px solid #ffffff05;
-  border-radius: 120px;
-  transform: rotate(35deg);
-  top: -480px;
-  right: -320px;
-}
-.login-story:after {
-  top: auto;
-  bottom: -470px;
-  right: 0;
+.login-story-inner {
+  margin: auto 0;
+  max-width: 500px;
 }
 .login-story .logo {
-  margin-bottom: 42px;
+  margin-bottom: 34px;
+}
+.login-kicker {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #5eead4;
+  background: rgba(94, 234, 212, 0.1);
+  border: 1px solid rgba(94, 234, 212, 0.24);
+  padding: 4px 10px;
+  border-radius: 6px;
+  margin-bottom: 16px;
 }
 .login-story h1 {
-  font-size: 37px;
-  letter-spacing: -1.5px;
-  line-height: 1.45;
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.24;
+  color: #ffffff;
 }
 .login-story h1 span {
-  color: #7ed9d0;
+  color: #5eead4;
 }
-.login-story > p {
-  font-size: 12px;
-  color: #93a3bf;
-  line-height: 1.9;
-  margin-top: 18px;
-  max-width: 360px;
+.login-lead {
+  font-size: 13.5px;
+  color: #cbd5e1;
+  line-height: 1.7;
+  margin-top: 16px;
 }
-.login-preview {
-  background: #ffffff07;
-  border: 1px solid #ffffff0b;
-  border-radius: 14px;
-  transform: rotate(-4deg);
-  padding: 20px;
-  margin-top: 50px;
-  max-width: 400px;
-  box-shadow: 0 16px 40px #07142630;
+.login-metrics {
+  display: grid;
+  gap: 12px;
+  margin-top: 32px;
 }
-.login-preview svg {
-  height: 60px;
-  width: 100%;
-  margin-top: 15px;
+.login-metric-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
+.login-metric-ico {
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  background: rgba(99, 102, 241, 0.22);
+  color: #a5b4fc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.login-metric-card b {
+  display: block;
+  font-size: 13.5px;
+  color: #f8fafc;
+}
+.login-metric-card small {
+  display: block;
+  font-size: 11.5px;
+  color: #94a3b8;
+  margin-top: 2px;
+}
+.login-story-foot {
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  color: #64748b;
+  margin-top: 28px;
+}
+
 .login-form-wrap {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px;
+  padding: 40px 32px;
+  background: #f8fafc;
 }
 .login-form {
-  width: 340px;
+  width: 440px;
   max-width: 100%;
+  background: #ffffff;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 32px 30px 24px;
+  box-shadow: var(--shadow-md);
 }
-.login-form .logo {
-  margin-bottom: 42px;
+.login-form-mobile-logo {
+  display: none;
+  margin-bottom: 20px;
 }
-.login-form .logo strong {
-  color: #263754;
+.login-form-mobile-logo .logo strong {
+  color: var(--ink);
 }
-.login-form .logo small {
-  color: #a0adbe;
+.login-form-mobile-logo .logo small {
+  color: var(--muted);
 }
 .login-form h2 {
-  font-size: 27px;
-  letter-spacing: -1px;
-  margin-bottom: 7px;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--ink);
 }
-.login-form > p {
-  font-size: 11px;
-  color: #99a3b4;
-  line-height: 1.9;
+.login-sub {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 6px;
+  line-height: 1.55;
 }
 .login-form form {
   display: grid;
-  gap: 19px;
-  margin-top: 32px;
+  gap: 15px;
+  margin-top: 22px;
 }
-.login-form .btn {
-  min-height: 43px;
+.login-submit {
+  min-height: 44px;
+  font-size: 14px;
 }
+
 .login-hint {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line-soft);
+}
+.login-hint-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: #334155;
+}
+.role-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+.role-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 11px;
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  text-align: left;
+  width: 100%;
+}
+.role-card:hover {
+  background: #ffffff;
+  border-color: var(--primary);
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.12);
+  transform: translateY(-1px);
+}
+.role-card-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.role-indigo .role-card-icon {
+  background: #eef2ff;
+  color: #4f46e5;
+}
+.role-teal .role-card-icon {
+  background: #f0fdfa;
+  color: #0d9488;
+}
+.role-sky .role-card-icon {
+  background: #e0f2fe;
+  color: #0284c7;
+}
+.role-amber .role-card-icon {
+  background: #fef3c7;
+  color: #b45309;
+}
+.role-card-body {
+  min-width: 0;
+  flex: 1;
+}
+.role-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.role-card-top strong {
+  font-size: 12px;
+  color: var(--ink);
+  white-space: nowrap;
+}
+.role-card-top code {
   font-size: 10px;
-  line-height: 1.9;
-  color: #8396b2;
-  background: #f2f7fe;
-  padding: 12px 14px;
-  border-radius: 7px;
-  margin-top: 19px;
+  padding: 1px 5px;
+}
+.role-card-body small {
+  display: block;
+  font-size: 10.5px;
+  color: var(--muted);
+  line-height: 1.38;
+  margin-top: 3px;
 }
 .login-footer {
-  color: #b2b9c7;
+  color: #94a3b8;
   text-align: center;
-  font-size: 9px;
-  margin-top: 30px;
+  font-size: 11px;
+  margin-top: 20px;
 }
+
+/* Dialogs / Modals */
 dialog {
   padding: 0;
-  border: 1px solid #e7e9f2;
-  border-radius: 13px;
-  width: 560px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  width: 580px;
   max-width: calc(100vw - 28px);
   max-height: 90vh;
-  color: #26344d;
-  box-shadow: 0 20px 100px #14213e33;
+  color: var(--ink);
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.25);
 }
 dialog.wide-modal {
-  width: 800px;
+  width: 840px;
 }
 dialog::backdrop {
-  background: #14213c70;
+  background: rgba(15, 23, 42, 0.52);
   backdrop-filter: blur(3px);
 }
 dialog[open] {
@@ -149,88 +272,97 @@ dialog[open] > form {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 23px;
+  padding: 16px 22px;
   border-bottom: 1px solid var(--line);
   flex-shrink: 0;
-  background: white;
-  z-index: 2;
+  background: #ffffff;
 }
 .modal-header h2 {
   font-size: 16px;
+  font-weight: 700;
 }
 .modal-content {
-  padding: 20px 23px;
+  padding: 20px 22px;
   overflow-y: auto;
   flex: 1;
   min-height: 0;
 }
-.modal-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 9px;
-  padding: 15px 23px;
-  border-top: 1px solid var(--line);
-  background: #fafbfe;
-  border-radius: 0 0 13px 13px;
-  flex-shrink: 0;
-}
 .modal-content .table-wrap {
   padding: 0;
 }
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--line);
+  background: #f8fafc;
+  flex-shrink: 0;
+}
+
+/* Payment Modal */
 .payment-total {
   text-align: center;
-  background: #f7f6ff;
-  border: 1px solid #eeebff;
-  border-radius: 9px;
-  padding: 20px;
-  margin-bottom: 20px;
-  color: #8a83b0;
-  font-size: 10px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+  border-radius: 11px;
+  padding: 18px;
+  margin-bottom: 18px;
+  color: #4338ca;
+  font-size: 12px;
+  font-weight: 600;
 }
 .payment-total b {
   display: block;
-  color: #544cac;
-  font-size: 30px;
-  margin-top: 7px;
-  letter-spacing: -1px;
+  color: #312e81;
+  font-size: 28px;
+  margin-top: 6px;
+  letter-spacing: -0.025em;
 }
 .payment-methods {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 9px;
-  margin-bottom: 20px;
+  gap: 10px;
+  margin-bottom: 18px;
 }
 .payment-methods button {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 9px;
-  padding: 17px 5px;
-  border: 1px solid #e4e8f2;
-  background: #fff;
-  color: #8e99ae;
-  border-radius: 8px;
-  font-size: 10px;
+  gap: 8px;
+  padding: 14px 8px;
+  border: 1.5px solid #e2e8f0;
+  background: #ffffff;
+  color: #475569;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
 }
 .payment-methods button.active {
-  background: #f2f0ff;
-  border-color: #8177d9;
-  color: #6257b4;
+  background: #eef2ff;
+  border-color: var(--primary);
+  color: var(--primary);
 }
 .cash-quick {
   display: flex;
-  gap: 6px;
+  gap: 7px;
   flex-wrap: wrap;
   margin: 12px 0;
 }
 .cash-quick button {
   flex: 1;
-  font-size: 10px;
-  padding: 9px 6px;
-  border-radius: 5px;
-  background: #f9faff;
-  border: 1px solid #e8ecf5;
-  color: #7c88a2;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 6px;
+  border-radius: 7px;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+}
+.cash-quick button:hover {
+  background: #eef2ff;
+  border-color: var(--primary);
+  color: var(--primary);
 }
 .numpad {
   display: grid;
@@ -239,108 +371,90 @@ dialog[open] > form {
   margin-top: 12px;
 }
 .numpad button {
-  padding: 10px;
-  border: 1px solid #e6eaf3;
-  background: #fafbfe;
-  color: #606f89;
-  border-radius: 6px;
+  padding: 11px;
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  color: var(--ink);
+  border-radius: 8px;
   font-size: 15px;
+  font-weight: 600;
 }
+.numpad button:hover {
+  background: #eef2ff;
+}
+
+/* Receipt Preview */
 .receipt {
-  font-size: 11px;
-  color: #4a5871;
-  line-height: 1.9;
+  font-size: 12.5px;
+  color: #334155;
+  line-height: 1.65;
 }
 .receipt-head {
   text-align: center;
-  padding-bottom: 20px;
+  padding-bottom: 16px;
 }
 .receipt-head h2 {
-  font-size: 21px;
-  color: #273650;
+  font-size: 20px;
+  color: var(--ink);
 }
 .receipt-head h3 {
   font-size: 14px;
-  letter-spacing: 1px;
-  margin: 18px 0 4px;
+  letter-spacing: 0.08em;
+  margin: 14px 0 4px;
 }
 .receipt table {
-  font-size: 10px;
+  font-size: 12px;
   white-space: normal;
 }
 .receipt td,
 .receipt th {
-  padding: 10px 6px;
+  padding: 8px 6px;
 }
 .receipt-total {
   display: grid;
-  gap: 8px;
-  margin-top: 17px;
-  border-top: 1px dashed #dfe4ee;
-  padding-top: 14px;
+  gap: 7px;
+  margin-top: 14px;
+  border-top: 1px dashed #cbd5e1;
+  padding-top: 12px;
 }
 .receipt-total .grand {
   font-size: 16px;
-  color: #35425d;
+  color: var(--ink);
   font-weight: 700;
 }
 .receipt-foot {
   text-align: center;
-  font-size: 10px;
-  color: #97a0b2;
-  margin-top: 23px;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 18px;
 }
+
+/* Fallback Toast Stack (when Notyf unavailable) */
 .toasts {
   position: fixed;
-  bottom: 24px;
-  right: 24px;
+  top: 20px;
+  right: 20px;
   z-index: 100;
   display: grid;
-  gap: 9px;
+  gap: 8px;
   max-width: 400px;
 }
 .toast {
-  padding: 15px 19px;
-  background: #fff;
-  box-shadow: 0 5px 35px #1b2d4c1f;
-  border: 1px solid #e9edf4;
-  border-left: 3px solid #1baf91;
-  border-radius: 7px;
-  font-size: 11px;
-  color: #53637c;
-  line-height: 1.8;
+  padding: 13px 16px;
+  background: #ffffff;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--line);
+  border-left: 4px solid #10b981;
+  border-radius: 9px;
+  font-size: 12.5px;
+  color: var(--ink);
+  line-height: 1.5;
   animation: toast-in 0.2s ease;
 }
 .toast.error {
-  border-left-color: #d46a7e;
+  border-left-color: #ef4444;
 }
-.login-form .error-text:empty {
-  display: none;
-}
+
 #print-area {
   display: none;
-}
-.numpad {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 7px;
-}
-.numpad button {
-  padding: 13px;
-  background: #f8f9fc;
-  color: #5c6982;
-  border: 1px solid #e5e9f2;
-  border-radius: 7px;
-}
-dialog {
-  border: 1px solid #e7eaf1;
-  border-radius: 12px;
-  padding: 0;
-  box-shadow: 0 30px 110px #10274440;
-  max-height: 90vh;
-  color: #28354b;
-}
-dialog::backdrop {
-  background: #101d37a1;
-  backdrop-filter: blur(3px);
 }

@@ -70,11 +70,10 @@ function settingsView() {
           </div>
         </section>
         <section class="panel">
-          <div class="panel-head"><h2>Sao lưu & khôi phục dữ liệu</h2></div>
+          <div class="panel-head"><h2>Sao lưu CSDL SQLite</h2>${badge('Chỉ Admin', 'blue')}</div>
           <div class="panel-body stack">
-            <p class="sub">Tải bản sao lưu JSON định kỳ hoặc khôi phục từ bản sao lưu hợp lệ (chỉ dành cho Admin).</p>
-            ${action('backup', 'Tải bản sao lưu JSON', 'download')}
-            ${action('restore', 'Khôi phục từ bản sao lưu', 'upload')}
+            <p class="sub">Xuất bản sao lưu toàn bộ bảng dữ liệu thực tế từ SQLite (Sản phẩm, Hóa đơn, Trả hàng, Nhập kho, Kiểm kê, THAM_SO, Audit Log) dưới định dạng JSON và tự động ghi Nhật ký kiểm toán.</p>
+            ${action('backup', 'Xuất bản sao lưu SQLite (JSON)', 'download', 'primary')}
           </div>
         </section>
       </div>

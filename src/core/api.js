@@ -279,6 +279,7 @@ const api = {
     apiRequest('PATCH', `/api/staff/${encodeURIComponent(id)}/status`, { status }),
   listThamSo: () => apiRequest('GET', '/api/tham-so'),
   updateThamSo: (items) => apiRequest('PUT', '/api/tham-so', { items }),
+  exportBackup: () => apiRequest('GET', '/api/system/backup'),
   queryAuditLogs: (params = {}) => apiRequest('GET', `/api/audit-logs${buildQuery(params)}`),
 
   // M2 Catalog & Stock Ledger
@@ -799,7 +800,7 @@ async function loadReportsData(force = false) {
   if (!store.hasPermission('REPORT_VIEW') || !store.hasPermission('REPORT_PROFIT')) return;
   if (apiState.loading.reports && !force) return;
   if (!filters.reportFrom || !filters.reportTo) {
-    const def = getDefaultReportRange(reportDays || 30);
+    const def = getDefaultReportRange(30);
     if (!filters.reportFrom) filters.reportFrom = def.fromDate;
     if (!filters.reportTo) filters.reportTo = def.toDate;
   }

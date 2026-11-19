@@ -1,7 +1,46 @@
-/* Shared browser state and HTML helpers. Loaded before feature scripts. */
+/* Shared browser state, Lucide v1.76.0 vector icon bridge, and HTML helpers.
+ * Uses pure in-memory store for session/config mirror (zero legacy localStorage business persistence). */
 'use strict';
 const { Store, totals, METHODS, ROLES, ROLE_SHORT, ACCESS, PAGE_PERMISSIONS, clone, getExpiryInfo } = Retail;
-const store = new Store(localStorage);
+const _memoryStorage = {
+  _map: new Map(),
+  getItem(k) {
+    return this._map.has(k) ? this._map.get(k) : null;
+  },
+  setItem(k, v) {
+    this._map.set(k, String(v));
+  },
+  removeItem(k) {
+    this._map.delete(k);
+  },
+};
+const store = new Store(_memoryStorage);
+// Clean up any stale legacy prototype key left in browser localStorage
+try {
+  if (typeof localStorage !== 'undefined') localStorage.removeItem('retailflow-store');
+} catch {
+  // ignore storage errors
+}
+
+const SIDEBAR_PREF_KEY = 'retailflow-sidebar-collapsed';
+let sidebarCollapsed = false;
+try {
+  sidebarCollapsed = typeof localStorage !== 'undefined' && localStorage.getItem(SIDEBAR_PREF_KEY) === '1';
+} catch {
+  sidebarCollapsed = false;
+}
+function setSidebarCollapsed(next) {
+  sidebarCollapsed = Boolean(next);
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(SIDEBAR_PREF_KEY, sidebarCollapsed ? '1' : '0');
+    }
+  } catch {
+    // ignore
+  }
+  document.body.classList.toggle('sidebar-collapsed', sidebarCollapsed);
+}
+
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const escapeHTML = (value) =>
@@ -52,54 +91,69 @@ const match = (value, query) =>
         .replace(/đ/g, 'd')
         .toLowerCase(),
     );
-const icons = {
-  layers: 'M12 3 3 8l9 5 9-5-9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5',
-  grid: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
-  cart: 'm2 3 2 1 3 12h12l3-10H5M9 21h.01M18 21h.01',
-  box: 'm12 2 9 5v10l-9 5-9-5V7l9-5Zm0 10 9-5M12 12 3 7m9 5v10M7 5l10 5',
-  receipt: 'M5 3h14v19l-3-2-4 2-4-2-3 2V3Zm3 5h8M8 12h8M8 16h4',
-  warehouse: 'm3 9 9-6 9 6v12H3V9Zm4 12V11h10v10M7 15h10M7 18h10',
-  truck:
-    'M1 5h13v12H1zM14 9h5l4 5v3h-9M5 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm14 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z',
-  users:
-    'M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M17 4a4 4 0 0 1 0 8m6 9v-2a4 4 0 0 0-3-3.9M12 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z',
-  user: 'M20 21v-2a7 7 0 0 0-14 0v2M17 7A5 5 0 1 1 7 7a5 5 0 0 1 10 0Z',
-  return: 'm9 14-5-5 5-5M4 9h10a6 6 0 0 1 0 12h-2',
-  chart: 'M3 3v18h18M7 15l4-5 4 3 6-8',
-  branch: 'M4 4h6v6H4zM14 14h6v6h-6zM4 14h6v6H4zM7 10v4m3-7h7v7',
-  settings:
-    'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8ZM9 2h6l1 3 3 1 3 3v6l-3 1-1 3-3 3H9l-1-3-3-1-3-3V9l3-1 1-3 3-3Z',
-  search: 'm21 21-5-5M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z',
-  plus: 'M12 5v14M5 12h14',
-  close: 'm6 6 12 12M6 18 18 6',
-  arrow: 'M4 12h16m-6-6 6 6-6 6',
-  logout: 'M9 3H3v18h6m6-14 5 5-5 5m-8-5h13',
-  bell: 'M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4',
-  download: 'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',
-  upload: 'M12 16V4m-5 5 5-5 5 5M4 16v5h16v-5',
-  edit: 'm16 3 5 5-12 12-6 1 1-6L16 3Zm-2 2 5 5',
-  eye: 'M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Zm13 0a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z',
-  check: 'm4 12 5 5L20 6',
-  cash: 'M2 5h20v14H2zM15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0ZM5 8h1m12 8h1',
-  card: 'M2 5h20v14H2zM2 9h20M6 15h4',
-  transfer: 'M3 7h17m-5-5 5 5-5 5M21 17H4m5-5-5 5 5 5',
-  print: 'M6 9V2h12v7M6 17H2V9h20v8h-4M6 14h12v8H6zM18 11h.01',
-  save: 'M4 3h14l3 3v15H3V3h1ZM7 3v6h10V3M7 21v-8h10v8',
-  clock: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM12 7v5l3 2',
-  shield: 'm12 2 9 4v6c0 5-9 10-9 10S3 17 3 12V6l9-4Zm-4 10 3 3 5-6',
-  menu: 'M3 6h18M3 12h18M3 18h18',
-  trash: 'M3 6h18M6 6l1 15h10l1-15M9 6V3h6v3m-5 4v7m4-7v7',
-  scan: 'M3 8V3h5m8 0h5v5M3 16v5h5m8 0h5v-5M7 7v10m4-10v10m3-10v10m3-10v10',
-  info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM12 11v6m0-10h.01',
-  key: 'M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4',
-  lock: 'M7 11V7a5 5 0 0 1 10 0v4M5 11h14v10H5z',
-  unlock: 'M7 11V7a5 5 0 0 1 9.9-1M5 11h14v10H5z',
-  tag: 'M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82ZM7 7h.01',
+
+const LUCIDE_ICON_MAP = {
+  layers: 'layers',
+  grid: 'layout-grid',
+  cart: 'shopping-cart',
+  box: 'package',
+  receipt: 'receipt',
+  warehouse: 'warehouse',
+  truck: 'truck',
+  users: 'users',
+  user: 'user-cog',
+  return: 'rotate-ccw',
+  chart: 'bar-chart-3',
+  branch: 'building-2',
+  settings: 'sliders-horizontal',
+  search: 'search',
+  plus: 'plus',
+  close: 'x',
+  arrow: 'arrow-right',
+  logout: 'log-out',
+  bell: 'bell',
+  download: 'download',
+  upload: 'upload',
+  edit: 'pencil',
+  eye: 'eye',
+  check: 'check',
+  cash: 'banknote',
+  card: 'credit-card',
+  transfer: 'arrow-left-right',
+  print: 'printer',
+  save: 'save',
+  clock: 'clock',
+  shield: 'shield-check',
+  menu: 'menu',
+  trash: 'trash-2',
+  scan: 'scan-barcode',
+  info: 'info',
+  key: 'key-round',
+  lock: 'lock',
+  unlock: 'lock-open',
+  tag: 'tag',
+  'collapse-left': 'panel-left-close',
+  'collapse-right': 'panel-left-open',
 };
-const icon = (name) =>
-  `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${icons[name] || icons.box}"/></svg>`;
+
+const icon = (name) => {
+  const lucideName = LUCIDE_ICON_MAP[name] || 'package';
+  return `<i data-lucide="${lucideName}" class="icon" aria-hidden="true"></i>`;
+};
+
+function hydrateIcons() {
+  if (typeof window !== 'undefined' && window.lucide && typeof window.lucide.createIcons === 'function') {
+    window.lucide.createIcons({
+      attrs: {
+        class: 'icon',
+        'stroke-width': '1.75',
+      },
+    });
+  }
+}
+
 const logo = () =>
-  `<div class="logo"><div class="logo-mark">${icon('layers')}</div><div><strong>RetailFlow</strong><small>RETAIL MANAGEMENT</small></div></div>`;
+  `<div class="logo"><div class="logo-mark">${icon('layers')}</div><div class="logo-text"><strong>RetailFlow</strong><small>RETAIL MANAGEMENT</small></div></div>`;
 const action = (name, label, ico = '', kind = '', attrs = '') =>
   `<button type="button" class="btn ${kind}" data-action="${name}" ${attrs}>${ico ? icon(ico) : ''}${label}</button>`;
 const ib = (name, ico, label, attrs = '') =>
@@ -112,7 +166,7 @@ const empty = (
 const badge = (label, color = 'green') =>
   `<span class="badge ${color}"><i class="dot"></i>${label}</span>`;
 const productImage = (p, cls = 'product-thumb-img', attrs = '') => {
-  const src = (p && p.imageUrl) ? e(p.imageUrl) : 'assets/images/products/default.jpg';
+  const src = p && p.imageUrl ? e(p.imageUrl) : 'assets/images/products/default.jpg';
   return `<img class="${cls}" src="${src}" alt="${e((p && p.name) || 'Sản phẩm')}" loading="lazy" onerror="this.onerror=null;this.src='assets/images/products/default.jpg'" ${attrs} />`;
 };
 const expiryBadge = (expiryDate, compact = false) => {
@@ -155,7 +209,7 @@ const statusLabels = {
 };
 const status = (value) => badge(...(statusLabels[value] || [e(value), 'gray']));
 const stats = (values) =>
-  `<div class="stats">${values.map(([label, value, desc, ico]) => `<div class="panel stat"><div class="stat-icon">${icon(ico || 'receipt')}</div><div class="stat-label muted">${label}</div><div class="money" style="font-size:inherit"><h2 class="stat-value" style="margin-top:19px;font-weight:750">${value}</h2></div><p class="sub">${desc}</p></div>`).join('')}</div>`;
+  `<div class="stats">${values.map(([label, value, desc, ico]) => `<div class="panel stat"><div class="stat-icon">${icon(ico || 'receipt')}</div><div class="stat-label">${label}</div><div class="money"><h2 class="stat-value">${value}</h2></div><p class="sub stat-foot">${desc}</p></div>`).join('')}</div>`;
 const table = (headers, rows, cls = '') =>
   `<div class="table-wrap ${cls}"><table><thead><tr>${headers.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table>${rows.length ? '' : empty('Không có kết quả', 'Thử đổi bộ lọc hoặc thêm dữ liệu mới.', 'search')}</div>`;
 const field = (label, name, value = '', type = 'text', attrs = '', full = false) =>
@@ -179,7 +233,6 @@ const pages = [
   ['suppliers', 'Nhà cung cấp', 'branch', 'KHUYẾN MÃI & ĐỐI TÁC'],
   ['customers', 'Khách hàng', 'users', 'KHUYẾN MÃI & ĐỐI TÁC'],
   ['reports', 'Báo cáo & Thống kê', 'chart', 'BÁO CÁO & THỐNG KÊ'],
-  ['branches', 'Chi nhánh', 'branch', 'BÁO CÁO & THỐNG KÊ'],
   ['staff', 'Nhân viên & Phân quyền', 'user', 'QUẢN TRỊ HỆ THỐNG'],
   ['settings', 'Tham số & Cấu hình', 'settings', 'QUẢN TRỊ HỆ THỐNG'],
   ['audit-logs', 'Nhật ký kiểm toán', 'shield', 'QUẢN TRỊ HỆ THỐNG'],
@@ -190,7 +243,6 @@ let page = 'dashboard',
   pagination = {},
   modalContext = {},
   chartDays = 7,
-  reportDays = 7,
   activeCategory = 'Tất cả',
   productsTab = 'products',
   inventoryTab = 'stock';

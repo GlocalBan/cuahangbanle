@@ -146,6 +146,46 @@ class SystemService {
       limit: query.limit || 15,
     });
   }
+
+  exportBackupSnapshot(actor) {
+    const exportedAt = new Date().toISOString();
+    const snapshot = {
+      schemaVersion: 'retailflow-sqlite-v1',
+      exportedAt,
+      exportedBy: actor.username,
+      storeConfig: this.getPublicStoreConfig(),
+      counts: {},
+      data: {
+        thamSo: this.db.prepare('SELECT * FROM tham_so ORDER BY ma_tham_so').all(),
+        categories: this.db.prepare('SELECT * FROM categories ORDER BY code').all(),
+        units: this.db.prepare('SELECT * FROM units ORDER BY code').all(),
+        suppliers: this.db.prepare('SELECT * FROM suppliers ORDER BY id').all(),
+        products: this.db.prepare('SELECT * FROM products ORDER BY id').all(),
+        customers: this.db.prepare('SELECT * FROM customers ORDER BY id').all(),
+        promotions: this.db.prepare('SELECT * FROM promotions ORDER BY id').all(),
+        purchases: this.db.prepare('SELECT * FROM purchases ORDER BY created_at DESC').all(),
+        purchaseItems: this.db.prepare('SELECT * FROM purchase_items ORDER BY id').all(),
+        orders: this.db.prepare('SELECT * FROM orders ORDER BY created_at DESC').all(),
+        orderItems: this.db.prepare('SELECT * FROM order_items ORDER BY id').all(),
+        returns: this.db.prepare('SELECT * FROM returns ORDER BY created_at DESC').all(),
+        returnItems: this.db.prepare('SELECT * FROM return_items ORDER BY id').all(),
+        stockAudits: this.db.prepare('SELECT * FROM stock_audits ORDER BY created_at DESC').all(),
+        stockAuditItems: this.db.prepare('SELECT * FROM stock_audit_items ORDER BY id').all(),
+        stockMovements: this.db.prepare('SELECT * FROM stock_movements ORDER BY created_at DESC').all(),
+      },
+    };
+    for (const [k, rows] of Object.entries(snapshot.data)) {
+      snapshot.counts[k] = rows.length;
+    }
+    this.repos.auditLogs.append({
+      actor,
+      action: 'SYSTEM_BACKUP',
+      entityType: 'Database',
+      entityId: 'retailflow.db',
+      detail: `Xuất bản sao lưu SQLite JSON (${snapshot.counts.products} sản phẩm, ${snapshot.counts.orders} hóa đơn, ${snapshot.counts.returns} phiếu trả).`,
+    });
+    return snapshot;
+  }
 }
 
 module.exports = { SystemService };

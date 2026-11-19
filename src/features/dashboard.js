@@ -35,22 +35,7 @@ function dashboardView() {
   const summary = d.summary || {};
   const queues = d.queues || {};
   const days = d.period?.days || chartDays || 7;
-  const payColors = { CASH: '#5b54d6', VIETQR: '#16a394', CARD: '#eab308' };
-  const methods = (d.paymentBreakdown || []).map((m) => ({
-    ...m,
-    color: payColors[m.method] || '#64748b',
-  }));
-  const totalPayCollected = methods.reduce((s, m) => s + Math.max(0, Number(m.netCollected ?? m.netRevenue) || 0), 0);
-  let angle = 0;
-  const gradient = methods
-    .map((m) => {
-      const start = angle;
-      const val = Math.max(0, Number(m.netCollected ?? m.netRevenue) || 0);
-      angle += totalPayCollected > 0 ? (val / totalPayCollected) * 360 : 120;
-      return `${m.color} ${start.toFixed(1)}deg ${angle.toFixed(1)}deg`;
-    })
-    .join(',');
-
+  const methods = d.paymentBreakdown || [];
   const lowList = queues.lowStockProducts || [];
 
   return (
@@ -117,25 +102,7 @@ function dashboardView() {
           ${icon('card')}
         </div>
         <div class="panel-body">
-          <div class="donut-wrap">
-            <div class="donut" style="background:conic-gradient(${gradient})">
-              <div class="donut-center">
-                <b>${number(summary.orderCount || 0)}</b>
-                <small>hóa đơn</small>
-              </div>
-            </div>
-            <div class="legend">
-              ${methods
-                .map(
-                  (m) => `<div>
-                    <i class="dot" style="color:${m.color}"></i>
-                    <span>${e(m.label)} <small class="muted">(${number(m.orderCount)} đơn)</small></span>
-                    <strong class="money">${money(m.netCollected ?? m.netRevenue)} (${m.sharePct}%)</strong>
-                  </div>`,
-                )
-                .join('')}
-            </div>
-          </div>
+          ${paymentDonutChart(methods, summary.orderCount || 0)}
         </div>
       </section>
     </div>

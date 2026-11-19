@@ -557,6 +557,3 @@ function unitApiModal(code = '') {
   );
 }
 
-function ibEntity(type, id) {
-  return ib('entity-edit', 'settings', 'Chỉnh sửa', `data-type="${type}" data-id="${e(id)}"`);
-}

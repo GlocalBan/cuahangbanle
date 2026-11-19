@@ -1,136 +1,135 @@
+/* Dashboard & Chart.js Containers */
 .dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.9fr) minmax(260px, 1fr);
+  grid-template-columns: minmax(0, 1.75fr) minmax(300px, 1fr);
   gap: 20px;
   margin-bottom: 20px;
 }
-.chart {
+.dashboard-grid > * {
+  min-width: 0;
+}
+
+.chart-canvas-wrap {
+  position: relative;
   width: 100%;
-  height: 225px;
-  display: block;
-  overflow: visible;
+  min-height: 240px;
 }
-.chart-grid {
-  stroke: #eff1f7;
-  stroke-width: 1;
-  stroke-dasharray: 3 4;
+.chart-trend-wrap {
+  height: 268px;
 }
-.chart-label {
-  font-size: 9px;
-  fill: #a3abba;
-}
+
 .segmented {
-  display: flex;
+  display: inline-flex;
   padding: 3px;
-  background: #f6f7fb;
-  border-radius: 6px;
+  background: #f1f5f9;
+  border-radius: 8px;
   gap: 2px;
+  border: 1px solid #e2e8f0;
 }
 .segmented button {
-  padding: 6px 10px;
+  padding: 5px 12px;
   border: 0;
   background: transparent;
-  color: #8f97aa;
-  border-radius: 4px;
-  font-size: 9px;
+  color: #64748b;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
 }
 .segmented button.active {
-  background: #fff;
+  background: #ffffff;
   color: var(--primary);
-  box-shadow: 0 1px 5px #182a4510;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
 }
+
+/* Interactive Chart.js Doughnut Layout */
 .donut-wrap {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 19px;
-  min-height: 225px;
+  gap: 22px;
+  min-height: 248px;
+  padding: 8px 4px;
 }
-.donut {
+.donut-canvas-box {
   position: relative;
-  width: 140px;
-  height: 140px;
-  border-radius: 50%;
+  width: 172px;
+  height: 172px;
   flex-shrink: 0;
 }
-.donut-center {
+.donut-center-overlay {
   position: absolute;
-  inset: 24px;
-  background: white;
-  border-radius: 50%;
+  inset: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  flex-direction: column;
+  pointer-events: none;
 }
-.donut-center b {
-  font-size: 25px;
-  letter-spacing: -1px;
+.donut-center-overlay b {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.1;
 }
-.donut-center small {
-  font-size: 9px;
+.donut-center-overlay small {
+  font-size: 11px;
   color: var(--muted);
-  margin-top: 3px;
+  margin-top: 2px;
 }
 .legend {
   display: grid;
-  gap: 17px;
-  font-size: 10px;
-  color: #8390a4;
+  gap: 12px;
+  font-size: 12.5px;
+  color: var(--ink-secondary);
+  flex: 1;
+  min-width: 0;
+}
+.legend > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .legend .dot {
-  width: 7px;
-  height: 7px;
-  margin-right: 6px;
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
 }
 .legend strong {
-  margin-left: 10px;
-  color: #4d576e;
+  margin-left: auto;
+  color: var(--ink);
+  font-weight: 600;
 }
+
+/* Operational Attention Queue */
 .alert-item {
   display: flex;
   gap: 12px;
   align-items: center;
-  padding: 13px 0;
-  border-bottom: 1px solid #f3f4f8;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line-soft);
 }
 .alert-item:last-child {
   border: 0;
 }
 .alert-item .stat-icon {
   position: static;
-  width: 29px;
-  height: 29px;
+  width: 34px;
+  height: 34px;
   flex-shrink: 0;
 }
 .alert-item strong {
-  font-size: 10px;
+  font-size: 12.5px;
+  color: var(--ink);
+  display: block;
 }
 .alert-item small {
   display: block;
-  color: #a1a8b7;
-  font-size: 9px;
-  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11.5px;
+  margin-top: 2px;
 }
-.alert-item .badge {
+.alert-item .badge,
+.alert-item .icon-btn {
   margin-left: auto;
-}
-.progress-row {
-  padding: 14px 0;
-  font-size: 10px;
-}
-.progress {
-  height: 5px;
-  background: #f1f2f8;
-  border-radius: 4px;
-  overflow: hidden;
-  margin-top: 11px;
-}
-.progress > div {
-  height: 100%;
-  background: #7870d8;
-  border-radius: 4px;
-}
-.dashboard-grid > * {
-  min-width: 0;
 }

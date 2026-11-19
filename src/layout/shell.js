@@ -10,7 +10,7 @@ function buildSidebarNav() {
     .map(([key, label, ico, group]) => {
       const groupHeading = group && group !== lastGroup ? `<div class="nav-group">${e(group)}</div>` : '';
       lastGroup = group || lastGroup;
-      return `${groupHeading}<button type="button" class="nav-item ${page === key ? 'active' : ''}" data-action="navigate" data-page="${key}" aria-current="${page === key ? 'page' : 'false'}">${icon(ico)}<span>${e(label)}</span>${key === 'branches' ? '<span class="badge">Mở rộng</span>' : ''}</button>`;
+      return `${groupHeading}<button type="button" class="nav-item ${page === key ? 'active' : ''}" data-action="navigate" data-page="${key}" title="${e(label)}" aria-current="${page === key ? 'page' : 'false'}">${icon(ico)}<span class="nav-label">${e(label)}</span></button>`;
     })
     .join('');
 }
@@ -30,6 +30,7 @@ function shell() {
     loginScreen();
     return;
   }
+  document.body.classList.toggle('sidebar-collapsed', sidebarCollapsed);
   const roleShort = ROLE_SHORT[u.role] || u.role;
   const initials = (u.fullName || u.name || 'NV')
     .split(' ')
@@ -39,9 +40,13 @@ function shell() {
     .join('')
     .toUpperCase();
 
-  $('#root').innerHTML = `<aside class="sidebar" aria-label="Menu điều hướng chính">
-    ${logo()}
-    <nav>${buildSidebarNav()}</nav>
+  $('#root').innerHTML = `<div class="sidebar-backdrop" data-action="mobile-menu" aria-hidden="true"></div>
+  <aside class="sidebar" aria-label="Menu điều hướng chính">
+    <div class="sidebar-brand">
+      ${logo()}
+      <button type="button" class="icon-btn sidebar-toggle" data-action="toggle-sidebar" title="${sidebarCollapsed ? 'Mở rộng menu bên trái' : 'Thu gọn menu bên trái'}" aria-label="${sidebarCollapsed ? 'Mở rộng menu bên trái' : 'Thu gọn menu bên trái'}">${icon(sidebarCollapsed ? 'collapse-right' : 'collapse-left')}</button>
+    </div>
+    <nav class="sidebar-nav">${buildSidebarNav()}</nav>
     <div class="sidebar-bottom">
       <div class="sidebar-note">
         ${icon('shield')}
@@ -52,19 +57,21 @@ function shell() {
       </div>
       <div class="sidebar-user">
         <div class="avatar">${e(initials)}</div>
-        <div>
+        <div class="sidebar-user-meta">
           <strong>${e(u.fullName || u.name)}</strong>
           <small>${e(ROLES[u.role] || u.role)}</small>
         </div>
-        ${ib('open-change-password', 'key', 'Đổi mật khẩu')}
-        ${ib('logout', 'logout', 'Đăng xuất')}
+        <div class="sidebar-user-actions">
+          ${ib('open-change-password', 'key', 'Đổi mật khẩu')}
+          ${ib('logout', 'logout', 'Đăng xuất')}
+        </div>
       </div>
     </div>
   </aside>
   <div class="main">
     <header class="topbar">
-      <div class="row gap8">
-        ${ib('mobile-menu', 'menu', 'Mở menu', 'class="mobile-menu"')}
+      <div class="row gap8 topbar-left">
+        <button type="button" class="icon-btn mobile-menu" data-action="mobile-menu" title="Mở menu" aria-label="Mở menu">${icon('menu')}</button>
         <div id="topbar-breadcrumb">${renderBreadcrumb()}</div>
       </div>
       <div class="global-search">
@@ -195,17 +202,19 @@ function render() {
     staff: staffView,
     returns: returnsView,
     reports: reportsView,
-    branches: branchesView,
     settings: settingsView,
     'audit-logs': auditLogsView,
     forbidden: () => forbiddenView(forbiddenAttempt),
   };
+  if (typeof resetPendingCharts === 'function') resetPendingCharts();
   const viewFn = views[page] || (() => forbiddenView(page));
   $('#content').innerHTML =
     viewFn() +
     `<footer class="footer">RetailFlow · Quản lý cửa hàng bán lẻ &nbsp;·&nbsp; ${e(store.data.settings.name)}</footer>`;
   const bc = $('#topbar-breadcrumb');
   if (bc) bc.innerHTML = renderBreadcrumb();
+  if (typeof hydrateIcons === 'function') hydrateIcons();
+  if (typeof mountCharts === 'function') mountCharts();
   if (focused) {
     const el = document.getElementById(focused);
     if (el) {
@@ -244,7 +253,7 @@ function globalSearch(query) {
     .filter((p) => store.can(p[0]) && match(p[1], query))
     .map(
       ([key, label, ico]) =>
-        `<button type="button" data-action="navigate" data-page="${key}">${icon(ico)}${e(label)}</button>`,
+        `<button type="button" data-action="navigate" data-page="${key}">${icon(ico)}<span>${e(label)}</span></button>`,
     );
   if (store.can('orders'))
     (apiState.orders || [])
@@ -267,4 +276,5 @@ function globalSearch(query) {
   container.innerHTML =
     targets.slice(0, 10).join('') ||
     '<div class="sub" style="padding:12px">Không tìm thấy kết quả phù hợp.</div>';
+  if (typeof hydrateIcons === 'function') hydrateIcons();
 }

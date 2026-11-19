@@ -66,24 +66,21 @@ function handleSettingsAction(a) {
       loadAuditLogsData(true);
       break;
 
-    case 'branch-new':
-      branchModal();
+    case 'backup': {
+      store.requirePermission('THAM_SO_MANAGE');
+      api
+        .exportBackup()
+        .then((snapshot) => {
+          download(
+            JSON.stringify(snapshot, null, 2),
+            `RetailFlow-SQLite-backup-${dayKey(new Date())}.json`,
+            'application/json',
+          );
+          notify('Đã xuất bản sao lưu CSDL SQLite (JSON) và ghi Nhật ký kiểm toán.');
+        })
+        .catch((err) => notify(err?.message || 'Không thể xuất sao lưu hệ thống.', true));
       break;
-
-    case 'backup':
-      store.admin();
-      download(
-        JSON.stringify(store.data, null, 2),
-        `RetailFlow-backup-${dayKey(new Date())}.json`,
-        'application/json',
-      );
-      notify('Đã tải bản sao lưu dữ liệu.');
-      break;
-
-    case 'restore':
-      store.admin();
-      $('#restore-file').click();
-      break;
+    }
 
     case 'report-preset': {
       const today = new Date();

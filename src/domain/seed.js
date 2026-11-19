@@ -77,7 +77,7 @@
         'Oreo', '133g', 'gói', 'Thực phẩm', 'Bánh kẹo', 'Bánh quy sandwich', 10, 20, 25, '893458800001'],
       // SP006
       ['Cà phê G7 hòa tan hộp 20 gói', 'Sữa & Đồ uống', 64000, 8, '☕', S.MASAN,
-        180, 240, 'assets/images/products/coffee_highlands.jpg',
+        180, 240, 'assets/images/products/coffee_g7_20s.jpg',
         'G7', '20 gói×16g', 'hộp', 'Đồ uống', 'Cà phê hòa tan', 'Cà phê 3in1', 10, 15, 20, '893474200002'],
       // SP007
       ['Gạo thơm ST25 túi 5kg', 'Mì & Thực phẩm tiện lợi', 195000, 85, '🌾', S.LOCTRO,
@@ -197,15 +197,15 @@
         'Ba Cây Tre', '300g', 'túi', 'Thực phẩm', 'Gạo & Ngũ cốc', 'Bún khô', 10, 20, 20, '893460700007'],
       // SP034
       ['Hủ tiếu Nam Vang Vifon 65g', 'Mì & Thực phẩm tiện lợi', 9500, 150, '🍲', S.ACECOOK,
-        150, 240, 'assets/images/products/glass_noodles.jpg',
+        150, 240, 'assets/images/products/hutieu_vifon_65g.jpg',
         'Vifon', '65g', 'gói', 'Thực phẩm', 'Mì ăn liền', 'Hủ tiếu ăn liền', 10, 14, 25, '893460700008'],
       // SP035
       ['Cháo sườn Vifon gói 70g', 'Mì & Thực phẩm tiện lợi', 7500, 140, '🥣', S.ACECOOK,
-        150, 240, 'assets/images/products/oats_quaker.jpg',
+        150, 240, 'assets/images/products/porridge_vifon_70g.jpg',
         'Vifon', '70g', 'gói', 'Thực phẩm', 'Mì ăn liền', 'Cháo ăn liền', 10, 14, 25, '893460700009'],
       // SP036
       ['Gạo thơm Jasmine túi 5kg', 'Mì & Thực phẩm tiện lợi', 125000, 90, '🌾', S.LOCTRO,
-        365, 540, 'assets/images/products/rice_st25.jpg',
+        365, 540, 'assets/images/products/rice_jasmine_5kg.jpg',
         'Jasmine', '5kg', 'túi', 'Thực phẩm', 'Gạo & Ngũ cốc', 'Gạo thơm', 5, 20, 15, '893500000036'],
       // SP037
       ['Yến mạch nguyên chất Quaker 500g', 'Mì & Thực phẩm tiện lợi', 72000, 110, '🥣', S.PEPSICO,
@@ -273,7 +273,7 @@
         'Kewpie', '130g', 'chai', 'Thực phẩm', 'Nước chấm & Gia vị', 'Sốt mayonnaise', 10, 15, 25, '893458500004'],
       // SP052
       ['Giấm gạo lên men Ajinomoto 400ml', 'Gia vị & Nhu yếu phẩm', 12000, 160, '🍶', S.NESTLE,
-        365, 720, 'assets/images/products/soy_sauce_maggi.jpg',
+        365, 720, 'assets/images/products/vinegar_ajinomoto_400ml.jpg',
         'Ajinomoto', '400ml', 'chai', 'Thực phẩm', 'Nước chấm & Gia vị', 'Giấm', 10, 20, 15, '893458500005'],
 
       // ─────────────────────────────────────────────────────────────────────
@@ -353,23 +353,23 @@
         'Bếp CH', '1 phần', 'hộp', 'Thực phẩm', 'Đồ ăn chế biến', 'Cơm hộp', 10, 5, 35, '893500000691'],
       // SP070
       ['Cơm nắm Onigiri cá hồi', 'Đồ ăn liền & Chế biến sẵn', 18000, 140, '🍙', S.BEPCH,
-        35, 60, 'assets/images/products/seaweed_roll.jpg',
+        35, 60, 'assets/images/products/onigiri_salmon.jpg',
         'Bếp CH', '1 cái×100g', 'chiếc', 'Thực phẩm', 'Đồ ăn chế biến', 'Cơm nắm', 10, 7, 30, '893500000070'],
       // SP071
       ['Bánh bao xá xíu trứng muối', 'Đồ ăn liền & Chế biến sẵn', 22000, 120, '🥟', S.BEPCH,
-        40, 90, 'assets/images/products/bread_pate.jpg',
+        40, 90, 'assets/images/products/steamed_bun_charsiu.jpg',
         'Bếp CH', '1 cái×120g', 'chiếc', 'Thực phẩm', 'Đồ ăn chế biến', 'Bánh bao', 10, 7, 30, '893500000711'],
       // SP072
       ['Xúc xích phô mai nướng', 'Đồ ăn liền & Chế biến sẵn', 16000, 160, '🌭', S.MASAN,
-        60, 120, 'assets/images/products/beef_jerky.jpg',
+        60, 120, 'assets/images/products/sausage_cheese_grill.jpg',
         'Masan', '1 que', 'chiếc', 'Thực phẩm', 'Đồ ăn chế biến', 'Xúc xích', 10, 10, 30, '893474200021'],
       // SP073
       ['Trứng lòng đào ngâm tương', 'Đồ ăn liền & Chế biến sẵn', 12000, 150, '🥚', S.BEPCH,
-        32, 60, 'assets/images/products/sandwich_egg.jpg',
+        32, 60, 'assets/images/products/egg_soy_marinated.png',
         'Bếp CH', '1 quả', 'quả', 'Thực phẩm', 'Đồ ăn chế biến', 'Trứng chế biến', 10, 7, 30, '893500000731'],
       // SP074
       ['Tokbokki phô mai ly', 'Đồ ăn liền & Chế biến sẵn', 32000, 130, '🍲', S.MASAN,
-        90, 180, 'assets/images/products/noodles_omachi.jpg',
+        90, 180, 'assets/images/products/tokbokki_cheese_cup.jpg',
         'Masan', '130g', 'ly', 'Thực phẩm', 'Đồ ăn chế biến', 'Tokbokki', 10, 14, 25, '893474200022'],
 
       // ─────────────────────────────────────────────────────────────────────
@@ -389,7 +389,7 @@
         'Comfort', '1.8L', 'chai', 'Hóa mỹ phẩm', 'Chăm sóc quần áo', 'Nước xả vải', 10, 30, 10, '893500100005'],
       // SP078 — tách thành túi tiết kiệm 1.4kg (phân biệt với SP008 chai 750g)
       ['Nước rửa chén Sunlight tiết kiệm túi 1.4kg', 'Chăm sóc cá nhân & Tiện ích', 56000, 60, '🧴', S.UNILEVER,
-        720, 1000, 'assets/images/products/floor_sunlight.jpg',
+        720, 1000, 'assets/images/products/dishwash_sunlight_1400g.jpg',
         'Sunlight', '1.4kg', 'túi', 'Hóa mỹ phẩm', 'Vệ sinh bếp', 'Nước rửa chén', 10, 30, 10, '893500100006'],
       // SP079
       ['Nước lau sàn Sunlight hoa hạ 1kg', 'Chăm sóc cá nhân & Tiện ích', 34000, 150, '🧼', S.UNILEVER,
@@ -449,7 +449,7 @@
         'Generic', '1 đôi', 'đôi', 'Hóa mỹ phẩm', 'Tiện ích gia đình', 'Găng tay', 10, 30, 10, '893500100018'],
       // SP093
       ['Dầu ăn Simply đậu nành chai 1L', 'Gia vị & Nhu yếu phẩm', 56000, 175, '🫒', S.MASAN,
-        500, 720, 'assets/images/products/oil_simply.jpg',
+        500, 720, 'assets/images/products/oil_simply_soybean_1l.png',
         'Simply', '1L', 'chai', 'Thực phẩm', 'Dầu ăn & Gia vị', 'Dầu đậu nành', 10, 20, 20, '893474200025'],
     ];
 

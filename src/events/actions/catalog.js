@@ -213,14 +213,6 @@ function handleCatalogAction(a) {
       customerApiModal(a.id);
       break;
 
-    case 'entity-new':
-      entityModal(a.type);
-      break;
-
-    case 'entity-edit':
-      entityModal(a.type, a.id);
-      break;
-
     case 'customer-history':
       customerHistory(a.id);
       break;

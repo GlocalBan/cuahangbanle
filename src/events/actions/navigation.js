@@ -47,9 +47,24 @@ function handleNavigationAction(a) {
       break;
     }
 
-    case 'mobile-menu':
-      $('.sidebar').classList.toggle('open');
+    case 'mobile-menu': {
+      const nextOpen = !$('.sidebar')?.classList.contains('open');
+      $('.sidebar')?.classList.toggle('open', nextOpen);
+      document.body.classList.toggle('menu-open', nextOpen);
       break;
+    }
+
+    case 'toggle-sidebar': {
+      setSidebarCollapsed(!sidebarCollapsed);
+      const toggleBtn = $('[data-action="toggle-sidebar"]');
+      if (toggleBtn) {
+        toggleBtn.innerHTML = icon(sidebarCollapsed ? 'collapse-right' : 'collapse-left');
+        toggleBtn.title = sidebarCollapsed ? 'Mở rộng menu bên trái' : 'Thu gọn menu bên trái';
+        toggleBtn.setAttribute('aria-label', toggleBtn.title);
+        hydrateIcons();
+      }
+      break;
+    }
 
     case 'close-modal':
       closeModal();
@@ -79,7 +94,7 @@ function handleNavigationAction(a) {
     case 'notifications': {
       const lowList = apiState.productsLoaded
         ? (apiState.products || []).filter((p) => p.status === 'DangKinhDoanh' && Number(p.stockQty) <= Number(p.minStock || 15))
-        : (store.data.products || []).filter((p) => p.active && p.stock <= p.minStock);
+        : (apiState.dashboardData?.queues?.lowStockProducts || []);
       showModal(
         'Thông báo cửa hàng',
         `<div class="modal-content stack">${
@@ -87,10 +102,10 @@ function handleNavigationAction(a) {
             .slice(0, 12)
             .map(
               (p) =>
-                `<div class="note yellow"><strong>${e(p.name)}</strong> · Tồn hiện tại: ${number(p.stockQty ?? p.stock)} / tối thiểu ${number(p.minStock || 15)}.</div>`,
+                `<div class="note yellow"><strong>${e(p.name)}</strong> · Tồn hiện tại: ${number(p.stockQty)} / tối thiểu ${number(p.minStock || 15)}.</div>`,
             )
             .join('') || empty('Kho hàng đủ hàng', 'Không có mặt hàng nào ở mức tồn kho tối thiểu.')
-        }${store.can('purchases') ? action('navigate-modal', 'Xem phiếu nhập', 'truck', '', 'data-page="purchases"') : ''}${store.can('returns') ? action('navigate-modal', 'Xem phiếu trả hàng', 'return', '', 'data-page="returns"') : ''}</div>`,
+        }<div class="row gap8 wrap">${store.can('purchases') ? action('navigate-modal', 'Xem phiếu nhập', 'truck', '', 'data-page="purchases"') : ''}${store.can('returns') ? action('navigate-modal', 'Xem phiếu trả hàng', 'return', '', 'data-page="returns"') : ''}</div></div>`,
       );
       break;
     }
