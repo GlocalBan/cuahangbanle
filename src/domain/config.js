@@ -1,8 +1,19 @@
 (function (scope) {
   'use strict';
   const KEY = 'retailflow.v1';
-  const ROLES = { ADMIN: 'Quản trị viên', CASHIER: 'Thu ngân', WAREHOUSE: 'Nhân viên kho' };
-  const METHODS = { cash: 'Tiền mặt', transfer: 'Chuyển khoản', card: 'Thẻ ngân hàng' };
+  const ROLES = {
+    ADMIN: 'Admin (Quản trị viên)',
+    MANAGER: 'Quản lý cửa hàng',
+    CASHIER: 'Thu ngân',
+    WAREHOUSE: 'Nhân viên kho',
+  };
+  const ROLE_SHORT = {
+    ADMIN: 'Admin',
+    MANAGER: 'QuanLy',
+    CASHIER: 'ThuNgan',
+    WAREHOUSE: 'NhanVienKho',
+  };
+  const METHODS = { cash: 'Tiền mặt', transfer: 'Chuyển khoản / VietQR', card: 'Thẻ ngân hàng' };
   const ACCESS = {
     ADMIN: [
       'dashboard',
@@ -18,9 +29,38 @@
       'reports',
       'branches',
       'settings',
+      'audit-logs',
     ],
-    CASHIER: ['pos', 'orders', 'customers', 'returns'],
+    MANAGER: [
+      'dashboard',
+      'products',
+      'orders',
+      'inventory',
+      'purchases',
+      'suppliers',
+      'customers',
+      'returns',
+      'reports',
+      'branches',
+    ],
+    CASHIER: ['pos', 'orders', 'products', 'customers', 'returns'],
     WAREHOUSE: ['products', 'inventory', 'purchases', 'suppliers'],
+  };
+  const PAGE_PERMISSIONS = {
+    dashboard: 'DASHBOARD_VIEW',
+    pos: 'POS_SELL',
+    orders: 'ORDER_VIEW',
+    returns: 'RETURN_CREATE',
+    products: 'PRODUCT_VIEW',
+    inventory: 'INVENTORY_VIEW',
+    purchases: 'PURCHASE_CREATE',
+    suppliers: 'SUPPLIER_VIEW',
+    customers: 'CUSTOMER_MANAGE',
+    reports: 'REPORT_VIEW',
+    branches: 'REPORT_VIEW',
+    staff: 'STAFF_MANAGE',
+    settings: 'THAM_SO_MANAGE',
+    'audit-logs': 'AUDIT_LOG_VIEW',
   };
   const clone = (value) => JSON.parse(JSON.stringify(value));
   const now = () => new Date().toISOString();
@@ -38,7 +78,7 @@
     return n;
   };
 
-  const api = { KEY, ROLES, METHODS, ACCESS, clone, now, id, assert, integer };
+  const api = { KEY, ROLES, ROLE_SHORT, METHODS, ACCESS, PAGE_PERMISSIONS, clone, now, id, assert, integer };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else Object.assign(scope.Retail || (scope.Retail = {}), api);
 })(globalThis);

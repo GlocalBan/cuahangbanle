@@ -867,3 +867,86 @@ td .icon-btn svg {
 .table-wrap {
   max-width: 100%;
 }
+
+/* M1 RBAC, Breadcrumb, Permission Matrix & 403 Route Guard */
+.breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #64748b;
+  white-space: nowrap;
+}
+.breadcrumb .sep {
+  color: #cbd5e1;
+}
+.breadcrumb strong {
+  color: #1e293b;
+  font-weight: 650;
+}
+.badge.blue {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+.badge.teal {
+  background: #f0fdfa;
+  color: #0f766e;
+  border-color: #99f6e4;
+}
+.quick-roles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.perm-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.perm-chip {
+  display: inline-block;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 10px;
+  padding: 3px 7px;
+  border-radius: 5px;
+  background: #f1f5f9;
+  color: #334155;
+  border: 1px solid #e2e8f0;
+}
+.forbidden-panel {
+  max-width: 640px;
+  margin: 48px auto;
+}
+.forbidden-wrap {
+  padding: 44px 32px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.forbidden-code {
+  font-size: 56px;
+  font-weight: 800;
+  line-height: 1;
+  color: #dc2626;
+  letter-spacing: -2px;
+}
+.forbidden-wrap h1 {
+  font-size: 20px;
+  color: #0f172a;
+}
+.forbidden-wrap .sub {
+  max-width: 480px;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.forbidden-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 8px;
+}
+

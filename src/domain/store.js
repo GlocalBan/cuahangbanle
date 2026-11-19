@@ -244,6 +244,7 @@
     }
 
     get user() {
+      if (this.authUser && this.authUser.active !== false) return this.authUser;
       return this.data.staff.find((s) => s.id === this.userId && s.active);
     }
 

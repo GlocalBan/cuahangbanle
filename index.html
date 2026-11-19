@@ -6,9 +6,14 @@
     <meta name="theme-color" content="#17243d" />
     <meta
       name="description"
-      content="RetailFlow — quản lý cửa hàng, bán hàng, tồn kho và hóa đơn."
+      content="RetailFlow — Hệ thống Quản lý Cửa hàng Bán lẻ kiến trúc 3 tầng hướng đối tượng, phân quyền RBAC 3 lớp và chuẩn nghiệp vụ bán lẻ BR-01 đến BR-08."
     />
-    <title>RetailFlow · Quản lý cửa hàng</title>
+    <meta property="og:title" content="RetailFlow · Hệ thống Quản lý Cửa hàng Bán lẻ" />
+    <meta
+      property="og:description"
+      content="Hệ thống Quản lý Cửa hàng Bán lẻ kiến trúc 3 tầng hướng đối tượng, phân quyền RBAC 3 lớp và chuẩn nghiệp vụ bán lẻ."
+    />
+    <title>RetailFlow · Hệ thống Quản lý Cửa hàng Bán lẻ</title>
     <link rel="stylesheet" href="styles.css" />
     <script defer src="src/domain/config.js"></script>
     <script defer src="src/domain/calculations.js"></script>
@@ -23,11 +28,13 @@
     <script defer src="src/domain/settings.js"></script>
     <script defer src="src/domain/store.js"></script>
     <script defer src="src/core/context.js"></script>
+    <script defer src="src/core/api.js"></script>
     <script defer src="src/shared/ui.js"></script>
     <script defer src="src/shared/exports.js"></script>
     <script defer src="src/shared/charts.js"></script>
     <script defer src="src/layout/shell.js"></script>
     <script defer src="src/features/auth.js"></script>
+    <script defer src="src/features/forbidden.js"></script>
     <script defer src="src/features/dashboard.js"></script>
     <script defer src="src/features/pos.js"></script>
     <script defer src="src/features/customer-search.js"></script>
@@ -35,6 +42,8 @@
     <script defer src="src/features/orders.js"></script>
     <script defer src="src/features/products.js"></script>
     <script defer src="src/features/catalog.js"></script>
+    <script defer src="src/features/staff.js"></script>
+    <script defer src="src/features/audit-logs.js"></script>
     <script defer src="src/features/inventory.js"></script>
     <script defer src="src/features/purchases.js"></script>
     <script defer src="src/features/restock-suggestions.js"></script>

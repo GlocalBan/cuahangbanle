@@ -1,0 +1,650 @@
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const { DatabaseSync } = require('node:sqlite');
+const { hashPassword } = require('../bll/security.js');
+
+const ROLE_DEFINITIONS = [
+  {
+    code: 'ADMIN',
+    display_name: 'Admin (Quản trị viên)',
+    short_name: 'Admin',
+    description: 'Quản trị tài khoản nhân viên, gán vai trò, cấu hình THAM_SO, xem Audit Log, sao lưu/phục hồi.',
+  },
+  {
+    code: 'MANAGER',
+    display_name: 'Quản lý cửa hàng (QuanLy)',
+    short_name: 'QuanLy',
+    description: 'Quản lý sản phẩm/danh mục/bảng giá, khuyến mãi, NCC, duyệt nhập/kiểm kê/trả hàng, xem báo cáo lợi nhuận.',
+  },
+  {
+    code: 'CASHIER',
+    display_name: 'Thu ngân (ThuNgan)',
+    short_name: 'ThuNgan',
+    description: 'Bán hàng POS, lập hóa đơn, áp dụng khuyến mãi, thanh toán, lập phiếu trả hàng, tra cứu SP & khách hàng.',
+  },
+  {
+    code: 'WAREHOUSE',
+    display_name: 'Nhân viên kho (NhanVienKho)',
+    short_name: 'NhanVienKho',
+    description: 'Lập phiếu nhập (Draft), kiểm kê kho, xem thẻ kho (LichSuTonKho), tra cứu sản phẩm & NCC.',
+  },
+];
+
+const PERMISSION_DEFINITIONS = [
+  { code: 'DASHBOARD_VIEW', module: 'Bán hàng (POS)', description: 'Xem tổng quan vận hành cửa hàng' },
+  { code: 'POS_SELL', module: 'Bán hàng (POS)', description: 'Bán hàng tại quầy POS, lập hóa đơn và thanh toán' },
+  { code: 'ORDER_VIEW', module: 'Bán hàng (POS)', description: 'Xem và tra cứu hóa đơn bán hàng' },
+  { code: 'RETURN_CREATE', module: 'Bán hàng (POS)', description: 'Lập phiếu yêu cầu trả hàng trong hạn' },
+  { code: 'RETURN_APPROVE', module: 'Bán hàng (POS)', description: 'Duyệt hoặc từ chối phiếu trả hàng và hoàn tiền' },
+  { code: 'PRODUCT_VIEW', module: 'Quản lý Hàng hóa', description: 'Tra cứu danh sách sản phẩm và giá bán' },
+  { code: 'PRODUCT_COST_VIEW', module: 'Quản lý Hàng hóa', description: 'Xem giá vốn sản phẩm' },
+  { code: 'PRODUCT_MANAGE', module: 'Quản lý Hàng hóa', description: 'Thêm, sửa, ngưng kinh doanh sản phẩm và cập nhật giá' },
+  { code: 'CATEGORY_MANAGE', module: 'Quản lý Hàng hóa', description: 'Quản lý danh mục hàng hóa và đơn vị tính' },
+  { code: 'INVENTORY_VIEW', module: 'Quản lý Kho', description: 'Xem tồn kho và thẻ kho (LichSuTonKho)' },
+  { code: 'INVENTORY_AUDIT', module: 'Quản lý Kho', description: 'Lập phiếu kiểm kê kho và ghi nhận chênh lệch' },
+  { code: 'INVENTORY_APPROVE', module: 'Quản lý Kho', description: 'Duyệt phiếu kiểm kê điều chỉnh tồn kho' },
+  { code: 'PURCHASE_CREATE', module: 'Quản lý Kho', description: 'Tạo phiếu nhập hàng (Draft)' },
+  { code: 'PURCHASE_APPROVE', module: 'Quản lý Kho', description: 'Duyệt hoặc hủy phiếu nhập hàng' },
+  { code: 'SUPPLIER_VIEW', module: 'Khuyến mãi & Đối tác', description: 'Tra cứu thông tin nhà cung cấp' },
+  { code: 'SUPPLIER_MANAGE', module: 'Khuyến mãi & Đối tác', description: 'Thêm, sửa, ngừng hợp tác nhà cung cấp' },
+  { code: 'CUSTOMER_MANAGE', module: 'Khuyến mãi & Đối tác', description: 'Tra cứu và quản lý thông tin khách hàng' },
+  { code: 'PROMOTION_MANAGE', module: 'Khuyến mãi & Đối tác', description: 'Quản lý chương trình khuyến mãi' },
+  { code: 'REPORT_VIEW', module: 'Báo cáo & Thống kê', description: 'Xem báo cáo doanh thu, tồn kho và bán chạy' },
+  { code: 'REPORT_PROFIT', module: 'Báo cáo & Thống kê', description: 'Xem báo cáo lợi nhuận và giá vốn' },
+  { code: 'STAFF_MANAGE', module: 'Quản trị Hệ thống', description: 'Quản trị tài khoản nhân viên, gán vai trò, khóa/mở khóa' },
+  { code: 'THAM_SO_MANAGE', module: 'Quản trị Hệ thống', description: 'Cấu hình bảng THAM_SO hệ thống' },
+  { code: 'AUDIT_LOG_VIEW', module: 'Quản trị Hệ thống', description: 'Xem nhật ký kiểm toán bất biến (Audit Log)' },
+  { code: 'BACKUP_MANAGE', module: 'Quản trị Hệ thống', description: 'Sao lưu và phục hồi dữ liệu hệ thống' },
+];
+
+const ROLE_PERMISSION_MATRIX = {
+  ADMIN: PERMISSION_DEFINITIONS.map((p) => p.code),
+  MANAGER: [
+    'DASHBOARD_VIEW',
+    'ORDER_VIEW',
+    'RETURN_CREATE',
+    'RETURN_APPROVE',
+    'PRODUCT_VIEW',
+    'PRODUCT_COST_VIEW',
+    'PRODUCT_MANAGE',
+    'CATEGORY_MANAGE',
+    'INVENTORY_VIEW',
+    'INVENTORY_AUDIT',
+    'INVENTORY_APPROVE',
+    'PURCHASE_CREATE',
+    'PURCHASE_APPROVE',
+    'SUPPLIER_VIEW',
+    'SUPPLIER_MANAGE',
+    'CUSTOMER_MANAGE',
+    'PROMOTION_MANAGE',
+    'REPORT_VIEW',
+    'REPORT_PROFIT',
+  ],
+  CASHIER: [
+    'POS_SELL',
+    'ORDER_VIEW',
+    'RETURN_CREATE',
+    'PRODUCT_VIEW',
+    'CUSTOMER_MANAGE',
+  ],
+  WAREHOUSE: [
+    'PRODUCT_VIEW',
+    'PRODUCT_COST_VIEW',
+    'INVENTORY_VIEW',
+    'INVENTORY_AUDIT',
+    'PURCHASE_CREATE',
+    'SUPPLIER_VIEW',
+  ],
+};
+
+const DEFAULT_THAM_SO = [
+  {
+    ma_tham_so: 'TenCuaHang',
+    ten_tham_so: 'Tên cửa hàng',
+    kieu_du_lieu: 'STRING',
+    gia_tri: 'RetailFlow — Chi nhánh chính',
+    nhom_tham_so: 'CUA_HANG',
+    mo_ta: 'Tên hiển thị trên hóa đơn và báo cáo kết xuất.',
+  },
+  {
+    ma_tham_so: 'DiaChiCuaHang',
+    ten_tham_so: 'Địa chỉ cửa hàng',
+    kieu_du_lieu: 'STRING',
+    gia_tri: '123 Nguyễn Thị Minh Khai, Quận 3, TP. HCM',
+    nhom_tham_so: 'CUA_HANG',
+    mo_ta: 'Địa chỉ kinh doanh in trên chứng từ bán lẻ.',
+  },
+  {
+    ma_tham_so: 'HotlineCuaHang',
+    ten_tham_so: 'Số điện thoại / Hotline',
+    kieu_du_lieu: 'STRING',
+    gia_tri: '028 3822 3456',
+    nhom_tham_so: 'CUA_HANG',
+    mo_ta: 'Số liên hệ hỗ trợ khách hàng và đổi trả.',
+  },
+  {
+    ma_tham_so: 'TyLeVAT',
+    ten_tham_so: 'Tỷ lệ thuế VAT (%)',
+    kieu_du_lieu: 'NUMBER',
+    gia_tri: '8',
+    nhom_tham_so: 'NGHIEP_VU',
+    mo_ta: 'Áp dụng cho bước 4 tính tiền hóa đơn theo BR-04 (0 - 100%).',
+  },
+  {
+    ma_tham_so: 'TonToiThieuMacDinh',
+    ten_tham_so: 'Ngưỡng tồn tối thiểu mặc định',
+    kieu_du_lieu: 'NUMBER',
+    gia_tri: '15',
+    nhom_tham_so: 'NGHIEP_VU',
+    mo_ta: 'Cảnh báo sắp hết hàng theo BR-01 khi TonHienTai <= TonToiThieu.',
+  },
+  {
+    ma_tham_so: 'SoNgayChoPhepTraHang',
+    ten_tham_so: 'Số ngày cho phép trả hàng',
+    kieu_du_lieu: 'NUMBER',
+    gia_tri: '7',
+    nhom_tham_so: 'NGHIEP_VU',
+    mo_ta: 'Giới hạn thời hạn lập phiếu trả hàng kể từ ngày thanh toán (BR-05).',
+  },
+  {
+    ma_tham_so: 'NganHangVietQR',
+    ten_tham_so: 'Ngân hàng nhận VietQR',
+    kieu_du_lieu: 'STRING',
+    gia_tri: 'Vietcombank',
+    nhom_tham_so: 'THANH_TOAN',
+    mo_ta: 'Ngân hàng hiển thị khi thanh toán chuyển khoản / VietQR.',
+  },
+  {
+    ma_tham_so: 'SoTaiKhoanVietQR',
+    ten_tham_so: 'Số tài khoản VietQR',
+    kieu_du_lieu: 'STRING',
+    gia_tri: '0123456789',
+    nhom_tham_so: 'THANH_TOAN',
+    mo_ta: 'Số tài khoản nhận chuyển khoản tại quầy.',
+  },
+  {
+    ma_tham_so: 'ChuTaiKhoanVietQR',
+    ten_tham_so: 'Chủ tài khoản VietQR',
+    kieu_du_lieu: 'STRING',
+    gia_tri: 'CUA HANG RETAILFLOW',
+    nhom_tham_so: 'THANH_TOAN',
+    mo_ta: 'Tên chủ tài khoản hiển thị cho khách đối chiếu.',
+  },
+  {
+    ma_tham_so: 'LoiNhanHoaDon',
+    ten_tham_so: 'Lời nhắn cuối hóa đơn',
+    kieu_du_lieu: 'STRING',
+    gia_tri: 'Cảm ơn quý khách đã mua sắm tại RetailFlow. Hẹn gặp lại!',
+    nhom_tham_so: 'CUA_HANG',
+    mo_ta: 'Thông điệp in ở chân hóa đơn bán hàng.',
+  },
+];
+
+const DEFAULT_CATEGORIES = [
+  { code: 'DM01', name: 'Sữa & Đồ uống', description: 'Sữa tươi, sữa chua, nước tinh khiết, nước ngọt, trà, cà phê' },
+  { code: 'DM02', name: 'Mì & Thực phẩm tiện lợi', description: 'Mì ăn liền, phở, miến, gạo, ngũ cốc, đồ ăn nhanh' },
+  { code: 'DM03', name: 'Gia vị & Nhu yếu phẩm', description: 'Dầu ăn, nước mắm, nước tương, hạt nêm, đường, muối' },
+  { code: 'DM04', name: 'Snack & Bánh kẹo', description: 'Bánh quy, snack khoai tây, kẹo, hạt dinh dưỡng' },
+  { code: 'DM05', name: 'Chăm sóc cá nhân & Tiện ích', description: 'Dầu gội, sữa tắm, bột giặt, nước rửa chén, khăn giấy' },
+];
+
+const DEFAULT_UNITS = [
+  { code: 'DVT01', name: 'hộp' },
+  { code: 'DVT02', name: 'chai' },
+  { code: 'DVT03', name: 'lon' },
+  { code: 'DVT04', name: 'gói' },
+  { code: 'DVT05', name: 'túi' },
+  { code: 'DVT06', name: 'hũ' },
+  { code: 'DVT07', name: 'lốc' },
+  { code: 'DVT08', name: 'cái' },
+  { code: 'DVT09', name: 'cuộn' },
+];
+
+const SCHEMA_SQL = `
+PRAGMA foreign_keys = ON;
+PRAGMA journal_mode = WAL;
+
+-- ============================================================================
+-- NHÓM 1: PHÂN QUYỀN RBAC & NGƯỜI DÙNG (Chuẩn 9 quy tắc OOD — chỉ lớp persistent)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS roles (
+  code TEXT PRIMARY KEY,
+  display_name TEXT NOT NULL,
+  short_name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS permissions (
+  code TEXT PRIMARY KEY,
+  module TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS role_permissions (
+  role_code TEXT NOT NULL,
+  permission_code TEXT NOT NULL,
+  PRIMARY KEY (role_code, permission_code),
+  FOREIGN KEY (role_code) REFERENCES roles(code) ON DELETE RESTRICT ON UPDATE CASCADE,
+  FOREIGN KEY (permission_code) REFERENCES permissions(code) ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  username TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  full_name TEXT NOT NULL,
+  email TEXT NOT NULL DEFAULT '',
+  phone TEXT NOT NULL DEFAULT '',
+  role_code TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'LOCKED')),
+  must_change_password INTEGER NOT NULL DEFAULT 0,
+  last_login_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (role_code) REFERENCES roles(code) ON DELETE RESTRICT ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS revoked_tokens (
+  jti TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  revoked_at TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- ============================================================================
+-- NHÓM 2: CẤU HÌNH THAM_SO (DẠNG DÒNG) & NHẬT KÝ KIỂM TOÁN BẤT BIẾN (AUDIT LOG)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS tham_so (
+  ma_tham_so TEXT PRIMARY KEY,
+  ten_tham_so TEXT NOT NULL,
+  kieu_du_lieu TEXT NOT NULL CHECK (kieu_du_lieu IN ('STRING', 'NUMBER', 'BOOLEAN')),
+  gia_tri TEXT NOT NULL,
+  nhom_tham_so TEXT NOT NULL DEFAULT 'CHUNG',
+  mo_ta TEXT NOT NULL DEFAULT '',
+  tinh_trang TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (tinh_trang IN ('ACTIVE', 'INACTIVE')),
+  updated_at TEXT NOT NULL,
+  updated_by TEXT NOT NULL DEFAULT 'Hệ thống'
+);
+
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id TEXT PRIMARY KEY,
+  actor_id TEXT,
+  actor_username TEXT NOT NULL,
+  actor_name TEXT NOT NULL,
+  actor_role TEXT NOT NULL,
+  action TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT NOT NULL DEFAULT '',
+  detail TEXT NOT NULL DEFAULT '',
+  before_json TEXT,
+  after_json TEXT,
+  created_at TEXT NOT NULL
+);
+
+-- ============================================================================
+-- NHÓM 3: DANH MỤC RỜI RẠC (DanhMuc, DonViTinh, ChiNhanh) & ĐỐI TÁC
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS categories (
+  code TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'HoatDong' CHECK (status IN ('HoatDong', 'NgungSuDung')),
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS units (
+  code TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  status TEXT NOT NULL DEFAULT 'HoatDong' CHECK (status IN ('HoatDong', 'NgungSuDung')),
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS branches (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  address TEXT NOT NULL,
+  area TEXT NOT NULL DEFAULT 'TP. HCM',
+  status TEXT NOT NULL DEFAULT 'HoatDong' CHECK (status IN ('HoatDong', 'DeXuat', 'NgungHoatDong')),
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS suppliers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  phone TEXT NOT NULL DEFAULT '',
+  category_group TEXT NOT NULL DEFAULT '',
+  areas TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'HoatDong' CHECK (status IN ('HoatDong', 'NgungHopTac')),
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS branch_suppliers (
+  branch_id TEXT NOT NULL,
+  supplier_id TEXT NOT NULL,
+  PRIMARY KEY (branch_id, supplier_id),
+  FOREIGN KEY (branch_id) REFERENCES branches(id) ON DELETE RESTRICT,
+  FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS customers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  phone TEXT NOT NULL UNIQUE,
+  email TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'HoatDong' CHECK (status IN ('HoatDong', 'TamNgung')),
+  created_at TEXT NOT NULL
+);
+
+-- ============================================================================
+-- NHÓM 4: HÀNG HÓA, LÔ HÀNG, KHUYẾN MÃI & CHỨNG TỪ GIAO DỊCH (M2 - M5 READY)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS products (
+  id TEXT PRIMARY KEY,
+  sku TEXT NOT NULL UNIQUE,
+  barcode TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  brand TEXT NOT NULL DEFAULT '',
+  pack_size TEXT NOT NULL DEFAULT '',
+  category_code TEXT NOT NULL,
+  unit_code TEXT NOT NULL,
+  supplier_id TEXT NOT NULL,
+  sale_price INTEGER NOT NULL CHECK (sale_price >= 0),
+  cost_price INTEGER NOT NULL CHECK (cost_price >= 0),
+  stock_qty INTEGER NOT NULL DEFAULT 0 CHECK (stock_qty >= 0),
+  min_stock INTEGER NOT NULL DEFAULT 15 CHECK (min_stock >= 0),
+  image_url TEXT NOT NULL DEFAULT 'assets/images/products/default.jpg',
+  status TEXT NOT NULL DEFAULT 'DangKinhDoanh' CHECK (status IN ('DangKinhDoanh', 'NgungKinhDoanh')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (category_code) REFERENCES categories(code) ON DELETE RESTRICT,
+  FOREIGN KEY (unit_code) REFERENCES units(code) ON DELETE RESTRICT,
+  FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS promotions (
+  id TEXT PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  discount_type TEXT NOT NULL CHECK (discount_type IN ('PERCENT', 'FIXED')),
+  discount_value INTEGER NOT NULL CHECK (discount_value >= 0),
+  min_order_amount INTEGER NOT NULL DEFAULT 0 CHECK (min_order_amount >= 0),
+  max_discount INTEGER NOT NULL DEFAULT 0 CHECK (max_discount >= 0),
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  usage_limit INTEGER NOT NULL DEFAULT 1000 CHECK (usage_limit >= 1),
+  used_count INTEGER NOT NULL DEFAULT 0 CHECK (used_count >= 0),
+  status TEXT NOT NULL DEFAULT 'DangDienRa' CHECK (status IN ('SapDienRa', 'DangDienRa', 'KetThuc', 'DaHuy')),
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS promotion_products (
+  promotion_id TEXT NOT NULL,
+  product_id TEXT NOT NULL,
+  PRIMARY KEY (promotion_id, product_id),
+  FOREIGN KEY (promotion_id) REFERENCES promotions(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS purchases (
+  id TEXT PRIMARY KEY,
+  supplier_id TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  approved_by TEXT,
+  total_amount INTEGER NOT NULL DEFAULT 0 CHECK (total_amount >= 0),
+  note TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'Draft' CHECK (status IN ('Draft', 'Confirmed', 'Cancelled')),
+  created_at TEXT NOT NULL,
+  confirmed_at TEXT,
+  FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE RESTRICT,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
+  FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS purchase_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  purchase_id TEXT NOT NULL,
+  product_id TEXT NOT NULL,
+  qty INTEGER NOT NULL CHECK (qty > 0),
+  unit_cost INTEGER NOT NULL CHECK (unit_cost >= 0),
+  FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS orders (
+  id TEXT PRIMARY KEY,
+  customer_id TEXT,
+  cashier_id TEXT NOT NULL,
+  promotion_id TEXT,
+  subtotal INTEGER NOT NULL CHECK (subtotal >= 0),
+  invoice_discount INTEGER NOT NULL DEFAULT 0 CHECK (invoice_discount >= 0),
+  tax_rate REAL NOT NULL DEFAULT 0 CHECK (tax_rate >= 0),
+  tax_amount INTEGER NOT NULL DEFAULT 0 CHECK (tax_amount >= 0),
+  total_amount INTEGER NOT NULL CHECK (total_amount >= 0),
+  payment_method TEXT NOT NULL CHECK (payment_method IN ('CASH', 'VIETQR', 'CARD')),
+  cash_received INTEGER NOT NULL DEFAULT 0 CHECK (cash_received >= 0),
+  cash_change INTEGER NOT NULL DEFAULT 0 CHECK (cash_change >= 0),
+  payment_ref TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'DaThanhToan' CHECK (status IN ('DaThanhToan', 'TraMotPhan', 'DaHoanTra', 'DaHuy')),
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE RESTRICT,
+  FOREIGN KEY (cashier_id) REFERENCES users(id) ON DELETE RESTRICT,
+  FOREIGN KEY (promotion_id) REFERENCES promotions(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS order_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id TEXT NOT NULL,
+  product_id TEXT NOT NULL,
+  product_name_snapshot TEXT NOT NULL,
+  unit_price_snapshot INTEGER NOT NULL CHECK (unit_price_snapshot >= 0),
+  unit_cost_snapshot INTEGER NOT NULL CHECK (unit_cost_snapshot >= 0),
+  qty INTEGER NOT NULL CHECK (qty > 0),
+  line_discount INTEGER NOT NULL DEFAULT 0 CHECK (line_discount >= 0),
+  returned_qty INTEGER NOT NULL DEFAULT 0 CHECK (returned_qty >= 0),
+  FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS returns (
+  id TEXT PRIMARY KEY,
+  order_id TEXT NOT NULL,
+  created_by TEXT NOT NULL,
+  approved_by TEXT,
+  reason TEXT NOT NULL,
+  restock INTEGER NOT NULL DEFAULT 1,
+  refund_amount INTEGER NOT NULL DEFAULT 0 CHECK (refund_amount >= 0),
+  status TEXT NOT NULL DEFAULT 'ChoDuyet' CHECK (status IN ('ChoDuyet', 'DaXacNhan', 'TuChoi')),
+  created_at TEXT NOT NULL,
+  resolved_at TEXT,
+  FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE RESTRICT,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
+  FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS return_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  return_id TEXT NOT NULL,
+  product_id TEXT NOT NULL,
+  qty INTEGER NOT NULL CHECK (qty > 0),
+  refund_line_amount INTEGER NOT NULL DEFAULT 0 CHECK (refund_line_amount >= 0),
+  FOREIGN KEY (return_id) REFERENCES returns(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS stock_movements (
+  id TEXT PRIMARY KEY,
+  product_id TEXT NOT NULL,
+  stock_before INTEGER NOT NULL,
+  delta INTEGER NOT NULL,
+  stock_after INTEGER NOT NULL CHECK (stock_after >= 0),
+  doc_type TEXT NOT NULL,
+  doc_id TEXT NOT NULL,
+  actor_id TEXT,
+  actor_name TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT,
+  FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS stock_audits (
+  id TEXT PRIMARY KEY,
+  created_by TEXT NOT NULL,
+  approved_by TEXT,
+  note TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'ChoDuyet' CHECK (status IN ('ChoDuyet', 'DaDuyet', 'DaHuy')),
+  created_at TEXT NOT NULL,
+  approved_at TEXT,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
+  FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS stock_audit_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  audit_id TEXT NOT NULL,
+  product_id TEXT NOT NULL,
+  system_qty INTEGER NOT NULL,
+  actual_qty INTEGER NOT NULL CHECK (actual_qty >= 0),
+  diff_qty INTEGER NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  FOREIGN KEY (audit_id) REFERENCES stock_audits(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs(actor_username);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role_code);
+CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
+`;
+
+function openDatabase(dbPath) {
+  const targetPath = dbPath || process.env.DB_PATH || path.resolve(__dirname, '../../../data/retailflow.db');
+  if (targetPath !== ':memory:') {
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+  }
+  const db = new DatabaseSync(targetPath);
+  db.exec(SCHEMA_SQL);
+  seedCoreData(db);
+  return db;
+}
+
+function withTransaction(db, fn) {
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const result = fn();
+    db.exec('COMMIT');
+    return result;
+  } catch (err) {
+    try {
+      db.exec('ROLLBACK');
+    } catch {
+      // ignore rollback error when no transaction active
+    }
+    throw err;
+  }
+}
+
+function seedCoreData(db) {
+  const nowIso = new Date().toISOString();
+  withTransaction(db, () => {
+    const upsertRole = db.prepare(`
+      INSERT INTO roles (code, display_name, short_name, description)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(code) DO UPDATE SET
+        display_name = excluded.display_name,
+        short_name = excluded.short_name,
+        description = excluded.description
+    `);
+    for (const r of ROLE_DEFINITIONS) {
+      upsertRole.run(r.code, r.display_name, r.short_name, r.description);
+    }
+
+    const upsertPerm = db.prepare(`
+      INSERT INTO permissions (code, module, description)
+      VALUES (?, ?, ?)
+      ON CONFLICT(code) DO UPDATE SET
+        module = excluded.module,
+        description = excluded.description
+    `);
+    for (const p of PERMISSION_DEFINITIONS) {
+      upsertPerm.run(p.code, p.module, p.description);
+    }
+
+    const insertRolePerm = db.prepare(`
+      INSERT OR IGNORE INTO role_permissions (role_code, permission_code)
+      VALUES (?, ?)
+    `);
+    for (const [roleCode, perms] of Object.entries(ROLE_PERMISSION_MATRIX)) {
+      for (const permCode of perms) {
+        insertRolePerm.run(roleCode, permCode);
+      }
+    }
+
+    const userCount = db.prepare('SELECT COUNT(*) AS cnt FROM users').get().cnt;
+    if (userCount === 0) {
+      const insertUser = db.prepare(`
+        INSERT INTO users (id, username, password_hash, full_name, email, phone, role_code, status, must_change_password, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE', 0, ?, ?)
+      `);
+      const seedUsers = [
+        ['NV001', 'admin', 'Lê Hoàng Nam', 'admin@retailflow.vn', '0901000001', 'ADMIN'],
+        ['NV002', 'quanly', 'Phạm Minh Quân', 'quanly@retailflow.vn', '0901000002', 'MANAGER'],
+        ['NV003', 'thungan', 'Nguyễn Hà Linh', 'thungan@retailflow.vn', '0901000003', 'CASHIER'],
+        ['NV004', 'kho', 'Trần Quốc Bảo', 'kho@retailflow.vn', '0901000004', 'WAREHOUSE'],
+      ];
+      for (const [uid, username, fullName, email, phone, roleCode] of seedUsers) {
+        insertUser.run(uid, username, hashPassword('123456'), fullName, email, phone, roleCode, nowIso, nowIso);
+      }
+    }
+
+    const insertThamSo = db.prepare(`
+      INSERT OR IGNORE INTO tham_so (ma_tham_so, ten_tham_so, kieu_du_lieu, gia_tri, nhom_tham_so, mo_ta, tinh_trang, updated_at, updated_by)
+      VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', ?, 'Hệ thống')
+    `);
+    for (const ts of DEFAULT_THAM_SO) {
+      insertThamSo.run(ts.ma_tham_so, ts.ten_tham_so, ts.kieu_du_lieu, ts.gia_tri, ts.nhom_tham_so, ts.mo_ta, nowIso);
+    }
+
+    const insertCategory = db.prepare(`
+      INSERT OR IGNORE INTO categories (code, name, description, status, created_at)
+      VALUES (?, ?, ?, 'HoatDong', ?)
+    `);
+    for (const c of DEFAULT_CATEGORIES) {
+      insertCategory.run(c.code, c.name, c.description, nowIso);
+    }
+
+    const insertUnit = db.prepare(`
+      INSERT OR IGNORE INTO units (code, name, status, created_at)
+      VALUES (?, ?, 'HoatDong', ?)
+    `);
+    for (const u of DEFAULT_UNITS) {
+      insertUnit.run(u.code, u.name, nowIso);
+    }
+
+    const insertBranch = db.prepare(`
+      INSERT OR IGNORE INTO branches (id, name, address, area, status, created_at)
+      VALUES ('CN001', 'Chi nhánh chính', '123 Nguyễn Thị Minh Khai, Quận 3, TP. HCM', 'TP. HCM', 'HoatDong', ?)
+    `);
+    insertBranch.run(nowIso);
+
+    const logCount = db.prepare('SELECT COUNT(*) AS cnt FROM audit_logs').get().cnt;
+    if (logCount === 0) {
+      db.prepare(`
+        INSERT INTO audit_logs (id, actor_id, actor_username, actor_name, actor_role, action, entity_type, entity_id, detail, created_at)
+        VALUES ('AUD-SEED-001', NULL, 'system', 'Hệ thống', 'SYSTEM', 'SYSTEM_INIT', 'Database', 'retailflow.db', 'Khởi tạo CSDL chuẩn 9 quy tắc, 4 vai trò RBAC, 4 tài khoản mẫu và bảng THAM_SO.', ?)
+      `).run(nowIso);
+    }
+  });
+}
+
+module.exports = {
+  openDatabase,
+  withTransaction,
+  ROLE_DEFINITIONS,
+  PERMISSION_DEFINITIONS,
+  ROLE_PERMISSION_MATRIX,
+  DEFAULT_THAM_SO,
+};

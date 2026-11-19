@@ -1,12 +1,33 @@
-/* Application entry. Feature scripts and domain modules are loaded in index.html. */
-try {
-  const uid = sessionStorage.getItem('retailflow-user');
-  if (store.data.staff.some((s) => s.id === uid && s.active)) {
-    store.userId = uid;
-    page = ACCESS[store.user.role][0];
+/* Application entry. Restores backend JWT session and initializes Route Guard. */
+(async function bootstrap() {
+  try {
+    const token = getAuthToken();
+    if (!token) {
+      loginScreen();
+      return;
+    }
+    const res = await api.me();
+    store.setAuthenticatedUser(res.user);
+    syncStoreSettingsFromServer(res.storeConfig);
+
+    const hashPage = getRouteFromHash();
+    const defaultPage = (ACCESS[res.user.role] || ['pos'])[0];
+    if (hashPage) {
+      if (store.can(hashPage)) {
+        page = hashPage;
+      } else {
+        forbiddenAttempt = hashPage;
+        page = 'forbidden';
+      }
+    } else {
+      page = defaultPage;
+      window.location.hash = `#/${defaultPage}`;
+    }
     shell();
-  } else loginScreen();
-} catch (error) {
-  loginScreen();
-  notify(error.message, true);
-}
+  } catch (error) {
+    setAuthToken('');
+    store.setAuthenticatedUser(null);
+    resetApiCaches();
+    loginScreen(error?.status === 401 ? '' : error.message);
+  }
+})();

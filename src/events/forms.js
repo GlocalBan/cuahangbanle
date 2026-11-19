@@ -1,17 +1,95 @@
-document.addEventListener('submit', (event) => {
+document.addEventListener('submit', async (event) => {
   const form = event.target;
   if (!form.id) return;
   event.preventDefault();
   const v = dataForm(form);
+  const submitBtn = form.querySelector('button[type="submit"]');
   try {
     switch (form.id) {
-      case 'login-form':
-        store.login(v.username.trim(), v.password);
-        sessionStorage.setItem('retailflow-user', store.user.id);
-        page = ACCESS[store.user.role][0];
-        shell();
-        notify(`Chào ${store.user.name}, chúc bạn một ngày làm việc tốt!`);
+      case 'login-form': {
+        if (submitBtn) submitBtn.disabled = true;
+        try {
+          const res = await api.login(v.username.trim(), v.password);
+          setAuthToken(res.token);
+          resetApiCaches();
+          store.setAuthenticatedUser(res.user);
+          try {
+            const cfg = await api.getStoreConfig();
+            syncStoreSettingsFromServer(cfg.storeConfig);
+          } catch {}
+          const defaultPage = (ACCESS[res.user.role] || ['pos'])[0];
+          forbiddenAttempt = '';
+          page = defaultPage;
+          window.location.hash = `#/${defaultPage}`;
+          shell();
+          notify(`Chào ${res.user.fullName}, đăng nhập thành công (${res.user.roleShortName}).`);
+        } finally {
+          if (submitBtn) submitBtn.disabled = false;
+        }
         break;
+      }
+      case 'change-password-form': {
+        if (v.newPassword !== v.confirmPassword) {
+          throw new Error('Xác nhận mật khẩu mới không khớp.');
+        }
+        if (submitBtn) submitBtn.disabled = true;
+        try {
+          await api.changePassword({
+            currentPassword: v.currentPassword,
+            newPassword: v.newPassword,
+            confirmPassword: v.confirmPassword,
+          });
+          closeModal();
+          notify('Đổi mật khẩu thành công. Nhật ký kiểm toán đã ghi nhận.');
+        } finally {
+          if (submitBtn) submitBtn.disabled = false;
+        }
+        break;
+      }
+      case 'staff-api-form': {
+        if (submitBtn) submitBtn.disabled = true;
+        try {
+          const payload = {
+            fullName: (v.fullName || '').trim(),
+            username: (v.username || '').trim(),
+            phone: (v.phone || '').trim(),
+            email: (v.email || '').trim(),
+            role: v.role,
+            status: v.status,
+          };
+          if (v.password) payload.password = v.password;
+          if (modalContext.id) {
+            await api.updateStaff(modalContext.id, payload);
+            notify('Đã cập nhật thông tin nhân viên và ghi Audit Log.');
+          } else {
+            await api.createStaff(payload);
+            notify('Đã tạo tài khoản nhân viên mới (mật khẩu đã băm bảo mật).');
+          }
+          closeModal();
+          await loadStaffData(true);
+        } finally {
+          if (submitBtn) submitBtn.disabled = false;
+        }
+        break;
+      }
+      case 'tham-so-form': {
+        if (submitBtn) submitBtn.disabled = true;
+        try {
+          const updates = Object.entries(v).map(([maThamSo, giaTri]) => ({
+            maThamSo,
+            giaTri,
+          }));
+          const res = await api.updateThamSo(updates);
+          apiState.thamSo = res.items || [];
+          apiState.thamSoLoaded = true;
+          syncStoreSettingsFromServer(res.storeConfig);
+          render();
+          notify('Đã lưu bảng THAM_SO vào CSDL và ghi Nhật ký kiểm toán.');
+        } finally {
+          if (submitBtn) submitBtn.disabled = false;
+        }
+        break;
+      }
       case 'checkout-form': {
         const d = clone(store.data.draft);
         d.demographic = v.demographic;

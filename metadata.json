@@ -1,0 +1,5 @@
+{
+  "name": "RetailFlow",
+  "description": "Hệ thống Quản lý Cửa hàng Bán lẻ — kiến trúc 3 tầng hướng đối tượng, phân quyền RBAC 3 lớp và chuẩn nghiệp vụ bán lẻ BR-01 đến BR-08.",
+  "requestFramePermissions": []
+}

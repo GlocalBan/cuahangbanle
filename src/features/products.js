@@ -14,18 +14,21 @@ function productsView() {
   const nearCount = s.products.filter((x) => getExpiryInfo && getExpiryInfo(x.expiryDate).status === 'near_expiry').length;
 
   const isAdmin = store.user && store.user.role === 'ADMIN';
+  const canManage = store.hasPermission('PRODUCT_MANAGE');
+  const canViewCost = store.hasPermission('PRODUCT_COST_VIEW');
+  const canPromo = store.hasPermission('PROMOTION_MANAGE');
 
   return (
     heading(
-      'DANH MỤC / SẢN PHẨM',
+      'QUẢN LÝ HÀNG HÓA / SẢN PHẨM',
       'Quản lý sản phẩm & Lô hàng FEFO',
       'Chuẩn hóa sản phẩm CVS 93 SKU, phân cấp 3 tầng, quản lý Lô hàng (Batches), GTIN EAN-13 và đối chứng CSV.',
       (isAdmin
         ? action('sync-seed-catalog', 'Đồng bộ danh mục mẫu', 'layers', 'ghost') +
           action('import-reference-csv', 'Nạp CSV Đối chứng (1-1)', 'upload', 'ghost')
         : '') +
-        action('export-products', 'Xuất CSV', 'download') +
-        (isAdmin
+        (canManage ? action('export-products', 'Xuất CSV', 'download') : '') +
+        (canManage
           ? action('entity-new', 'Thêm sản phẩm', 'plus', 'primary', 'data-type="products"')
           : ''),
     ) +
@@ -54,8 +57,8 @@ function productsView() {
       <div class="panel-head">
         <h2>Danh sách sản phẩm (${s.products.length} mặt hàng)</h2>
         <div class="row gap8 align-center">
-          ${isAdmin ? `<button type="button" class="btn small ghost" data-action="sweep-expired-batches" title="Quét các lô quá hạn sang kho cách ly">${icon('shield')} Quét lô hết hạn FEFO</button>` : ''}
-          ${nearCount > 0 ? `<button type="button" class="btn warning small" data-action="apply-all-neardate-promo">${icon('clock')} Đưa tất cả SP Cận Date vào CTKM (-35%)</button>` : ''}
+          ${canManage ? `<button type="button" class="btn small ghost" data-action="sweep-expired-batches" title="Quét các lô quá hạn sang kho cách ly">${icon('shield')} Quét lô hết hạn FEFO</button>` : ''}
+          ${canPromo && nearCount > 0 ? `<button type="button" class="btn warning small" data-action="apply-all-neardate-promo">${icon('clock')} Đưa tất cả SP Cận Date vào CTKM (-35%)</button>` : ''}
         </div>
       </div>
       <div class="table-tools product-filters">
@@ -84,7 +87,7 @@ function productsView() {
         p.items.map((item) => {
           const exp = getExpiryInfo ? getExpiryInfo(item.expiryDate) : { status: 'valid' };
           const promoBtn =
-            exp.status === 'near_expiry'
+            canPromo && exp.status === 'near_expiry'
               ? `<button type="button" class="btn ${item.inNearExpiryPromo ? 'teal' : 'warning'} small" data-action="toggle-neardate-promo" data-id="${e(item.id)}" title="Bật/tắt CTKM Xả Cận Date -35%">${item.inNearExpiryPromo ? 'CTKM (-35%)' : '+ CTKM'}</button>`
               : '';
           const promoTag = item.inNearExpiryPromo ? '<span class="badge teal">CTKM -35%</span>' : '';
@@ -127,7 +130,7 @@ function productsView() {
             </td>
             <td class="money name">
               <div>${money(item.price)}</div>
-              <div class="sub">VAT: ${item.vatRate ?? 10}% · Vốn: ${money(item.costPrice || item.cost)}</div>
+              <div class="sub">VAT: ${item.vatRate ?? 10}%${canViewCost ? ` · Vốn: ${money(item.costPrice || item.cost)}` : ''}</div>
             </td>
             <td class="${item.stock <= item.minStock ? 'negative' : ''}">
               <div><strong>${item.stock}</strong> ${item.stock <= item.minStock ? '<span class="badge yellow">Thấp</span>' : ''}</div>
@@ -146,7 +149,7 @@ function productsView() {
             <td>
               <div class="row gap8 align-center justify-end">
                 ${promoBtn}
-                ${isAdmin ? ibEntity('products', item.id) : ''}
+                ${canManage ? ibEntity('products', item.id) : ''}
               </div>
             </td>
           </tr>`;

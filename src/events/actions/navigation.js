@@ -5,11 +5,42 @@ function handleNavigationAction(a) {
       $('#global-results')?.remove();
       break;
 
-    case 'logout':
-      store.userId = null;
-      sessionStorage.removeItem('retailflow-user');
-      loginScreen();
+    case 'fill-login': {
+      const form = $('#login-form');
+      if (form) {
+        const userIn = form.querySelector('input[name="username"]');
+        const passIn = form.querySelector('input[name="password"]');
+        if (userIn) userIn.value = a.username || 'admin';
+        if (passIn) passIn.value = '123456';
+        userIn?.focus();
+      }
       break;
+    }
+
+    case 'open-change-password':
+      changePasswordModal();
+      break;
+
+    case 'logout': {
+      const hasUnsavedPos = store.can('pos') && (store.data.draft?.items?.length || 0) > 0;
+      const bodyMsg = hasUnsavedPos
+        ? `Cảnh báo: Đang có <strong>${store.data.draft.items.length} mặt hàng</strong> trong giỏ POS chưa thanh toán. Bạn có chắc chắn muốn đăng xuất khỏi tài khoản <strong>${e(store.user?.username || '')}</strong>?`
+        : `Bạn có chắc chắn muốn đăng xuất khỏi tài khoản <strong>${e(store.user?.fullName || store.user?.name || '')}</strong>? Phiên làm việc hiện tại sẽ bị thu hồi.`;
+      confirmation('Xác nhận đăng xuất?', bodyMsg, async () => {
+        try {
+          await api.logout();
+        } catch {
+          // Always clear local session even if token already expired
+        }
+        setAuthToken('');
+        store.setAuthenticatedUser(null);
+        resetApiCaches();
+        window.location.hash = '';
+        loginScreen();
+        notify('Bạn đã đăng xuất an toàn.');
+      });
+      break;
+    }
 
     case 'mobile-menu':
       $('.sidebar').classList.toggle('open');
@@ -22,7 +53,7 @@ function handleNavigationAction(a) {
     case 'confirm': {
       const fn = modalContext.onConfirm;
       closeModal();
-      fn();
+      if (typeof fn === 'function') fn();
       break;
     }
 

@@ -1,6 +1,6 @@
 /* Shared browser state and HTML helpers. Loaded before feature scripts. */
 'use strict';
-const { Store, totals, METHODS, ROLES, ACCESS, clone, getExpiryInfo } = Retail;
+const { Store, totals, METHODS, ROLES, ROLE_SHORT, ACCESS, PAGE_PERMISSIONS, clone, getExpiryInfo } = Retail;
 const store = new Store(localStorage);
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -14,8 +14,11 @@ const money = (value) => new Intl.NumberFormat('vi-VN').format(value || 0) + ' �
 const number = (value) => new Intl.NumberFormat('vi-VN').format(value || 0);
 const date = (value) =>
   new Intl.DateTimeFormat('vi-VN', {
-    dateStyle: 'short',
-    timeStyle: 'short',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
     timeZone: 'Asia/Ho_Chi_Minh',
   }).format(new Date(value));
 const dayKey = (value) =>
@@ -77,6 +80,9 @@ const icons = {
   trash: 'M3 6h18M6 6l1 15h10l1-15M9 6V3h6v3m-5 4v7m4-7v7',
   scan: 'M3 8V3h5m8 0h5v5M3 16v5h5m8 0h5v-5M7 7v10m4-10v10m3-10v10m3-10v10',
   info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18ZM12 11v6m0-10h.01',
+  key: 'M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4',
+  lock: 'M7 11V7a5 5 0 0 1 10 0v4M5 11h14v10H5z',
+  unlock: 'M7 11V7a5 5 0 0 1 9.9-1M5 11h14v10H5z',
 };
 const icon = (name) =>
   `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${icons[name] || icons.box}"/></svg>`;
@@ -135,21 +141,23 @@ const formError = () => '<div class="error-text full" id="form-error" role="aler
 const foot = (submit = 'Lưu thông tin', cls = 'primary') =>
   `<div class="modal-footer">${action('close-modal', 'Đóng')}<button class="btn ${cls}" type="submit">${icon('check')}${submit}</button></div>`;
 const pages = [
-  ['dashboard', 'Tổng quan', 'grid', 'TỔNG QUAN'],
-  ['pos', 'Bán hàng POS', 'cart'],
-  ['products', 'Sản phẩm', 'box'],
-  ['orders', 'Đơn hàng', 'receipt'],
-  ['inventory', 'Kho & kiểm kê', 'warehouse', 'QUẢN LÝ NGHIỆP VỤ'],
-  ['purchases', 'Nhập hàng', 'truck'],
-  ['suppliers', 'Nhà cung cấp', 'branch'],
-  ['customers', 'Khách hàng', 'users'],
-  ['staff', 'Nhân viên & tài khoản', 'user'],
-  ['returns', 'Đổi trả & hoàn tiền', 'return'],
-  ['reports', 'Báo cáo doanh thu', 'chart', 'QUẢN TRỊ'],
-  ['branches', 'Chi nhánh', 'branch'],
-  ['settings', 'Cấu hình hệ thống', 'settings'],
+  ['dashboard', 'Tổng quan', 'grid', 'BÁN HÀNG (POS)'],
+  ['pos', 'Bán hàng POS', 'cart', 'BÁN HÀNG (POS)'],
+  ['orders', 'Hóa đơn', 'receipt', 'BÁN HÀNG (POS)'],
+  ['returns', 'Đổi trả & Hoàn tiền', 'return', 'BÁN HÀNG (POS)'],
+  ['products', 'Sản phẩm & Bảng giá', 'box', 'QUẢN LÝ HÀNG HÓA'],
+  ['inventory', 'Kho & Kiểm kê', 'warehouse', 'QUẢN LÝ KHO'],
+  ['purchases', 'Nhập hàng', 'truck', 'QUẢN LÝ KHO'],
+  ['suppliers', 'Nhà cung cấp', 'branch', 'KHUYẾN MÃI & ĐỐI TÁC'],
+  ['customers', 'Khách hàng', 'users', 'KHUYẾN MÃI & ĐỐI TÁC'],
+  ['reports', 'Báo cáo & Thống kê', 'chart', 'BÁO CÁO & THỐNG KÊ'],
+  ['branches', 'Chi nhánh', 'branch', 'BÁO CÁO & THỐNG KÊ'],
+  ['staff', 'Nhân viên & Phân quyền', 'user', 'QUẢN TRỊ HỆ THỐNG'],
+  ['settings', 'Tham số & Cấu hình', 'settings', 'QUẢN TRỊ HỆ THỐNG'],
+  ['audit-logs', 'Nhật ký kiểm toán', 'shield', 'QUẢN TRỊ HỆ THỐNG'],
 ];
 let page = 'dashboard',
+  forbiddenAttempt = '',
   filters = {},
   pagination = {},
   modalContext = {},

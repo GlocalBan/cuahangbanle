@@ -296,7 +296,7 @@
   width: 18px;
   height: 18px;
 }
-.topbar > .icon-btn[data-action='mobile-menu'] {
+.topbar .icon-btn[data-action='mobile-menu'] {
   display: none;
 }
 .global-search [hidden] {

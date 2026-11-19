@@ -3,7 +3,12 @@ document.addEventListener('input', (event) => {
   if (el.dataset.filter && el.tagName === 'INPUT' && el.type !== 'date') {
     filters[el.dataset.filter] = el.value;
     pagination = {};
-    render();
+    if (el.dataset.filter === 'auditSearch') {
+      clearTimeout(window.__auditSearchTimer);
+      window.__auditSearchTimer = setTimeout(() => loadAuditLogsData(true), 220);
+    } else {
+      render();
+    }
   }
   if (el.id === 'global-search') globalSearch(el.value);
   if (el.id === 'cash-input') updateCash();
@@ -32,7 +37,11 @@ document.addEventListener('change', async (event) => {
     if (el.dataset.filter && (el.tagName === 'SELECT' || el.type === 'date')) {
       filters[el.dataset.filter] = el.value;
       pagination = {};
-      render();
+      if (['auditAction', 'auditFrom', 'auditTo'].includes(el.dataset.filter)) {
+        loadAuditLogsData(true);
+      } else {
+        render();
+      }
     }
     if (el.id === 'promo-select' || el.dataset.input === 'pos-select-promotion') {
       changeDraft((d) => {
