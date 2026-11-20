@@ -91,6 +91,26 @@ const apiState = {
   salesReportError: '',
   inventoryReport: null,
   inventoryReportLoaded: false,
+  // Phase 2 (Chặng 2): Batches, Near-Expiry & Write-Offs
+  nearExpiry: {
+    items: [],
+    summary: {
+      warnDays: 14,
+      totalBatches: 0,
+      expiredCount: 0,
+      expiredQty: 0,
+      expiredCostValue: 0,
+      nearExpiryCount: 0,
+      nearExpiryQty: 0,
+      nearExpiryCostValue: 0,
+      totalQty: 0,
+      atRiskCostValue: 0,
+    },
+  },
+  nearExpiryLoaded: false,
+  writeoffs: [],
+  writeoffsSummary: { total: 0, pendingCount: 0, approvedCount: 0, cancelledCount: 0, totalApprovedLoss: 0 },
+  writeoffsLoaded: false,
   loading: {},
 };
 
@@ -195,6 +215,25 @@ function resetApiCaches() {
   apiState.salesReportError = '';
   apiState.inventoryReport = null;
   apiState.inventoryReportLoaded = false;
+  apiState.nearExpiry = {
+    items: [],
+    summary: {
+      warnDays: 14,
+      totalBatches: 0,
+      expiredCount: 0,
+      expiredQty: 0,
+      expiredCostValue: 0,
+      nearExpiryCount: 0,
+      nearExpiryQty: 0,
+      nearExpiryCostValue: 0,
+      totalQty: 0,
+      atRiskCostValue: 0,
+    },
+  };
+  apiState.nearExpiryLoaded = false;
+  apiState.writeoffs = [];
+  apiState.writeoffsSummary = { total: 0, pendingCount: 0, approvedCount: 0, cancelledCount: 0, totalApprovedLoss: 0 };
+  apiState.writeoffsLoaded = false;
   apiState.loading = {};
 }
 
@@ -360,6 +399,16 @@ const api = {
   getDashboardReport: (params = {}) => apiRequest('GET', `/api/reports/dashboard${buildQuery(params)}`),
   getSalesReport: (params = {}) => apiRequest('GET', `/api/reports/sales${buildQuery(params)}`),
   getInventoryReport: (params = {}) => apiRequest('GET', `/api/reports/inventory${buildQuery(params)}`),
+
+  // Phase 2 (Chặng 2): Batches, Near-Expiry & Write-Offs
+  listBatches: (params = {}) => apiRequest('GET', `/api/batches${buildQuery(params)}`),
+  listNearExpiryBatches: (params = {}) => apiRequest('GET', `/api/batches/near-expiry${buildQuery(params)}`),
+  listWriteOffs: (params = {}) => apiRequest('GET', `/api/writeoffs${buildQuery(params)}`),
+  getWriteOff: (id) => apiRequest('GET', `/api/writeoffs/${encodeURIComponent(id)}`),
+  createWriteOff: (data) => apiRequest('POST', '/api/writeoffs', data),
+  approveWriteOff: (id) => apiRequest('POST', `/api/writeoffs/${encodeURIComponent(id)}/approve`, {}),
+  cancelWriteOff: (id, reason = '') =>
+    apiRequest('POST', `/api/writeoffs/${encodeURIComponent(id)}/cancel`, { reason }),
 };
 
 async function loadStaffData(force = false) {
@@ -832,5 +881,33 @@ async function loadReportsData(force = false) {
   } finally {
     apiState.loading.reports = false;
     if (page === 'reports' && $('#content')) render();
+  }
+}
+
+async function loadNearExpiryData(force = false) {
+  if (!store.hasPermission('INVENTORY_VIEW')) return;
+  if (apiState.loading.nearExpiry && !force) return;
+  apiState.loading.nearExpiry = true;
+  try {
+    const [nearRes, woRes] = await Promise.all([
+      api.listNearExpiryBatches({
+        days: filters.nearExpiryDays || '',
+        categoryCode: filters.nearExpiryCategory || '',
+        includeExpired: filters.nearExpiryIncludeExpired === 'no' ? 'false' : 'true',
+      }),
+      api.listWriteOffs({
+        status: filters.writeoffStatus || '',
+      }),
+    ]);
+    apiState.nearExpiry = nearRes || apiState.nearExpiry;
+    apiState.nearExpiryLoaded = true;
+    apiState.writeoffs = woRes.items || [];
+    apiState.writeoffsSummary = woRes.summary || apiState.writeoffsSummary;
+    apiState.writeoffsLoaded = true;
+  } catch (err) {
+    notify(err.message, true);
+  } finally {
+    apiState.loading.nearExpiry = false;
+    if (page === 'inventory' && $('#content')) render();
   }
 }

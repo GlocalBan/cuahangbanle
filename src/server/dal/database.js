@@ -56,6 +56,12 @@ const PERMISSION_DEFINITIONS = [
   { code: 'THAM_SO_MANAGE', module: 'Quản trị Hệ thống', description: 'Cấu hình bảng THAM_SO hệ thống' },
   { code: 'AUDIT_LOG_VIEW', module: 'Quản trị Hệ thống', description: 'Xem nhật ký kiểm toán bất biến (Audit Log)' },
   { code: 'BACKUP_MANAGE', module: 'Quản trị Hệ thống', description: 'Sao lưu và phục hồi dữ liệu hệ thống' },
+  { code: 'BATCH_MANAGE', module: 'Quản lý Kho', description: 'Quản lý lô hàng, hàng cận date và duyệt hủy hàng hết hạn/hư hỏng' },
+  { code: 'VOUCHER_MANAGE', module: 'Khuyến mãi & Đối tác', description: 'Tạo, phát hành hàng loạt và quản lý mã Voucher giảm giá' },
+  { code: 'SHIFT_MANAGE', module: 'Bán hàng (POS)', description: 'Mở ca, chốt ca và đối soát tiền mặt quầy thu ngân' },
+  { code: 'PAYABLE_MANAGE', module: 'Quản lý Kho', description: 'Quản lý công nợ nhà cung cấp, thanh toán và trả hàng NCC' },
+  { code: 'AUDIT_ADMIN_APPROVE', module: 'Quản lý Kho', description: 'Duyệt kiểm kê kho vượt ngưỡng giá trị lớn (cấp Admin)' },
+  { code: 'SUPPLIER_PORTAL', module: 'Khuyến mãi & Đối tác', description: 'Cổng nhà cung cấp xác nhận và thương lượng đơn đặt hàng (PO)' },
 ];
 
 const ROLE_PERMISSION_MATRIX = {
@@ -73,12 +79,16 @@ const ROLE_PERMISSION_MATRIX = {
     'INVENTORY_VIEW',
     'INVENTORY_AUDIT',
     'INVENTORY_APPROVE',
+    'BATCH_MANAGE',
     'PURCHASE_CREATE',
     'PURCHASE_APPROVE',
+    'PAYABLE_MANAGE',
     'SUPPLIER_VIEW',
     'SUPPLIER_MANAGE',
     'CUSTOMER_MANAGE',
     'PROMOTION_MANAGE',
+    'VOUCHER_MANAGE',
+    'SHIFT_MANAGE',
     'REPORT_VIEW',
     'REPORT_PROFIT',
   ],
@@ -88,6 +98,7 @@ const ROLE_PERMISSION_MATRIX = {
     'RETURN_CREATE',
     'PRODUCT_VIEW',
     'CUSTOMER_MANAGE',
+    'SHIFT_MANAGE',
   ],
   WAREHOUSE: [
     'PRODUCT_VIEW',
@@ -188,16 +199,55 @@ const DEFAULT_THAM_SO = [
     nhom_tham_so: 'CUA_HANG',
     mo_ta: 'Thông điệp in ở chân hóa đơn bán hàng.',
   },
+  {
+    ma_tham_so: 'SoNgayCanhBaoCanDate',
+    ten_tham_so: 'Số ngày cảnh báo hàng cận date mặc định',
+    kieu_du_lieu: 'NUMBER',
+    gia_tri: '14',
+    nhom_tham_so: 'KHO_HSD',
+    mo_ta: 'Cảnh báo lô hàng sắp hết hạn khi số ngày còn lại <= ngưỡng này.',
+  },
+  {
+    ma_tham_so: 'NguongLechKiemKeSoLuong',
+    ten_tham_so: 'Ngưỡng lệch số lượng bắt buộc đếm lại vòng 2',
+    kieu_du_lieu: 'NUMBER',
+    gia_tri: '5',
+    nhom_tham_so: 'KIEM_KE',
+    mo_ta: 'Dòng kiểm kê lệch tuyệt đối >= ngưỡng số lượng sẽ yêu cầu người khác đếm lại vòng 2.',
+  },
+  {
+    ma_tham_so: 'NguongLechKiemKeGiaTri',
+    ten_tham_so: 'Ngưỡng lệch giá trị bắt buộc đếm lại vòng 2 (₫)',
+    kieu_du_lieu: 'NUMBER',
+    gia_tri: '500000',
+    nhom_tham_so: 'KIEM_KE',
+    mo_ta: 'Dòng kiểm kê có giá trị chênh lệch >= ngưỡng này sẽ bắt buộc đếm lại vòng 2.',
+  },
+  {
+    ma_tham_so: 'NguongDuyetKiemKeAdmin',
+    ten_tham_so: 'Ngưỡng tổng giá trị lệch kiểm kê cần Admin duyệt (₫)',
+    kieu_du_lieu: 'NUMBER',
+    gia_tri: '2000000',
+    nhom_tham_so: 'KIEM_KE',
+    mo_ta: 'Phiếu kiểm kê có tổng giá trị chênh lệch >= ngưỡng này chỉ Admin mới được duyệt.',
+  },
+  {
+    ma_tham_so: 'CanhBaoLechGiaNhapPct',
+    ten_tham_so: 'Ngưỡng cảnh báo lệch đơn giá nhập (%)',
+    kieu_du_lieu: 'NUMBER',
+    gia_tri: '15',
+    nhom_tham_so: 'NHAP_HANG',
+    mo_ta: 'Cảnh báo khi đơn giá nhập chênh lệch lớn hơn tỷ lệ % này so với giá vốn gần nhất.',
+  },
 ];
 
-const DEFAULT_CATEGORIES = [
-  { code: 'DM01', name: 'Sữa & Đồ uống', description: 'Sữa tươi, sữa chua, nước tinh khiết, nước ngọt, trà, cà phê' },
-  { code: 'DM02', name: 'Mì & Thực phẩm tiện lợi', description: 'Mì ăn liền, phở, miến, gạo, ngũ cốc, đồ ăn nhanh' },
-  { code: 'DM03', name: 'Gia vị & Nhu yếu phẩm', description: 'Dầu ăn, nước mắm, nước tương, hạt nêm, đường, muối' },
-  { code: 'DM04', name: 'Snack & Bánh kẹo', description: 'Bánh quy, snack khoai tây, kẹo, hạt dinh dưỡng' },
-  { code: 'DM05', name: 'Chăm sóc cá nhân & Tiện ích', description: 'Dầu gội, sữa tắm, bột giặt, nước rửa chén, khăn giấy' },
-  { code: 'DM06', name: 'Đồ ăn liền & Chế biến sẵn', description: 'Bánh mì, sandwich, cơm hộp, đồ ăn nóng dùng ngay' },
-];
+const { CATALOG_CATEGORIES } = require('../../domain/catalog-data.js');
+
+const DEFAULT_CATEGORIES = CATALOG_CATEGORIES.map((c) => ({
+  code: c.code,
+  name: c.name,
+  description: c.description || '',
+}));
 
 const DEFAULT_UNITS = [
   { code: 'DVT01', name: 'hộp' },
@@ -214,6 +264,10 @@ const DEFAULT_UNITS = [
   { code: 'DVT12', name: 'quả' },
   { code: 'DVT13', name: 'ly' },
   { code: 'DVT14', name: 'đôi' },
+  { code: 'DVT15', name: 'thùng' },
+  { code: 'DVT16', name: 'bịch' },
+  { code: 'DVT17', name: 'lọ' },
+  { code: 'DVT18', name: 'cây' },
 ];
 
 const SCHEMA_SQL = `
@@ -252,6 +306,7 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL DEFAULT '',
   phone TEXT NOT NULL DEFAULT '',
   role_code TEXT NOT NULL,
+  supplier_id TEXT,
   status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'LOCKED')),
   must_change_password INTEGER NOT NULL DEFAULT 0,
   last_login_at TEXT,
@@ -370,12 +425,64 @@ CREATE TABLE IF NOT EXISTS products (
   stock_qty INTEGER NOT NULL DEFAULT 0 CHECK (stock_qty >= 0),
   min_stock INTEGER NOT NULL DEFAULT 15 CHECK (min_stock >= 0),
   image_url TEXT NOT NULL DEFAULT 'assets/images/products/default.jpg',
+  thumb_url TEXT NOT NULL DEFAULT '',
+  has_expiry INTEGER NOT NULL DEFAULT 1 CHECK (has_expiry IN (0, 1)),
+  expiry_warn_days INTEGER NOT NULL DEFAULT 14 CHECK (expiry_warn_days >= 0),
+  non_returnable INTEGER NOT NULL DEFAULT 0 CHECK (non_returnable IN (0, 1)),
+  case_unit_name TEXT NOT NULL DEFAULT 'Thùng',
+  units_per_case INTEGER NOT NULL DEFAULT 12 CHECK (units_per_case >= 1),
+  damaged_stock_qty INTEGER NOT NULL DEFAULT 0 CHECK (damaged_stock_qty >= 0),
   status TEXT NOT NULL DEFAULT 'DangKinhDoanh' CHECK (status IN ('DangKinhDoanh', 'NgungKinhDoanh')),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (category_code) REFERENCES categories(code) ON DELETE RESTRICT,
   FOREIGN KEY (unit_code) REFERENCES units(code) ON DELETE RESTRICT,
   FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS product_batches (
+  id TEXT PRIMARY KEY,
+  batch_code TEXT NOT NULL,
+  product_id TEXT NOT NULL,
+  mfg_date TEXT NOT NULL DEFAULT '',
+  expiry_date TEXT NOT NULL DEFAULT '',
+  initial_qty INTEGER NOT NULL CHECK (initial_qty >= 0),
+  qty_remaining INTEGER NOT NULL CHECK (qty_remaining >= 0),
+  unit_cost INTEGER NOT NULL DEFAULT 0 CHECK (unit_cost >= 0),
+  purchase_id TEXT,
+  status TEXT NOT NULL DEFAULT 'ConHan' CHECK (status IN ('ConHan', 'CanDate', 'HetHan', 'DaHet', 'DaHuy')),
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS batch_writeoffs (
+  id TEXT PRIMARY KEY,
+  created_by TEXT NOT NULL,
+  approved_by TEXT,
+  reason TEXT NOT NULL,
+  total_qty INTEGER NOT NULL DEFAULT 0 CHECK (total_qty >= 0),
+  total_value INTEGER NOT NULL DEFAULT 0 CHECK (total_value >= 0),
+  status TEXT NOT NULL DEFAULT 'ChoDuyet' CHECK (status IN ('ChoDuyet', 'DaDuyet', 'DaHuy')),
+  created_at TEXT NOT NULL,
+  approved_at TEXT,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
+  FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS batch_writeoff_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  writeoff_id TEXT NOT NULL,
+  batch_id TEXT NOT NULL,
+  product_id TEXT NOT NULL,
+  batch_code TEXT NOT NULL DEFAULT '',
+  expiry_date TEXT NOT NULL DEFAULT '',
+  qty INTEGER NOT NULL CHECK (qty > 0),
+  unit_cost INTEGER NOT NULL DEFAULT 0 CHECK (unit_cost >= 0),
+  line_value INTEGER NOT NULL DEFAULT 0 CHECK (line_value >= 0),
+  reason TEXT NOT NULL DEFAULT '',
+  FOREIGN KEY (writeoff_id) REFERENCES batch_writeoffs(id) ON DELETE CASCADE,
+  FOREIGN KEY (batch_id) REFERENCES product_batches(id) ON DELETE RESTRICT,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS promotions (
@@ -390,6 +497,9 @@ CREATE TABLE IF NOT EXISTS promotions (
   end_date TEXT NOT NULL,
   usage_limit INTEGER NOT NULL DEFAULT 1000 CHECK (usage_limit >= 1),
   used_count INTEGER NOT NULL DEFAULT 0 CHECK (used_count >= 0),
+  scope TEXT NOT NULL DEFAULT 'INVOICE' CHECK (scope IN ('INVOICE', 'CATEGORY', 'PRODUCT', 'NEAR_EXPIRY')),
+  category_code TEXT NOT NULL DEFAULT '',
+  near_expiry_days INTEGER NOT NULL DEFAULT 14,
   status TEXT NOT NULL DEFAULT 'DangDienRa' CHECK (status IN ('SapDienRa', 'DangDienRa', 'TamDung', 'KetThuc', 'DaHuy')),
   created_at TEXT NOT NULL
 );
@@ -402,14 +512,60 @@ CREATE TABLE IF NOT EXISTS promotion_products (
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
 );
 
+CREATE TABLE IF NOT EXISTS vouchers (
+  id TEXT PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  name TEXT NOT NULL,
+  discount_type TEXT NOT NULL CHECK (discount_type IN ('PERCENT', 'FIXED')),
+  discount_value INTEGER NOT NULL CHECK (discount_value >= 0),
+  min_order_amount INTEGER NOT NULL DEFAULT 0 CHECK (min_order_amount >= 0),
+  max_discount INTEGER NOT NULL DEFAULT 0 CHECK (max_discount >= 0),
+  start_date TEXT NOT NULL,
+  end_date TEXT NOT NULL,
+  usage_limit INTEGER NOT NULL DEFAULT 100 CHECK (usage_limit >= 1),
+  used_count INTEGER NOT NULL DEFAULT 0 CHECK (used_count >= 0),
+  max_uses_per_customer INTEGER NOT NULL DEFAULT 1 CHECK (max_uses_per_customer >= 1),
+  status TEXT NOT NULL DEFAULT 'DangDienRa' CHECK (status IN ('SapDienRa', 'DangDienRa', 'TamDung', 'KetThuc', 'DaHuy')),
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS voucher_redemptions (
+  id TEXT PRIMARY KEY,
+  voucher_id TEXT NOT NULL,
+  order_id TEXT NOT NULL,
+  customer_id TEXT,
+  discount_amount INTEGER NOT NULL DEFAULT 0 CHECK (discount_amount >= 0),
+  redeemed_at TEXT NOT NULL,
+  FOREIGN KEY (voucher_id) REFERENCES vouchers(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS cashier_shifts (
+  id TEXT PRIMARY KEY,
+  cashier_id TEXT NOT NULL,
+  opened_at TEXT NOT NULL,
+  closed_at TEXT,
+  opening_cash INTEGER NOT NULL DEFAULT 0 CHECK (opening_cash >= 0),
+  expected_cash INTEGER NOT NULL DEFAULT 0,
+  actual_cash INTEGER,
+  variance INTEGER,
+  cash_sales INTEGER NOT NULL DEFAULT 0,
+  cash_refunds INTEGER NOT NULL DEFAULT 0,
+  non_cash_sales INTEGER NOT NULL DEFAULT 0,
+  order_count INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'DangMo' CHECK (status IN ('DangMo', 'DaDong')),
+  note TEXT NOT NULL DEFAULT '',
+  FOREIGN KEY (cashier_id) REFERENCES users(id) ON DELETE RESTRICT
+);
+
 CREATE TABLE IF NOT EXISTS purchases (
   id TEXT PRIMARY KEY,
   supplier_id TEXT NOT NULL,
   created_by TEXT NOT NULL,
   approved_by TEXT,
   total_amount INTEGER NOT NULL DEFAULT 0 CHECK (total_amount >= 0),
+  expected_delivery_date TEXT NOT NULL DEFAULT '',
   note TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL DEFAULT 'Draft' CHECK (status IN ('Draft', 'Confirmed', 'Cancelled')),
+  status TEXT NOT NULL DEFAULT 'Draft' CHECK (status IN ('Draft', 'GuiNCC', 'NCCPhanHoi', 'ThuongLuong', 'DaThongNhat', 'DangNhanHang', 'Confirmed', 'Cancelled')),
   created_at TEXT NOT NULL,
   confirmed_at TEXT,
   FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE RESTRICT,
@@ -423,7 +579,118 @@ CREATE TABLE IF NOT EXISTS purchase_items (
   product_id TEXT NOT NULL,
   qty INTEGER NOT NULL CHECK (qty > 0),
   unit_cost INTEGER NOT NULL CHECK (unit_cost >= 0),
+  batch_code TEXT NOT NULL DEFAULT '',
+  mfg_date TEXT NOT NULL DEFAULT '',
+  expiry_date TEXT NOT NULL DEFAULT '',
   FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS purchase_negotiations (
+  id TEXT PRIMARY KEY,
+  purchase_id TEXT NOT NULL,
+  round_no INTEGER NOT NULL DEFAULT 1,
+  actor_id TEXT NOT NULL,
+  actor_role TEXT NOT NULL,
+  actor_name TEXT NOT NULL,
+  action TEXT NOT NULL,
+  proposed_items_json TEXT NOT NULL DEFAULT '[]',
+  expected_delivery_date TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS purchase_receipts (
+  id TEXT PRIMARY KEY,
+  purchase_id TEXT NOT NULL,
+  supplier_id TEXT NOT NULL,
+  received_by TEXT NOT NULL,
+  approved_by TEXT,
+  total_received_amount INTEGER NOT NULL DEFAULT 0 CHECK (total_received_amount >= 0),
+  status TEXT NOT NULL DEFAULT 'ChoDuyet' CHECK (status IN ('ChoDuyet', 'DaDuyet', 'DaHuy')),
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  confirmed_at TEXT,
+  FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE RESTRICT,
+  FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE RESTRICT,
+  FOREIGN KEY (received_by) REFERENCES users(id) ON DELETE RESTRICT,
+  FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS purchase_receipt_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  receipt_id TEXT NOT NULL,
+  product_id TEXT NOT NULL,
+  ordered_qty INTEGER NOT NULL CHECK (ordered_qty >= 0),
+  received_qty INTEGER NOT NULL CHECK (received_qty >= 0),
+  rejected_qty INTEGER NOT NULL DEFAULT 0 CHECK (rejected_qty >= 0),
+  unit_cost INTEGER NOT NULL CHECK (unit_cost >= 0),
+  batch_code TEXT NOT NULL DEFAULT '',
+  mfg_date TEXT NOT NULL DEFAULT '',
+  expiry_date TEXT NOT NULL DEFAULT '',
+  qc_note TEXT NOT NULL DEFAULT '',
+  FOREIGN KEY (receipt_id) REFERENCES purchase_receipts(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS supplier_payables (
+  id TEXT PRIMARY KEY,
+  supplier_id TEXT NOT NULL,
+  purchase_id TEXT NOT NULL,
+  receipt_id TEXT,
+  total_amount INTEGER NOT NULL DEFAULT 0 CHECK (total_amount >= 0),
+  paid_amount INTEGER NOT NULL DEFAULT 0 CHECK (paid_amount >= 0),
+  balance_amount INTEGER NOT NULL DEFAULT 0 CHECK (balance_amount >= 0),
+  due_date TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'ChuaThanhToan' CHECK (status IN ('ChuaThanhToan', 'ThanhToanMotPhan', 'DaThanhToanNCC')),
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE RESTRICT,
+  FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS supplier_payments (
+  id TEXT PRIMARY KEY,
+  payable_id TEXT NOT NULL,
+  amount INTEGER NOT NULL CHECK (amount > 0),
+  payment_method TEXT NOT NULL DEFAULT 'BANK_TRANSFER',
+  payment_ref TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  paid_at TEXT NOT NULL,
+  FOREIGN KEY (payable_id) REFERENCES supplier_payables(id) ON DELETE RESTRICT,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS supplier_returns (
+  id TEXT PRIMARY KEY,
+  supplier_id TEXT NOT NULL,
+  purchase_id TEXT,
+  created_by TEXT NOT NULL,
+  approved_by TEXT,
+  total_amount INTEGER NOT NULL DEFAULT 0 CHECK (total_amount >= 0),
+  reason TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'ChoDuyet' CHECK (status IN ('ChoDuyet', 'DaDuyet', 'DaHuy')),
+  created_at TEXT NOT NULL,
+  approved_at TEXT,
+  FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE RESTRICT,
+  FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
+  FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS supplier_return_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  return_id TEXT NOT NULL,
+  product_id TEXT NOT NULL,
+  batch_id TEXT,
+  batch_code TEXT NOT NULL DEFAULT '',
+  qty INTEGER NOT NULL CHECK (qty > 0),
+  unit_cost INTEGER NOT NULL CHECK (unit_cost >= 0),
+  line_total INTEGER NOT NULL DEFAULT 0 CHECK (line_total >= 0),
+  reason TEXT NOT NULL DEFAULT '',
+  FOREIGN KEY (return_id) REFERENCES supplier_returns(id) ON DELETE CASCADE,
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
 );
 
@@ -431,7 +698,10 @@ CREATE TABLE IF NOT EXISTS orders (
   id TEXT PRIMARY KEY,
   customer_id TEXT,
   cashier_id TEXT NOT NULL,
+  shift_id TEXT,
+  discount_mode TEXT NOT NULL DEFAULT 'NONE' CHECK (discount_mode IN ('NONE', 'VOUCHER', 'PROMOTION')),
   promotion_id TEXT,
+  voucher_id TEXT,
   subtotal INTEGER NOT NULL CHECK (subtotal >= 0),
   invoice_discount INTEGER NOT NULL DEFAULT 0 CHECK (invoice_discount >= 0),
   tax_rate REAL NOT NULL DEFAULT 0 CHECK (tax_rate >= 0),
@@ -497,6 +767,7 @@ CREATE TABLE IF NOT EXISTS stock_movements (
   stock_after INTEGER NOT NULL CHECK (stock_after >= 0),
   doc_type TEXT NOT NULL,
   doc_id TEXT NOT NULL,
+  batch_code TEXT NOT NULL DEFAULT '',
   actor_id TEXT,
   actor_name TEXT NOT NULL,
   note TEXT NOT NULL DEFAULT '',
@@ -508,9 +779,16 @@ CREATE TABLE IF NOT EXISTS stock_movements (
 CREATE TABLE IF NOT EXISTS stock_audits (
   id TEXT PRIMARY KEY,
   created_by TEXT NOT NULL,
+  assigned_to TEXT,
+  recount_by TEXT,
   approved_by TEXT,
+  scope_type TEXT NOT NULL DEFAULT 'TOAN_KHO',
+  scope_value TEXT NOT NULL DEFAULT '',
+  snapshot_at TEXT NOT NULL DEFAULT '',
+  requires_recount INTEGER NOT NULL DEFAULT 0,
+  requires_admin_approval INTEGER NOT NULL DEFAULT 0,
   note TEXT NOT NULL DEFAULT '',
-  status TEXT NOT NULL DEFAULT 'ChoDuyet' CHECK (status IN ('ChoDuyet', 'DaDuyet', 'DaHuy')),
+  status TEXT NOT NULL DEFAULT 'ChoDuyet' CHECK (status IN ('DangDem', 'ChoDemLai', 'ChoDuyet', 'DaDuyet', 'DaHuy')),
   created_at TEXT NOT NULL,
   approved_at TEXT,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
@@ -521,12 +799,32 @@ CREATE TABLE IF NOT EXISTS stock_audit_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   audit_id TEXT NOT NULL,
   product_id TEXT NOT NULL,
+  batch_id TEXT,
+  batch_code TEXT NOT NULL DEFAULT '',
+  expiry_date TEXT NOT NULL DEFAULT '',
   system_qty INTEGER NOT NULL,
   actual_qty INTEGER NOT NULL CHECK (actual_qty >= 0),
   diff_qty INTEGER NOT NULL,
+  round1_qty INTEGER,
+  round2_qty INTEGER,
+  movements_since_snapshot INTEGER NOT NULL DEFAULT 0,
+  effective_system_qty INTEGER,
+  reason_code TEXT NOT NULL DEFAULT '',
   reason TEXT NOT NULL DEFAULT '',
   FOREIGN KEY (audit_id) REFERENCES stock_audits(id) ON DELETE CASCADE,
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+);
+
+CREATE TABLE IF NOT EXISTS stock_audit_rounds (
+  id TEXT PRIMARY KEY,
+  audit_id TEXT NOT NULL,
+  round_no INTEGER NOT NULL DEFAULT 1,
+  counted_by TEXT NOT NULL,
+  counted_by_name TEXT NOT NULL,
+  items_json TEXT NOT NULL DEFAULT '[]',
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (audit_id) REFERENCES stock_audits(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
@@ -536,10 +834,16 @@ CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 CREATE INDEX IF NOT EXISTS idx_products_category ON products(category_code);
 CREATE INDEX IF NOT EXISTS idx_products_supplier ON products(supplier_id);
 CREATE INDEX IF NOT EXISTS idx_products_status ON products(status);
+CREATE INDEX IF NOT EXISTS idx_product_batches_product ON product_batches(product_id, expiry_date ASC);
+CREATE INDEX IF NOT EXISTS idx_product_batches_expiry ON product_batches(expiry_date ASC);
+CREATE INDEX IF NOT EXISTS idx_batch_writeoffs_status ON batch_writeoffs(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_vouchers_code ON vouchers(code);
+CREATE INDEX IF NOT EXISTS idx_cashier_shifts_cashier ON cashier_shifts(cashier_id, status);
 CREATE INDEX IF NOT EXISTS idx_stock_movements_product ON stock_movements(product_id);
 CREATE INDEX IF NOT EXISTS idx_stock_movements_created ON stock_movements(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_purchases_status_created ON purchases(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_purchases_supplier ON purchases(supplier_id);
+CREATE INDEX IF NOT EXISTS idx_supplier_payables_supplier ON supplier_payables(supplier_id, status);
 CREATE INDEX IF NOT EXISTS idx_stock_audits_status_created ON stock_audits(status, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_promotions_code ON promotions(code);
 CREATE INDEX IF NOT EXISTS idx_promotions_status ON promotions(status);
@@ -577,6 +881,49 @@ BEGIN
 END;
 `;
 
+function runSafeMigrations(db) {
+  const ensureColumn = (table, col, defSql) => {
+    const cols = db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name);
+    if (!cols.includes(col)) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${defSql}`);
+    }
+  };
+  ensureColumn('users', 'supplier_id', 'TEXT');
+  ensureColumn('products', 'thumb_url', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('products', 'has_expiry', 'INTEGER NOT NULL DEFAULT 1');
+  ensureColumn('products', 'expiry_warn_days', 'INTEGER NOT NULL DEFAULT 14');
+  ensureColumn('products', 'non_returnable', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('products', 'case_unit_name', "TEXT NOT NULL DEFAULT 'Thùng'");
+  ensureColumn('products', 'units_per_case', 'INTEGER NOT NULL DEFAULT 12');
+  ensureColumn('products', 'damaged_stock_qty', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('stock_movements', 'batch_code', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('purchase_items', 'batch_code', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('purchase_items', 'mfg_date', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('purchase_items', 'expiry_date', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('purchases', 'expected_delivery_date', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('promotions', 'scope', "TEXT NOT NULL DEFAULT 'INVOICE'");
+  ensureColumn('promotions', 'category_code', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('promotions', 'near_expiry_days', 'INTEGER NOT NULL DEFAULT 14');
+  ensureColumn('orders', 'shift_id', 'TEXT');
+  ensureColumn('orders', 'discount_mode', "TEXT NOT NULL DEFAULT 'NONE'");
+  ensureColumn('orders', 'voucher_id', 'TEXT');
+  ensureColumn('stock_audits', 'assigned_to', 'TEXT');
+  ensureColumn('stock_audits', 'recount_by', 'TEXT');
+  ensureColumn('stock_audits', 'scope_type', "TEXT NOT NULL DEFAULT 'TOAN_KHO'");
+  ensureColumn('stock_audits', 'scope_value', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('stock_audits', 'snapshot_at', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('stock_audits', 'requires_recount', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('stock_audits', 'requires_admin_approval', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('stock_audit_items', 'batch_id', 'TEXT');
+  ensureColumn('stock_audit_items', 'batch_code', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('stock_audit_items', 'expiry_date', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('stock_audit_items', 'round1_qty', 'INTEGER');
+  ensureColumn('stock_audit_items', 'round2_qty', 'INTEGER');
+  ensureColumn('stock_audit_items', 'movements_since_snapshot', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('stock_audit_items', 'effective_system_qty', 'INTEGER');
+  ensureColumn('stock_audit_items', 'reason_code', "TEXT NOT NULL DEFAULT ''");
+}
+
 function openDatabase(dbPath) {
   const targetPath = dbPath || process.env.DB_PATH || path.resolve(__dirname, '../../../data/retailflow.db');
   if (targetPath !== ':memory:') {
@@ -584,6 +931,7 @@ function openDatabase(dbPath) {
   }
   const db = new DatabaseSync(targetPath);
   db.exec(SCHEMA_SQL);
+  runSafeMigrations(db);
   seedCoreData(db);
   return db;
 }
@@ -727,6 +1075,7 @@ function seedCoreData(db) {
       }
 
       if (productCount === 0) {
+        const catCodeSet = new Set(db.prepare('SELECT code FROM categories').all().map((r) => r.code));
         const catMap = new Map(
           db.prepare('SELECT code, name FROM categories').all().map((r) => [r.name.toLowerCase(), r.code]),
         );
@@ -738,18 +1087,32 @@ function seedCoreData(db) {
             id, sku, barcode, name, brand, pack_size,
             category_code, unit_code, supplier_id,
             sale_price, cost_price, stock_qty, min_stock,
-            image_url, status, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            image_url, thumb_url, has_expiry, expiry_warn_days,
+            non_returnable, case_unit_name, units_per_case, damaged_stock_qty,
+            status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+        `);
+        const insertBatch = db.prepare(`
+          INSERT OR IGNORE INTO product_batches (
+            id, batch_code, product_id, mfg_date, expiry_date,
+            initial_qty, qty_remaining, unit_cost, purchase_id, status, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
         `);
         const insertMovement = db.prepare(`
           INSERT OR IGNORE INTO stock_movements (
             id, product_id, stock_before, delta, stock_after,
-            doc_type, doc_id, actor_id, actor_name, note, created_at
-          ) VALUES (?, ?, 0, ?, ?, 'KHOI_TAO_TON', ?, 'NV001', 'Hệ thống', ?, ?)
+            doc_type, doc_id, batch_code, actor_id, actor_name, note, created_at
+          ) VALUES (?, ?, 0, ?, ?, 'KHOI_TAO_TON', ?, ?, 'NV001', 'Hệ thống', ?, ?)
         `);
 
+        const ymdOffset = (days) => new Date(nowMs + days * dayMs).toISOString().slice(0, 10);
+        const ymTag = nowIso.slice(0, 7).replace('-', '');
+
         for (const prod of seeded.products || []) {
-          const catCode = catMap.get(String(prod.category || '').toLowerCase()) || 'DM01';
+          const catCode =
+            (prod.categoryCode && catCodeSet.has(prod.categoryCode) ? prod.categoryCode : null) ||
+            catMap.get(String(prod.category || '').toLowerCase()) ||
+            'DM01';
           const unitCode = unitMap.get(String(prod.unit || '').toLowerCase()) || 'DVT01';
           const salePrice = Math.max(0, Math.round(Number(prod.price) || 0));
           const costPrice = Math.max(0, Math.round(Number(prod.costPrice ?? prod.cost) || 0));
@@ -759,6 +1122,15 @@ function seedCoreData(db) {
             prod.imageUrl && prod.imageUrl !== 'assets/images/products/default.jpg'
               ? prod.imageUrl
               : 'assets/images/products/milk_vinamilk.jpg';
+          const thumbUrl =
+            prod.thumbUrl ||
+            imgUrl.replace(/^assets\/images\/products\//, 'assets/images/products/thumbs/');
+          const hasExpiry = prod.hasExpiry === 0 || prod.hasExpiry === false ? 0 : 1;
+          const warnDays = Math.max(0, Math.round(Number(prod.expiryWarnDays) || 14));
+          const nonReturnable = prod.nonReturnable ? 1 : 0;
+          const caseUnitName = prod.caseUnitName || 'Thùng';
+          const unitsPerCase = Math.max(1, Math.round(Number(prod.unitsPerCase) || 12));
+
           insertProduct.run(
             prod.id,
             prod.id,
@@ -774,10 +1146,91 @@ function seedCoreData(db) {
             stockQty,
             minStock,
             imgUrl,
+            thumbUrl,
+            hasExpiry,
+            warnDays,
+            nonReturnable,
+            caseUnitName,
+            unitsPerCase,
             prod.active === false ? 'NgungKinhDoanh' : 'DangKinhDoanh',
             nowIso,
             nowIso,
           );
+
+          const expOff = Number(prod.expiryOffsetDays ?? 180);
+          const shelfLife = Math.max(90, Number(prod.shelfLifeDays ?? 240));
+          const mainBatchCode = `LO-${ymTag}-${prod.id}`;
+          if (hasExpiry === 1 && expOff <= 0) {
+            // Seed BOTH an expired batch awaiting write-off AND a valid batch matching salable stockQty
+            const expQty = 16;
+            insertBatch.run(
+              `LOT-EXP-${prod.id}`,
+              `LO-HH-${prod.id}`,
+              prod.id,
+              ymdOffset(expOff - shelfLife),
+              ymdOffset(expOff),
+              expQty,
+              expQty,
+              costPrice,
+              'HetHan',
+              openingIso,
+            );
+            insertBatch.run(
+              `LOT-SEED-${prod.id}`,
+              mainBatchCode,
+              prod.id,
+              ymdOffset(-30),
+              ymdOffset(150),
+              stockQty,
+              stockQty,
+              costPrice,
+              'ConHan',
+              openingIso,
+            );
+          } else if (hasExpiry === 1 && expOff > 0 && expOff <= 14 && stockQty >= 30) {
+            // Split into 2 batches for real FEFO demonstration (near-expiry batch + fresher batch)
+            const nearQty = Math.min(20, Math.floor(stockQty / 4));
+            const freshQty = stockQty - nearQty;
+            insertBatch.run(
+              `LOT-NEAR-${prod.id}`,
+              `LO-CD-${prod.id}`,
+              prod.id,
+              ymdOffset(expOff - shelfLife),
+              ymdOffset(expOff),
+              nearQty,
+              nearQty,
+              costPrice,
+              'CanDate',
+              openingIso,
+            );
+            insertBatch.run(
+              `LOT-SEED-${prod.id}`,
+              mainBatchCode,
+              prod.id,
+              ymdOffset(-20),
+              ymdOffset(180),
+              freshQty,
+              freshQty,
+              costPrice,
+              'ConHan',
+              openingIso,
+            );
+          } else {
+            const batchStatus = hasExpiry === 1 && expOff <= warnDays ? 'CanDate' : 'ConHan';
+            insertBatch.run(
+              `LOT-SEED-${prod.id}`,
+              mainBatchCode,
+              prod.id,
+              hasExpiry ? ymdOffset(expOff - shelfLife) : '',
+              hasExpiry ? ymdOffset(expOff) : '',
+              stockQty,
+              stockQty,
+              costPrice,
+              batchStatus,
+              openingIso,
+            );
+          }
+
           if (stockQty > 0) {
             insertMovement.run(
               `STK-SEED-${prod.id}`,
@@ -785,6 +1238,7 @@ function seedCoreData(db) {
               stockQty,
               stockQty,
               `INIT-${prod.id}`,
+              mainBatchCode,
               `Khởi tạo tồn kho đầu kỳ cho ${prod.name}`,
               openingIso,
             );
@@ -822,16 +1276,49 @@ function seedCoreData(db) {
       const insertPromo = db.prepare(`
         INSERT OR IGNORE INTO promotions (
           id, code, name, discount_type, discount_value, min_order_amount,
-          max_discount, start_date, end_date, usage_limit, used_count, status, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+          max_discount, start_date, end_date, usage_limit, used_count,
+          scope, category_code, near_expiry_days, status, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, '', 14, ?, ?)
       `);
       const seedPromos = [
-        ['KM001', 'GIAM10', 'Giảm 10% hóa đơn từ 100.000 ₫ (tối đa 50.000 ₫)', 'PERCENT', 10, 100000, 50000, startActive, endActive, 500, 'DangDienRa'],
-        ['KM002', 'GIAM20K', 'Giảm thẳng 20.000 ₫ cho đơn từ 150.000 ₫', 'FIXED', 20000, 150000, 0, startActive, endActive, 300, 'DangDienRa'],
-        ['KM003', 'SAPMO15', 'Ưu đãi sắp mở giảm 15% (tối đa 80.000 ₫)', 'PERCENT', 15, 200000, 80000, startFuture, endFuture, 200, 'SapDienRa'],
+        ['KM001', 'GIAM10', 'Giảm 10% hóa đơn từ 100.000 ₫ (tối đa 50.000 ₫)', 'PERCENT', 10, 100000, 50000, startActive, endActive, 500, 'INVOICE', 'DangDienRa'],
+        ['KM002', 'GIAM20K', 'Giảm thẳng 20.000 ₫ cho đơn từ 150.000 ₫', 'FIXED', 20000, 150000, 0, startActive, endActive, 300, 'INVOICE', 'DangDienRa'],
+        ['KM003', 'SAPMO15', 'Ưu đãi sắp mở giảm 15% (tối đa 80.000 ₫)', 'PERCENT', 15, 200000, 80000, startFuture, endFuture, 200, 'INVOICE', 'SapDienRa'],
+        ['KM004', 'XACANDATE30', 'Xả kho hàng cận date giảm 30% (áp dụng lô <= 14 ngày)', 'PERCENT', 30, 0, 200000, startActive, endActive, 500, 'NEAR_EXPIRY', 'DangDienRa'],
       ];
       for (const p of seedPromos) {
         insertPromo.run(...p, nowIso);
+      }
+      // Attach near-expiry products to KM004
+      const nearProds = db
+        .prepare("SELECT DISTINCT product_id FROM product_batches WHERE status = 'CanDate' AND qty_remaining > 0")
+        .all();
+      const insPromoProd = db.prepare('INSERT OR IGNORE INTO promotion_products (promotion_id, product_id) VALUES (?, ?)');
+      for (const np of nearProds) {
+        insPromoProd.run('KM004', np.product_id);
+      }
+    }
+
+    const voucherCount = db.prepare('SELECT COUNT(*) AS cnt FROM vouchers').get().cnt;
+    if (voucherCount === 0) {
+      const toYmd = (d) => d.toISOString().slice(0, 10);
+      const startActive = toYmd(new Date(Date.now() - 15 * dayMs));
+      const endActive = toYmd(new Date(Date.now() + 90 * dayMs));
+      const insV = db.prepare(`
+        INSERT OR IGNORE INTO vouchers (
+          id, code, name, discount_type, discount_value, min_order_amount,
+          max_discount, start_date, end_date, usage_limit, used_count,
+          max_uses_per_customer, status, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, 'DangDienRa', ?)
+      `);
+      const seedVouchers = [
+        ['VC001', 'APP15K', 'Voucher Khách hàng mới App (-15.000 ₫)', 'FIXED', 15000, 100000, 15000, startActive, endActive, 200, 1],
+        ['VC002', 'SIEUTHI10', 'Voucher Thành viên Siêu thị (-10%, tối đa 40.000 ₫)', 'PERCENT', 10, 150000, 40000, startActive, endActive, 300, 2],
+        ['VC003', 'BANMOI20K', 'Voucher Bạn mới (-20.000 ₫ đơn từ 120.000 ₫)', 'FIXED', 20000, 120000, 20000, startActive, endActive, 150, 1],
+        ['VC004', 'VIP50K', 'Voucher Hội viên VIP (-50.000 ₫ đơn từ 400.000 ₫)', 'FIXED', 50000, 400000, 50000, startActive, endActive, 100, 3],
+      ];
+      for (const v of seedVouchers) {
+        insV.run(...v, nowIso);
       }
     }
 

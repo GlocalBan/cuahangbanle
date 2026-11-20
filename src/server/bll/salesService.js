@@ -738,11 +738,34 @@ class SalesService {
         );
 
         const availableStock = Number(product.stock_qty) || 0;
-        assertRule(
-          qty <= availableStock,
-          `Không đủ tồn kho cho "${product.name}" (${product.sku}): yêu cầu ${qty}, tồn khả dụng ${availableStock}. Nghiêm cấm xuất âm kho (BR-03).`,
-          400,
-        );
+        const today = todayYmdVn();
+        const fefoBatches = this.repos.batches ? this.repos.batches.findSalableFefo(product.id, today) : [];
+        const expiredBatches = this.repos.batches ? this.repos.batches.findExpiredByProduct(product.id, today) : [];
+        const salableBatchQty = fefoBatches.reduce((s, b) => s + (Number(b.qty_remaining) || 0), 0);
+        const expiredQty = expiredBatches.reduce((s, b) => s + (Number(b.qty_remaining) || 0), 0);
+
+        if (fefoBatches.length > 0 || expiredBatches.length > 0) {
+          if (qty > salableBatchQty) {
+            if (expiredQty > 0) {
+              assertRule(
+                false,
+                `Sản phẩm "${product.name}" (${product.sku}) chỉ còn ${salableBatchQty} đv còn hạn sử dụng (đã khóa bán ${expiredQty} đv hết hạn — cần xuất hủy lô hết hạn). Không thể bán ${qty} đv.`,
+                400,
+              );
+            }
+            assertRule(
+              false,
+              `Không đủ tồn kho khả dụng cho "${product.name}" (${product.sku}): yêu cầu ${qty}, tồn còn hạn ${salableBatchQty}. Nghiêm cấm xuất âm kho (BR-03).`,
+              400,
+            );
+          }
+        } else {
+          assertRule(
+            qty <= availableStock,
+            `Không đủ tồn kho cho "${product.name}" (${product.sku}): yêu cầu ${qty}, tồn khả dụng ${availableStock}. Nghiêm cấm xuất âm kho (BR-03).`,
+            400,
+          );
+        }
 
         const unitPriceSnapshot = Number(product.sale_price);
         const unitCostSnapshot = Number(product.cost_price);
@@ -764,11 +787,34 @@ class SalesService {
           }
         }
 
+        // Lập kế hoạch trừ lô theo nguyên tắc FEFO (hạn sử dụng gần nhất xuất trước)
+        const batchDeductions = [];
+        if (fefoBatches.length > 0) {
+          let remain = qty;
+          for (const b of fefoBatches) {
+            if (remain <= 0) break;
+            const take = Math.min(remain, Number(b.qty_remaining) || 0);
+            if (take > 0) {
+              batchDeductions.push({
+                batchId: b.id,
+                batchCode: b.batch_code,
+                expiryDate: b.expiry_date || '',
+                beforeQty: Number(b.qty_remaining) || 0,
+                takeQty: take,
+                afterQty: (Number(b.qty_remaining) || 0) - take,
+                status: b.status,
+              });
+              remain -= take;
+            }
+          }
+        }
+
         resolvedLines.push({
           product,
           qty,
           oldStock: availableStock,
           newStock: availableStock - qty,
+          batchDeductions,
           lineDiscount,
           unitPriceSnapshot,
           unitCostSnapshot,
@@ -849,20 +895,43 @@ class SalesService {
         })),
       );
 
-      // Bước 5 & 6: Trừ tồn kho & ghi Thẻ kho bất biến (BAN_HANG)
+      // Bước 5 & 6: Trừ tồn kho theo FEFO (mỗi lô 1 dòng Thẻ kho BAN_HANG kèm mã lô)
       for (const l of resolvedLines) {
-        this.repos.products.updateStock(l.product.id, l.newStock);
-        this.repos.stockMovements.append({
-          productId: l.product.id,
-          stockBefore: l.oldStock,
-          delta: -l.qty,
-          stockAfter: l.newStock,
-          docType: 'BAN_HANG',
-          docId: order.id,
-          actorId: actor.id,
-          actorName: actor.full_name,
-          note: `Bán hàng POS · Hóa đơn ${order.id} (${PAYMENT_METHOD_LABELS[paymentMethod]})`,
-        });
+        if (l.batchDeductions && l.batchDeductions.length > 0 && this.repos.batches) {
+          let runningStock = l.oldStock;
+          for (const bd of l.batchDeductions) {
+            const nextStatus = bd.afterQty === 0 ? 'DaHet' : bd.status;
+            this.repos.batches.updateQtyAndStatus(bd.batchId, bd.afterQty, nextStatus);
+            const afterStep = runningStock - bd.takeQty;
+            this.repos.stockMovements.append({
+              productId: l.product.id,
+              stockBefore: runningStock,
+              delta: -bd.takeQty,
+              stockAfter: afterStep,
+              docType: 'BAN_HANG',
+              docId: order.id,
+              batchCode: bd.batchCode,
+              actorId: actor.id,
+              actorName: actor.full_name,
+              note: `Bán hàng POS (FEFO) · HĐ ${order.id} · Lô ${bd.batchCode}${bd.expiryDate ? ` (HSD ${bd.expiryDate})` : ''} (${PAYMENT_METHOD_LABELS[paymentMethod]})`,
+            });
+            runningStock = afterStep;
+          }
+          this.repos.products.updateStock(l.product.id, l.newStock);
+        } else {
+          this.repos.products.updateStock(l.product.id, l.newStock);
+          this.repos.stockMovements.append({
+            productId: l.product.id,
+            stockBefore: l.oldStock,
+            delta: -l.qty,
+            stockAfter: l.newStock,
+            docType: 'BAN_HANG',
+            docId: order.id,
+            actorId: actor.id,
+            actorName: actor.full_name,
+            note: `Bán hàng POS · Hóa đơn ${order.id} (${PAYMENT_METHOD_LABELS[paymentMethod]})`,
+          });
+        }
       }
 
       // Bước 7: Tăng lượt dùng khuyến mãi (nếu có)
@@ -1105,6 +1174,33 @@ class SalesService {
           assertRule(Boolean(product), `Sản phẩm "${item.product_id}" không tồn tại.`, 400);
           const oldStock = Number(product.stock_qty) || 0;
           const newStock = oldStock + qty;
+          let restockBatchCode = '';
+          if (this.repos.batches) {
+            const today = todayYmdVn();
+            const salable = this.repos.batches.findSalableFefo(product.id, today);
+            if (salable.length > 0) {
+              const targetBatch = salable[salable.length - 1];
+              this.repos.batches.updateQtyAndStatus(
+                targetBatch.id,
+                Number(targetBatch.qty_remaining) + qty,
+                targetBatch.status === 'DaHet' ? 'ConHan' : targetBatch.status,
+              );
+              restockBatchCode = targetBatch.batch_code;
+            } else {
+              const defaultExp = new Date(Date.now() + 180 * 86400000).toISOString().slice(0, 10);
+              const createdBatch = this.repos.batches.create({
+                batchCode: `LO-TH-${id}-${product.sku}`,
+                productId: product.id,
+                mfgDate: today,
+                expiryDate: Number(product.has_expiry) === 1 ? defaultExp : '',
+                initialQty: qty,
+                qtyRemaining: qty,
+                unitCost: Number(product.cost_price) || 0,
+                status: 'ConHan',
+              });
+              restockBatchCode = createdBatch.batch_code;
+            }
+          }
           this.repos.products.updateStock(product.id, newStock);
           this.repos.stockMovements.append({
             productId: product.id,
@@ -1113,17 +1209,24 @@ class SalesService {
             stockAfter: newStock,
             docType: 'TRA_HANG',
             docId: id,
+            batchCode: restockBatchCode,
             actorId: actor.id,
             actorName: actor.full_name,
-            note: `Xác nhận trả hàng nguyên vẹn ${id} từ hóa đơn ${order.id}: ${existing.reason}`,
+            note: `Xác nhận trả hàng nguyên vẹn ${id} từ hóa đơn ${order.id}${restockBatchCode ? ` · Lô ${restockBatchCode}` : ''}: ${existing.reason}`,
           });
           restockChanges.push({
             productId: product.id,
             sku: product.sku,
+            batchCode: restockBatchCode,
             oldStock,
             delta: qty,
             newStock,
           });
+        } else {
+          // Hàng lỗi/hư hỏng không nhập lại kho bán được -> cộng vào kho hàng lỗi (damaged_stock_qty)
+          if (typeof this.repos.products.addDamagedStock === 'function') {
+            this.repos.products.addDamagedStock(item.product_id, qty);
+          }
         }
       }
 

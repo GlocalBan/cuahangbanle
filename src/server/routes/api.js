@@ -536,6 +536,80 @@ function createApiRouter(db) {
         }
       }
 
+      // ─── PHASE 2 (CHẶNG 2): BATCHES, NEAR-EXPIRY & WRITE-OFFS ──────────────
+      if (method === 'GET' && pathname === '/api/batches/near-expiry') {
+        authorize(req, 'INVENTORY_VIEW');
+        const result = warehouseService.listNearExpiryBatches({
+          days: urlObj.searchParams.get('days') || '',
+          categoryCode: urlObj.searchParams.get('categoryCode') || '',
+          includeExpired: urlObj.searchParams.get('includeExpired') !== 'false',
+        });
+        return sendJson(res, 200, result);
+      }
+
+      if (method === 'GET' && pathname === '/api/batches') {
+        authorize(req, 'INVENTORY_VIEW');
+        const result = warehouseService.listBatches({
+          productId: urlObj.searchParams.get('productId') || '',
+          categoryCode: urlObj.searchParams.get('categoryCode') || '',
+          search: urlObj.searchParams.get('search') || '',
+          status: urlObj.searchParams.get('status') || '',
+          includeEmpty: urlObj.searchParams.get('includeEmpty') || '',
+        });
+        return sendJson(res, 200, result);
+      }
+
+      if (pathname === '/api/writeoffs') {
+        if (method === 'GET') {
+          authorize(req, 'INVENTORY_VIEW');
+          const result = warehouseService.listWriteOffs({
+            status: urlObj.searchParams.get('status') || '',
+            search: urlObj.searchParams.get('search') || '',
+            fromDate: urlObj.searchParams.get('fromDate') || '',
+            toDate: urlObj.searchParams.get('toDate') || '',
+          });
+          return sendJson(res, 200, result);
+        }
+        if (method === 'POST') {
+          const auth = authorize(req, 'BATCH_MANAGE');
+          const body = await readJsonBody(req);
+          const item = warehouseService.createWriteOff(auth.user, body);
+          return sendJson(res, 201, { item });
+        }
+      }
+
+      const writeoffApproveMatch = /^\/api\/writeoffs\/([^/]+)\/approve$/.exec(pathname);
+      if (method === 'POST' && writeoffApproveMatch) {
+        const auth = authorize(req, 'INVENTORY_APPROVE');
+        const item = warehouseService.approveWriteOff(auth.user, decodeURIComponent(writeoffApproveMatch[1]));
+        return sendJson(res, 200, { item });
+      }
+
+      const writeoffCancelMatch = /^\/api\/writeoffs\/([^/]+)\/cancel$/.exec(pathname);
+      if (method === 'POST' && writeoffCancelMatch) {
+        const auth = authorize(req, 'INVENTORY_APPROVE');
+        const body = await readJsonBody(req);
+        const item = warehouseService.cancelWriteOff(
+          auth.user,
+          decodeURIComponent(writeoffCancelMatch[1]),
+          body.reason || '',
+        );
+        return sendJson(res, 200, { item });
+      }
+
+      const writeoffIdMatch = /^\/api\/writeoffs\/([^/]+)$/.exec(pathname);
+      if (writeoffIdMatch) {
+        const targetId = decodeURIComponent(writeoffIdMatch[1]);
+        if (method === 'GET') {
+          authorize(req, 'INVENTORY_VIEW');
+          return sendJson(res, 200, { item: warehouseService.getWriteOff(targetId) });
+        }
+        if (method === 'DELETE') {
+          authorize(req, 'INVENTORY_APPROVE');
+          throw new ForbiddenException('Không cho phép xóa cứng phiếu hủy hàng. Hãy chuyển trạng thái sang Đã hủy.');
+        }
+      }
+
       // ─── M4: PROMOTIONS (Khuyến mãi — BR-04) ───────────────────────────────
       if (method === 'POST' && pathname === '/api/promotions/validate') {
         authorize(req, 'POS_SELL');

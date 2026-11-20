@@ -297,7 +297,16 @@ class ProductRepository {
              p.unit_code, u.name AS unit_name,
              p.supplier_id, s.name AS supplier_name,
              p.sale_price, p.cost_price, p.stock_qty, p.min_stock,
-             p.image_url, p.status, p.created_at, p.updated_at
+             p.image_url, p.thumb_url,
+             p.has_expiry, p.expiry_warn_days, p.non_returnable,
+             p.case_unit_name, p.units_per_case, p.damaged_stock_qty,
+             (SELECT MIN(b.expiry_date)
+                FROM product_batches b
+               WHERE b.product_id = p.id
+                 AND b.qty_remaining > 0
+                 AND b.status NOT IN ('HetHan', 'DaHuy', 'DaHet')
+                 AND b.expiry_date != '') AS earliest_expiry_date,
+             p.status, p.created_at, p.updated_at
       FROM products p
       JOIN categories c ON c.code = p.category_code
       JOIN units u ON u.code = p.unit_code
@@ -396,14 +405,21 @@ class ProductRepository {
     const nowIso = new Date().toISOString();
     const id = data.id || this.nextId();
     const sku = data.sku || id;
+    const thumbUrl =
+      data.thumb_url ||
+      (String(data.image_url || '').startsWith('assets/images/products/')
+        ? String(data.image_url).replace(/^assets\/images\/products\//, 'assets/images/products/thumbs/')
+        : data.image_url || '');
     this.db
       .prepare(
         `INSERT INTO products (
            id, sku, barcode, name, brand, pack_size,
            category_code, unit_code, supplier_id,
            sale_price, cost_price, stock_qty, min_stock,
-           image_url, status, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           image_url, thumb_url, has_expiry, expiry_warn_days,
+           non_returnable, case_unit_name, units_per_case, damaged_stock_qty,
+           status, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
       )
       .run(
         id,
@@ -420,6 +436,12 @@ class ProductRepository {
         data.stock_qty ?? 0,
         data.min_stock ?? 15,
         data.image_url,
+        thumbUrl,
+        data.has_expiry ?? 1,
+        data.expiry_warn_days ?? 14,
+        data.non_returnable ?? 0,
+        data.case_unit_name || 'Thùng',
+        data.units_per_case ?? 12,
         data.status || 'DangKinhDoanh',
         nowIso,
         nowIso,
@@ -444,6 +466,12 @@ class ProductRepository {
       'cost_price',
       'min_stock',
       'image_url',
+      'thumb_url',
+      'has_expiry',
+      'expiry_warn_days',
+      'non_returnable',
+      'case_unit_name',
+      'units_per_case',
       'status',
     ];
     for (const key of allowed) {
@@ -463,6 +491,14 @@ class ProductRepository {
     this.db
       .prepare('UPDATE products SET stock_qty = ?, updated_at = ? WHERE id = ?')
       .run(newStockQty, nowIso, id);
+    return this.findById(id);
+  }
+
+  addDamagedStock(id, qty) {
+    const nowIso = new Date().toISOString();
+    this.db
+      .prepare('UPDATE products SET damaged_stock_qty = damaged_stock_qty + ?, updated_at = ? WHERE id = ?')
+      .run(Math.max(0, Number(qty) || 0), nowIso, id);
     return this.findById(id);
   }
 
@@ -489,15 +525,26 @@ class StockMovementRepository {
   }
 
   // Strictly append-only (LichSuTonKho is immutable)
-  append({ productId, stockBefore, delta, stockAfter, docType, docId, actorId = null, actorName = 'Hệ thống', note = '' }) {
+  append({
+    productId,
+    stockBefore,
+    delta,
+    stockAfter,
+    docType,
+    docId,
+    batchCode = '',
+    actorId = null,
+    actorName = 'Hệ thống',
+    note = '',
+  }) {
     const id = genId('STK');
     const nowIso = new Date().toISOString();
     this.db
       .prepare(
         `INSERT INTO stock_movements (
            id, product_id, stock_before, delta, stock_after,
-           doc_type, doc_id, actor_id, actor_name, note, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           doc_type, doc_id, batch_code, actor_id, actor_name, note, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -507,6 +554,7 @@ class StockMovementRepository {
         stockAfter,
         docType,
         String(docId || ''),
+        String(batchCode || ''),
         actorId,
         actorName,
         note,
@@ -572,7 +620,7 @@ class StockMovementRepository {
         `SELECT sm.id, sm.product_id, p.sku, p.name AS product_name, p.image_url,
                 u.name AS unit_name,
                 sm.stock_before, sm.delta, sm.stock_after,
-                sm.doc_type, sm.doc_id, sm.actor_id, sm.actor_name, sm.note, sm.created_at
+                sm.doc_type, sm.doc_id, sm.batch_code, sm.actor_id, sm.actor_name, sm.note, sm.created_at
          FROM stock_movements sm
          JOIN products p ON p.id = sm.product_id
          JOIN units u ON u.code = p.unit_code

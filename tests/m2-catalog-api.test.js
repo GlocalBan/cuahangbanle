@@ -51,12 +51,13 @@ async function startTestServer() {
   };
 }
 
-test('M2-01: Seeded 93 real SKU, 6 categories, 14 units, 10 suppliers, real 1-1 product images & opening LichSuTonKho', async () => {
+test('M2-01: Seeded real SKU catalog (>=300), 14 categories (distributed), 18 units, 22 suppliers, real 1-1 images & opening LichSuTonKho', async () => {
+  const { CATALOG_PRODUCTS, CATALOG_CATEGORIES, CATALOG_SUPPLIERS } = require('../src/domain/catalog-data.js');
   const srv = await startTestServer();
   try {
     const managerToken = await srv.loginAs('quanly');
     const [prods, cats, units, sups, imgs, moves] = await Promise.all([
-      srv.reqJson('GET', '/api/products', { token: managerToken }),
+      srv.reqJson('GET', '/api/products?limit=1000', { token: managerToken }),
       srv.reqJson('GET', '/api/categories', { token: managerToken }),
       srv.reqJson('GET', '/api/units', { token: managerToken }),
       srv.reqJson('GET', '/api/suppliers', { token: managerToken }),
@@ -64,28 +65,36 @@ test('M2-01: Seeded 93 real SKU, 6 categories, 14 units, 10 suppliers, real 1-1 
       srv.reqJson('GET', '/api/stock-movements?limit=10', { token: managerToken }),
     ]);
 
+    const expectedCount = CATALOG_PRODUCTS.length;
+    assert.ok(expectedCount >= 300, `Catalog must have >= 300 real SKUs (got ${expectedCount})`);
     assert.equal(prods.status, 200);
-    assert.equal(prods.data.items.length, 93);
+    assert.equal(prods.data.items.length, expectedCount);
     assert.ok(prods.data.summary.lowStockCount >= 3, 'Should detect seeded low-stock SKUs (BR-01)');
-    // Every seeded product must use a real product image, never default.jpg
+
+    const catDist = new Map();
     for (const p of prods.data.items) {
       assert.ok(
         p.imageUrl.startsWith('assets/images/products/') && !p.imageUrl.endsWith('default.jpg'),
         `Invalid placeholder image on ${p.sku}: ${p.imageUrl}`,
       );
       assert.equal(typeof p.costPrice, 'number', 'Manager must see costPrice');
+      catDist.set(p.categoryCode, (catDist.get(p.categoryCode) || 0) + 1);
+    }
+    assert.equal(catDist.size, CATALOG_CATEGORIES.length, 'Every category DM01-DM14 must have seeded SKUs');
+    for (const [code, cnt] of catDist.entries()) {
+      assert.ok(cnt >= 5, `Category ${code} must have at least 5 SKUs (got ${cnt})`);
     }
 
     assert.equal(cats.status, 200);
-    assert.equal(cats.data.items.length, 6);
+    assert.equal(cats.data.items.length, CATALOG_CATEGORIES.length);
     assert.equal(units.status, 200);
-    assert.equal(units.data.items.length, 14);
+    assert.equal(units.data.items.length, 18);
     assert.equal(sups.status, 200);
-    assert.equal(sups.data.items.length, 10);
+    assert.equal(sups.data.items.length, CATALOG_SUPPLIERS.length);
     assert.equal(imgs.status, 200);
-    assert.ok(imgs.data.items.length >= 80);
+    assert.ok(imgs.data.items.length >= 300);
     assert.equal(moves.status, 200);
-    assert.equal(moves.data.total, 93, 'Opening KHOI_TAO_TON ledger should have 93 records');
+    assert.equal(moves.data.total, expectedCount, `Opening KHOI_TAO_TON ledger should have ${expectedCount} records`);
   } finally {
     await srv.close();
   }
@@ -105,9 +114,10 @@ test('M2-02: 401 Unauthorized & 403 Forbidden RBAC matrix + ThuNgan costPrice ma
     const managerToken = await srv.loginAs('quanly');
 
     // ThuNgan: 200 GET /api/products WITHOUT costPrice
-    const cashierProds = await srv.reqJson('GET', '/api/products', { token: cashierToken });
+    const { CATALOG_PRODUCTS } = require('../src/domain/catalog-data.js');
+    const cashierProds = await srv.reqJson('GET', '/api/products?limit=1000', { token: cashierToken });
     assert.equal(cashierProds.status, 200);
-    assert.equal(cashierProds.data.items.length, 93);
+    assert.equal(cashierProds.data.items.length, CATALOG_PRODUCTS.length);
     assert.equal(cashierProds.data.items[0].costPrice, undefined, 'API must strip costPrice for ThuNgan');
     assert.equal(cashierProds.data.summary.totalInventoryValue, undefined, 'API must strip inventory value for ThuNgan');
 
@@ -357,15 +367,16 @@ test('M2-05: Category, Unit & Supplier CRUD + Soft-Delete + referential hard-del
     // Category create + soft-delete + hard-delete block on used DM01
     const cat = await srv.reqJson('POST', '/api/categories', {
       token: managerToken,
-      body: { name: 'Hàng đông lạnh', description: 'Kem, thịt cá đông lạnh' },
+      body: { name: 'Hàng hữu cơ nhập khẩu', description: 'Rau củ hữu cơ, thực phẩm nhập khẩu' },
     });
     assert.equal(cat.status, 201);
-    assert.equal(cat.data.item.code, 'DM07');
+    const createdCatCode = cat.data.item.code;
+    assert.match(createdCatCode, /^DM\d+$/);
 
     const catDelUsed = await srv.reqJson('DELETE', '/api/categories/DM01', { token: managerToken });
     assert.equal(catDelUsed.status, 409);
 
-    const catStop = await srv.reqJson('PATCH', '/api/categories/DM07/status', {
+    const catStop = await srv.reqJson('PATCH', `/api/categories/${createdCatCode}/status`, {
       token: managerToken,
       body: { status: 'NgungSuDung' },
     });
@@ -375,10 +386,10 @@ test('M2-05: Category, Unit & Supplier CRUD + Soft-Delete + referential hard-del
     // Unit create + soft-delete
     const unit = await srv.reqJson('POST', '/api/units', {
       token: managerToken,
-      body: { name: 'thùng' },
+      body: { name: 'khay' },
     });
     assert.equal(unit.status, 201);
-    assert.equal(unit.data.item.code, 'DVT15');
+    assert.match(unit.data.item.code, /^DVT\d+$/);
 
     // Supplier create + update + soft-delete + hard-delete block on NCC001
     const sup = await srv.reqJson('POST', '/api/suppliers', {
@@ -391,9 +402,10 @@ test('M2-05: Category, Unit & Supplier CRUD + Soft-Delete + referential hard-del
       },
     });
     assert.equal(sup.status, 201);
-    assert.equal(sup.data.item.id, 'NCC011');
+    const createdSupId = sup.data.item.id;
+    assert.match(createdSupId, /^NCC\d+$/);
 
-    const supStop = await srv.reqJson('PATCH', '/api/suppliers/NCC011/status', {
+    const supStop = await srv.reqJson('PATCH', `/api/suppliers/${createdSupId}/status`, {
       token: managerToken,
       body: { status: 'NgungHopTac' },
     });
@@ -444,14 +456,18 @@ test('M2-06: DB-level SQLite triggers enforce append-only immutability on stock_
   }
 });
 
-test('M2-07: Product image integrity & strict 93/93 1-1 uniqueness audit (no missing files, no default.jpg, 0 duplicates)', async () => {
+test('M2-07: Product image integrity & strict 1-1 uniqueness audit (>=300 SKUs, thumbnails, 0 duplicates)', async () => {
   const crypto = require('node:crypto');
+  const { CATALOG_PRODUCTS } = require('../src/domain/catalog-data.js');
   const srv = await startTestServer();
   try {
     const imgDir = path.resolve(__dirname, '../assets/images/products');
+    const thumbDir = path.join(imgDir, 'thumbs');
     const diskFiles = new Set(fs.readdirSync(imgDir).filter((f) => /\.(jpg|jpeg|png|webp)$/i.test(f)));
+    const thumbFiles = new Set(fs.existsSync(thumbDir) ? fs.readdirSync(thumbDir).filter((f) => /\.(jpg|jpeg|png|webp)$/i.test(f)) : []);
     const rows = srv.db.prepare('SELECT id, sku, name, image_url FROM products ORDER BY id').all();
-    assert.equal(rows.length, 93);
+    assert.equal(rows.length, CATALOG_PRODUCTS.length);
+    assert.ok(rows.length >= 300);
 
     const byImage = new Map();
     const byMd5 = new Map();
@@ -462,6 +478,7 @@ test('M2-07: Product image integrity & strict 93/93 1-1 uniqueness audit (no mis
       );
       const fileName = row.image_url.replace(/^assets\/images\/products\//, '');
       assert.ok(diskFiles.has(fileName), `Missing image file on disk for ${row.sku}: ${fileName}`);
+      assert.ok(thumbFiles.has(fileName), `Missing 240x240 thumbnail for ${row.sku}: ${fileName}`);
       if (!byImage.has(fileName)) byImage.set(fileName, []);
       byImage.get(fileName).push(row.sku);
 
@@ -474,8 +491,8 @@ test('M2-07: Product image integrity & strict 93/93 1-1 uniqueness audit (no mis
     const duplicateMd5Groups = [...byMd5.entries()].filter(([, skus]) => skus.length > 1);
     assert.equal(duplicateGroups.length, 0, `Phát hiện sản phẩm dùng chung đường dẫn ảnh: ${JSON.stringify(duplicateGroups)}`);
     assert.equal(duplicateMd5Groups.length, 0, `Phát hiện ảnh trùng MD5: ${JSON.stringify(duplicateMd5Groups)}`);
-    assert.equal(byImage.size, 93);
-    assert.equal(byMd5.size, 93);
+    assert.equal(byImage.size, rows.length);
+    assert.equal(byMd5.size, rows.length);
   } finally {
     await srv.close();
   }

@@ -325,6 +325,13 @@ const {
   ReturnRepository,
 } = require('./salesRepositories.js');
 const { ReportRepository } = require('./reportRepository.js');
+const {
+  BatchRepository,
+  WriteOffRepository,
+  VoucherRepository,
+  CashierShiftRepository,
+  SupplierOpsRepository,
+} = require('./retailOpsRepositories.js');
 
 function createRepositories(db) {
   return {
@@ -345,6 +352,11 @@ function createRepositories(db) {
     orders: new OrderRepository(db),
     returns: new ReturnRepository(db),
     reports: new ReportRepository(db),
+    batches: new BatchRepository(db),
+    writeoffs: new WriteOffRepository(db),
+    vouchers: new VoucherRepository(db),
+    shifts: new CashierShiftRepository(db),
+    supplierOps: new SupplierOpsRepository(db),
   };
 }
 
@@ -366,5 +378,10 @@ module.exports = {
   OrderRepository,
   ReturnRepository,
   ReportRepository,
+  BatchRepository,
+  WriteOffRepository,
+  VoucherRepository,
+  CashierShiftRepository,
+  SupplierOpsRepository,
   createRepositories,
 };

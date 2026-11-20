@@ -89,6 +89,7 @@ function addSuggestedPurchase(productId) {
   if ($('#purchase-product')) $('#purchase-product').value = productId;
   if ($('#purchase-qty')) $('#purchase-qty').value = qty;
   if ($('#purchase-price')) $('#purchase-price').value = unitCost;
+  const defaultExp = $('#purchase-expiry')?.value || new Date(Date.now() + 180 * 86400000).toISOString().slice(0, 10);
   purchaseLines.push({
     productId,
     sku: item.sku || productId,
@@ -96,6 +97,10 @@ function addSuggestedPurchase(productId) {
     unitName: item.unitName || '',
     qty,
     unitCost,
+    batchCode: '',
+    mfgDate: $('#purchase-mfg')?.value || new Date().toISOString().slice(0, 10),
+    expiryDate: item.hasExpiry === false ? '' : defaultExp,
+    hasExpiry: item.hasExpiry !== false,
   });
   renderPurchaseLines();
 }

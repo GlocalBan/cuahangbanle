@@ -832,6 +832,29 @@ class ReportService {
       createdAt: o.created_at,
     }));
 
+    const writeoffAgg = this.repos.writeoffs
+      ? this.repos.writeoffs.sumApprovedLoss({ fromDate: rangeFrom, toDate: rangeTo })
+      : { docCount: 0, totalQty: 0, totalValue: 0 };
+    const warnRow = this.repos.thamSo?.findByCode?.('SoNgayCanhBaoCanDate');
+    const warnDays = warnRow ? Math.max(1, Number(warnRow.gia_tri) || 14) : 14;
+    const nearRows = this.repos.batches
+      ? this.repos.batches.findNearExpiryAndExpired({ maxDays: warnDays, includeExpired: true, refDate: today })
+      : [];
+    const expiredBatchCount = nearRows.filter((b) => b.expiry_date && b.expiry_date <= today).length;
+    const nearExpiryBatchCount = nearRows.length - expiredBatchCount;
+    const atRiskCostValue = nearRows.reduce(
+      (s, b) => s + (Number(b.qty_remaining) || 0) * (Number(b.unit_cost) || 0),
+      0,
+    );
+
+    const periodSummary = {
+      ...period.summary,
+      writeoffLoss: writeoffAgg.totalValue,
+      writeoffQty: writeoffAgg.totalQty,
+      writeoffCount: writeoffAgg.docCount,
+      netProfitAfterShrinkage: (period.summary.grossProfit || 0) - writeoffAgg.totalValue,
+    };
+
     return {
       period: {
         days: safeDays,
@@ -840,10 +863,17 @@ class ReportService {
         today,
       },
       today: todayMetrics.summary,
-      summary: period.summary,
+      summary: periodSummary,
       series: period.series,
       paymentBreakdown: period.paymentBreakdown,
       topCategories: period.categoryBreakdown.slice(0, 5),
+      nearExpirySummary: {
+        warnDays,
+        expiredBatchCount,
+        nearExpiryBatchCount,
+        totalRiskBatches: nearRows.length,
+        atRiskCostValue,
+      },
       queues: {
         draftPurchases: queues.draftPurchases,
         pendingAudits: queues.pendingAudits,
@@ -851,8 +881,14 @@ class ReportService {
         activeProducts: queues.activeProducts,
         lowStockCount: queues.lowStockCount,
         outOfStockCount: queues.outOfStockCount,
+        expiredBatchCount,
+        nearExpiryBatchCount,
         totalAttentionCount:
-          queues.lowStockCount + queues.draftPurchases + queues.pendingAudits + queues.pendingReturns,
+          queues.lowStockCount +
+          queues.draftPurchases +
+          queues.pendingAudits +
+          queues.pendingReturns +
+          expiredBatchCount,
         lowStockProducts: queues.lowStockProducts.map((p) => ({
           id: p.id,
           sku: p.sku,
@@ -897,6 +933,16 @@ class ReportService {
     });
 
     const storeConfig = this.systemService ? this.systemService.getPublicStoreConfig() : null;
+    const writeoffAgg = this.repos.writeoffs
+      ? this.repos.writeoffs.sumApprovedLoss({ fromDate: cleanFrom, toDate: cleanTo })
+      : { docCount: 0, totalQty: 0, totalValue: 0 };
+    const summaryWithShrinkage = {
+      ...metrics.summary,
+      writeoffLoss: writeoffAgg.totalValue,
+      writeoffQty: writeoffAgg.totalQty,
+      writeoffCount: writeoffAgg.docCount,
+      netProfitAfterShrinkage: (metrics.summary.grossProfit || 0) - writeoffAgg.totalValue,
+    };
 
     return {
       filters: {
@@ -907,6 +953,7 @@ class ReportService {
       },
       store: storeConfig,
       ...metrics,
+      summary: summaryWithShrinkage,
       topProducts: metrics.topProducts.slice(0, 15),
     };
   }

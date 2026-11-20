@@ -126,6 +126,7 @@ async function purchaseModal(prefillProductId = '', editPurchaseId = '') {
     throw new Error('Sản phẩm hoặc nhà cung cấp đã ngừng hoạt động, không thể nhập hàng (BR-02).');
   }
 
+  const defaultExp = new Date(Date.now() + 180 * 86400000).toISOString().slice(0, 10);
   const initialSupplierId = editingPo?.supplierId || prefillProd?.supplierId || activeSuppliers[0].id;
   purchaseLines = editingPo
     ? (editingPo.items || []).map((i) => ({
@@ -135,6 +136,10 @@ async function purchaseModal(prefillProductId = '', editPurchaseId = '') {
         unitName: i.unitName,
         qty: i.qty,
         unitCost: i.unitCost,
+        batchCode: i.batchCode || '',
+        mfgDate: i.mfgDate || '',
+        expiryDate: i.expiryDate || defaultExp,
+        hasExpiry: i.hasExpiry !== false,
       }))
     : [];
 
@@ -144,7 +149,7 @@ async function purchaseModal(prefillProductId = '', editPurchaseId = '') {
     `<form id="purchase-api-form">
       <div class="modal-content stack">
         <div class="note">
-          Phiếu nhập được lưu ở trạng thái <strong>Nháp (Draft)</strong> — chưa cộng tồn kho cho đến khi Quản lý/Admin duyệt <strong>Xác nhận nhập kho (Confirmed)</strong>.
+          Phiếu nhập được lưu ở trạng thái <strong>Nháp (Draft)</strong> — chưa cộng tồn kho cho đến khi Quản lý/Admin duyệt <strong>Xác nhận nhập kho (Confirmed)</strong>. Sản phẩm có quản lý HSD bắt buộc nhập <strong>Hạn sử dụng (*)</strong> lớn hơn ngày hiện tại để xuất bán FEFO.
         </div>
         ${selectField(
           'Nhà cung cấp đang hoạt động (*)',
@@ -158,6 +163,9 @@ async function purchaseModal(prefillProductId = '', editPurchaseId = '') {
           ${selectField('Sản phẩm thuộc NCC (*)', 'productId', [], '', 'id="purchase-product"', true)}
           ${field('Số lượng nhập (*)', 'qty', 10, 'number', 'id="purchase-qty" min="1" step="1"')}
           ${field('Đơn giá nhập (₫) (*)', 'unitCost', 0, 'number', 'id="purchase-price" min="0" step="100"')}
+          ${field('Hạn sử dụng (*)', 'expiryDate', defaultExp, 'date', 'id="purchase-expiry"')}
+          ${field('Ngày sản xuất', 'mfgDate', new Date().toISOString().slice(0, 10), 'date', 'id="purchase-mfg"')}
+          ${field('Mã lô (tự sinh nếu trống)', 'batchCode', '', 'text', 'id="purchase-batch" placeholder="VD: LO-2026-01"')}
         </div>
         <div>
           ${action('purchase-line-add', 'Thêm vào phiếu', 'plus', 'small')}
@@ -212,13 +220,15 @@ function renderPurchaseLines() {
   const totalAmount = purchaseLines.reduce((sum, i) => sum + i.qty * i.unitCost, 0);
   host.innerHTML =
     table(
-      ['Mã SKU', 'Mặt hàng', 'SL nhập (*)', 'Đơn giá nhập (₫) (*)', 'Thành tiền', ''],
+      ['Mã SKU', 'Mặt hàng', 'SL (*)', 'Đơn giá (₫) (*)', 'Hạn sử dụng (*)', 'Mã lô', 'Thành tiền', ''],
       purchaseLines.map(
         (i, index) => `<tr>
           <td><code>${e(i.sku)}</code></td>
           <td class="name">${e(i.name)}</td>
           <td><input class="purchase-line-input" type="number" min="1" step="1" required value="${i.qty}" data-purchase-field="qty" data-index="${index}" aria-label="Số lượng nhập ${e(i.name)}"></td>
           <td><input class="purchase-line-input purchase-line-price" type="number" min="0" step="100" required value="${i.unitCost}" data-purchase-field="unitCost" data-index="${index}" aria-label="Đơn giá nhập ${e(i.name)}"></td>
+          <td><input type="date" ${i.hasExpiry !== false ? 'required' : ''} value="${e(i.expiryDate || '')}" data-purchase-field="expiryDate" data-index="${index}" aria-label="Hạn sử dụng ${e(i.name)}"></td>
+          <td><input type="text" style="width:110px" value="${e(i.batchCode || '')}" data-purchase-field="batchCode" data-index="${index}" placeholder="Tự sinh" aria-label="Mã lô ${e(i.name)}"></td>
           <td class="money">${money(i.qty * i.unitCost)}</td>
           <td>${ib('purchase-line-delete', 'trash', 'Xóa dòng hàng', `data-index="${index}"`)}</td>
         </tr>`,
@@ -249,7 +259,7 @@ async function purchaseDetail(purchaseId) {
         }</strong></div>
       </div>
       ${table(
-        ['Sản phẩm', 'Mã SKU', 'ĐVT', 'SL nhập', 'Đơn giá nhập', 'Thành tiền'],
+        ['Sản phẩm', 'Mã SKU', 'ĐVT', 'SL nhập', 'Đơn giá nhập', 'Lô / HSD', 'Thành tiền'],
         (po.items || []).map(
           (i) => `<tr>
             <td class="name">
@@ -262,6 +272,7 @@ async function purchaseDetail(purchaseId) {
             <td>${e(i.unitName)}</td>
             <td class="right"><strong>${number(i.qty)}</strong></td>
             <td class="money">${money(i.unitCost)}</td>
+            <td>${i.batchCode ? `<code>${e(i.batchCode)}</code><br>` : ''}<small>${i.expiryDate ? `HSD: ${dateOnly(i.expiryDate)}` : 'Không hạn'}</small></td>
             <td class="money"><strong>${money(i.lineTotal)}</strong></td>
           </tr>`,
         ),

@@ -66,8 +66,10 @@ function buildPrintableReportHTML(sales, inv) {
             : ''
         }
         <tr style="background:#ecfdf5;font-weight:700"><td style="padding:6px;border:1px solid #cbd5e1">5. Lợi nhuận gộp (trước VAT) = 3 − 4 · Biên LN ${s.grossMarginPct ?? 0}%</td><td style="padding:6px;border:1px solid #cbd5e1;text-align:right">${money(s.grossProfit || 0)}</td></tr>
-        <tr><td style="padding:6px;border:1px solid #cbd5e1">6. Thuế VAT đầu ra ròng (VAT gộp ${money(s.grossTax || 0)} − VAT hoàn trả ${money(s.refundTax || 0)})</td><td style="padding:6px;border:1px solid #cbd5e1;text-align:right">${money(s.netTax || 0)}</td></tr>
-        <tr style="background:#f8fafc;font-weight:700"><td style="padding:6px;border:1px solid #cbd5e1">7. Tổng thu ròng khách hàng (gồm VAT) = 3 + 6</td><td style="padding:6px;border:1px solid #cbd5e1;text-align:right">${money(s.netCollected || 0)}</td></tr>
+        <tr><td style="padding:6px;border:1px solid #cbd5e1">6. Hao hụt hủy hàng hết hạn / hư hỏng (${number(s.writeoffCount || 0)} phiếu · ${number(s.writeoffQty || 0)} đv)</td><td style="padding:6px;border:1px solid #cbd5e1;text-align:right">−${money(s.writeoffLoss || 0)}</td></tr>
+        <tr style="background:#ecfdf5;font-weight:700"><td style="padding:6px;border:1px solid #cbd5e1">7. Lợi nhuận gộp sau hao hụt hủy hàng = 5 − 6</td><td style="padding:6px;border:1px solid #cbd5e1;text-align:right">${money(s.netProfitAfterShrinkage ?? s.grossProfit ?? 0)}</td></tr>
+        <tr><td style="padding:6px;border:1px solid #cbd5e1">8. Thuế VAT đầu ra ròng (VAT gộp ${money(s.grossTax || 0)} − VAT hoàn trả ${money(s.refundTax || 0)})</td><td style="padding:6px;border:1px solid #cbd5e1;text-align:right">${money(s.netTax || 0)}</td></tr>
+        <tr style="background:#f8fafc;font-weight:700"><td style="padding:6px;border:1px solid #cbd5e1">9. Tổng thu ròng khách hàng (gồm VAT) = 3 + 8</td><td style="padding:6px;border:1px solid #cbd5e1;text-align:right">${money(s.netCollected || 0)}</td></tr>
       </tbody>
     </table>
 
@@ -349,14 +351,24 @@ function reportsView() {
               <td><strong>grossProfit = Doanh thu thuần trước VAT − Giá vốn hàng bán (3 − 4) · Biên LN gộp: ${s.grossMarginPct ?? 0}%</strong></td>
               <td class="money right"><strong class="${s.grossProfit >= 0 ? 'positive' : 'negative'}">${money(s.grossProfit || 0)}</strong></td>
             </tr>
+            <tr style="background:#fff7ed">
+              <td class="name">6. Hao hụt hủy hàng hết hạn / hư hỏng (<code>HUY_HANG</code>)</td>
+              <td>Tổng giá trị vốn của ${number(s.writeoffCount || 0)} phiếu xuất hủy <code>DaDuyet</code> trong kỳ (${number(s.writeoffQty || 0)} đv)</td>
+              <td class="money right negative">−${money(s.writeoffLoss || 0)}</td>
+            </tr>
+            <tr style="background:#ecfdf5">
+              <td class="name"><strong>7. LỢI NHUẬN GỘP SAU HAO HỤT HỦY HÀNG</strong></td>
+              <td><strong>netProfitAfterShrinkage = Lợi nhuận gộp − Hao hụt hủy hàng (5 − 6)</strong></td>
+              <td class="money right"><strong class="${(s.netProfitAfterShrinkage ?? s.grossProfit ?? 0) >= 0 ? 'positive' : 'negative'}">${money(s.netProfitAfterShrinkage ?? s.grossProfit ?? 0)}</strong></td>
+            </tr>
             <tr>
-              <td class="name">6. Thuế VAT đầu ra ròng (Net Output VAT)</td>
+              <td class="name">8. Thuế VAT đầu ra ròng (Net Output VAT)</td>
               <td>VAT hóa đơn ${money(s.grossTax || 0)} trừ VAT hoàn trả ${money(s.refundTax || 0)} (hạch toán riêng, không cộng vào Lợi nhuận gộp)</td>
               <td class="money right">${money(s.netTax || 0)}</td>
             </tr>
             <tr style="background:#f1f5f9">
-              <td class="name"><strong>7. TỔNG THU RÒNG KHÁCH HÀNG (Gồm VAT)</strong></td>
-              <td><strong>netCollected = Thu gộp ${money(s.grossCollected || 0)} − Hoàn khách ${money(s.refundTotal || 0)} (bằng mục 3 + mục 6)</strong></td>
+              <td class="name"><strong>9. TỔNG THU RÒNG KHÁCH HÀNG (Gồm VAT)</strong></td>
+              <td><strong>netCollected = Thu gộp ${money(s.grossCollected || 0)} − Hoàn khách ${money(s.refundTotal || 0)} (bằng mục 3 + mục 8)</strong></td>
               <td class="money right"><strong>${money(s.netCollected || 0)}</strong></td>
             </tr>
           </tbody>

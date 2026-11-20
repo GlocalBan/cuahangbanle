@@ -18,6 +18,8 @@ const DOC_TYPE_LABELS = {
   BAN_HANG: 'Xuất bán hàng (POS)',
   TRA_HANG: 'Nhập lại hàng trả',
   KIEM_KE: 'Điều chỉnh kiểm kê',
+  HUY_HANG: 'Hủy hàng hết hạn / hư hỏng',
+  TRA_NCC: 'Xuất trả hàng nhà cung cấp',
 };
 
 function parseNonNegativeInt(value, label) {
@@ -99,6 +101,18 @@ function toProductDto(row, { canViewCost = false } = {}) {
     isLowStock: row.status === 'DangKinhDoanh' && row.stock_qty <= row.min_stock,
     isOutOfStock: row.status === 'DangKinhDoanh' && row.stock_qty === 0,
     imageUrl: row.image_url,
+    thumbUrl:
+      row.thumb_url ||
+      (String(row.image_url || '').startsWith('assets/images/products/')
+        ? String(row.image_url).replace(/^assets\/images\/products\//, 'assets/images/products/thumbs/')
+        : row.image_url),
+    hasExpiry: row.has_expiry === undefined ? true : Boolean(row.has_expiry),
+    expiryWarnDays: Number(row.expiry_warn_days ?? 14),
+    nonReturnable: Boolean(row.non_returnable),
+    caseUnitName: row.case_unit_name || 'Thùng',
+    unitsPerCase: Number(row.units_per_case ?? 12),
+    damagedStockQty: Number(row.damaged_stock_qty ?? 0),
+    earliestExpiryDate: row.earliest_expiry_date || '',
     status: row.status,
     active: row.status === 'DangKinhDoanh',
     createdAt: row.created_at,
@@ -168,6 +182,7 @@ function toMovementDto(row) {
     docType: row.doc_type,
     docTypeLabel: DOC_TYPE_LABELS[row.doc_type] || row.doc_type,
     docId: row.doc_id,
+    batchCode: row.batch_code || '',
     actorId: row.actor_id,
     actorName: row.actor_name,
     note: row.note || '',
@@ -323,6 +338,21 @@ class CatalogService {
       });
 
       if (stockQty > 0) {
+        let initialBatchCode = '';
+        if (this.repos.batches) {
+          const defaultExp = new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10);
+          const batch = this.repos.batches.create({
+            batchCode: `LO-DK-${prod.sku}`,
+            productId: prod.id,
+            mfgDate: new Date().toISOString().slice(0, 10),
+            expiryDate: String(input?.expiryDate || defaultExp).trim(),
+            initialQty: stockQty,
+            qtyRemaining: stockQty,
+            unitCost: costPrice,
+            status: 'ConHan',
+          });
+          initialBatchCode = batch.batch_code;
+        }
         this.repos.stockMovements.append({
           productId: prod.id,
           stockBefore: 0,
@@ -330,6 +360,7 @@ class CatalogService {
           stockAfter: stockQty,
           docType: 'KHOI_TAO_TON',
           docId: `INIT-${prod.sku}`,
+          batchCode: initialBatchCode,
           actorId: actor.id,
           actorName: actor.full_name,
           note: `Khởi tạo tồn kho ban đầu khi tạo sản phẩm ${prod.name}`,

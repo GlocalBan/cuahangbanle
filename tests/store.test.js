@@ -200,7 +200,7 @@ test('duplicate barcodes are rejected and one active administrator is retained',
 test('branch proposals require active supplier coverage', () => {
   const { s } = fixture();
   assert.throws(
-    () => s.createBranch({ name: 'CN mới', address: '123 ABC', area: 'Hà Nội' }),
+    () => s.createBranch({ name: 'CN mới', address: '123 ABC', area: 'Điện Biên' }),
     /Chưa có nhà cung cấp/,
   );
   const b = s.createBranch({ name: 'CN mới', address: '123 ABC', area: 'TP. HCM' });

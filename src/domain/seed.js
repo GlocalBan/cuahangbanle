@@ -70,12 +70,16 @@
     }));
 
     const products = (catalogData.CATALOG_PRODUCTS || []).map((item, i) => {
-      const expiryOffset = Number(item.expiryOffsetDays ?? 180);
+      const rawOffset = Number(item.expiryOffsetDays ?? 180);
+      const expiryOffset = item.hasExpiry === 0 ? Math.max(365, rawOffset) : rawOffset;
       const shelfLife = Number(item.shelfLifeDays ?? Math.max(180, expiryOffset + 60));
-      const expiryDate = item.hasExpiry === 0 ? '' : dateOffset(expiryOffset);
-      const mfgDate = item.hasExpiry === 0 ? '' : dateOffset(expiryOffset - shelfLife);
+      const expiryDate = dateOffset(expiryOffset);
+      const mfgDate = dateOffset(expiryOffset - shelfLife);
       const nearDays = Number(item.expiryWarnDays || 14);
       const isNear = item.hasExpiry !== 0 && expiryOffset > 0 && expiryOffset <= 30;
+      const minStock = item.minStock ?? 15;
+      const rawStock = Number(item.stock ?? 80);
+      const stock = rawStock > minStock && rawStock < 50 ? 50 + (i % 60) : rawStock;
       const batchCode = `LO-${SEED_BASE_DATE.slice(0, 7).replace('-', '')}-${String(i + 1).padStart(3, '0')}`;
       const batches = [
         {
@@ -85,8 +89,8 @@
           mfgDate,
           expiryDate,
           costPrice: item.cost,
-          initialQty: item.stock,
-          remainingQty: item.stock,
+          initialQty: stock,
+          remainingQty: stock,
           status: item.hasExpiry !== 0 && expiryOffset <= 0 ? 'expired_quarantined' : 'active',
           receivedAt: SEED_BASE_DATE,
           supplierId: item.supplierId,
@@ -110,11 +114,11 @@
         price: item.price,
         cost: item.cost,
         costPrice: item.cost,
-        stock: item.stock,
+        stock,
         damagedStock: 0,
         icon: CATEGORY_ICON[item.categoryCode] || '📦',
         supplierId: item.supplierId,
-        minStock: item.minStock ?? 15,
+        minStock,
         vatRate: item.categoryCode === 'DM01' || item.categoryCode === 'DM04' ? 5 : 10,
         hasExpiry: item.hasExpiry ?? 1,
         expiryWarnDays: nearDays,
@@ -148,7 +152,7 @@
     ].map((c) => ({ ...c, active: true, createdAt: now() }));
 
     const state = {
-      schema: 2,
+      schema: 1,
       revision: 0,
       settings: {
         name: 'RetailFlow — Chi nhánh chính',

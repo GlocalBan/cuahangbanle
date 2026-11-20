@@ -85,9 +85,10 @@ class PurchaseRepository {
     const items = this.db
       .prepare(
         `SELECT pi.id, pi.purchase_id, pi.product_id, pi.qty, pi.unit_cost,
+                pi.batch_code, pi.mfg_date, pi.expiry_date,
                 pr.sku, pr.name AS product_name, pr.image_url,
                 pr.stock_qty AS current_stock_qty, pr.cost_price AS current_cost_price,
-                pr.status AS product_status,
+                pr.status AS product_status, pr.has_expiry,
                 u.name AS unit_name
          FROM purchase_items pi
          JOIN products pr ON pr.id = pi.product_id
@@ -111,11 +112,19 @@ class PurchaseRepository {
       .run(id, header.supplier_id, header.created_by, header.total_amount, header.note || '', nowIso);
 
     const insertItem = this.db.prepare(
-      `INSERT INTO purchase_items (purchase_id, product_id, qty, unit_cost)
-       VALUES (?, ?, ?, ?)`,
+      `INSERT INTO purchase_items (purchase_id, product_id, qty, unit_cost, batch_code, mfg_date, expiry_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const item of items) {
-      insertItem.run(id, item.product_id, item.qty, item.unit_cost);
+      insertItem.run(
+        id,
+        item.product_id,
+        item.qty,
+        item.unit_cost,
+        item.batch_code || '',
+        item.mfg_date || '',
+        item.expiry_date || '',
+      );
     }
     return this.findById(id);
   }
@@ -131,11 +140,19 @@ class PurchaseRepository {
 
     this.db.prepare('DELETE FROM purchase_items WHERE purchase_id = ?').run(id);
     const insertItem = this.db.prepare(
-      `INSERT INTO purchase_items (purchase_id, product_id, qty, unit_cost)
-       VALUES (?, ?, ?, ?)`,
+      `INSERT INTO purchase_items (purchase_id, product_id, qty, unit_cost, batch_code, mfg_date, expiry_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const item of items) {
-      insertItem.run(id, item.product_id, item.qty, item.unit_cost);
+      insertItem.run(
+        id,
+        item.product_id,
+        item.qty,
+        item.unit_cost,
+        item.batch_code || '',
+        item.mfg_date || '',
+        item.expiry_date || '',
+      );
     }
     return this.findById(id);
   }

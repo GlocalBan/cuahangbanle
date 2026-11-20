@@ -166,8 +166,16 @@ const empty = (
 const badge = (label, color = 'green') =>
   `<span class="badge ${color}"><i class="dot"></i>${label}</span>`;
 const productImage = (p, cls = 'product-thumb-img', attrs = '') => {
-  const src = p && p.imageUrl ? e(p.imageUrl) : 'assets/images/products/default.jpg';
-  return `<img class="${cls}" src="${src}" alt="${e((p && p.name) || 'Sản phẩm')}" loading="lazy" onerror="this.onerror=null;this.src='assets/images/products/default.jpg'" ${attrs} />`;
+  const fullSrc = p && p.imageUrl ? String(p.imageUrl) : 'assets/images/products/default.jpg';
+  const useThumb =
+    cls !== 'product-modal-img' &&
+    fullSrc.startsWith('assets/images/products/') &&
+    !fullSrc.includes('/thumbs/') &&
+    !fullSrc.endsWith('/default.jpg');
+  const src = useThumb
+    ? (p && p.thumbUrl) || fullSrc.replace(/^assets\/images\/products\//, 'assets/images/products/thumbs/')
+    : fullSrc;
+  return `<img class="${cls}" src="${e(src)}" alt="${e((p && p.name) || 'Sản phẩm')}" loading="lazy" decoding="async" onerror="this.onerror=null;this.src='${e(fullSrc)}'" ${attrs} />`;
 };
 const expiryBadge = (expiryDate, compact = false) => {
   const info = getExpiryInfo ? getExpiryInfo(expiryDate) : { status: 'valid', label: 'Còn hạn', color: 'green' };
@@ -179,7 +187,6 @@ const expiryBadge = (expiryDate, compact = false) => {
 };
 const statusLabels = {
   completed: ['Đã thanh toán', 'green'],
-  partial: ['Đã trả một phần', 'yellow'],
   refunded: ['Đã hoàn trả', 'red'],
   cancelled: ['Đã hủy', 'gray'],
   pending: ['Chờ xác nhận', 'yellow'],
@@ -192,11 +199,25 @@ const statusLabels = {
   received: ['Đã nhập kho', 'green'],
   active: ['Đang hoạt động', 'green'],
   Draft: ['Phiếu nháp', 'yellow'],
+  GuiNCC: ['Đã gửi NCC', 'blue'],
+  NCCPhanHoi: ['NCC phản hồi', 'yellow'],
+  ThuongLuong: ['Đang thương lượng', 'yellow'],
+  DaThongNhat: ['Đã thống nhất', 'teal'],
+  DangNhanHang: ['Đang nhận hàng (GRN)', 'blue'],
   Confirmed: ['Đã nhập kho', 'green'],
   Cancelled: ['Đã hủy', 'red'],
+  DangDem: ['Đang đếm mù', 'blue'],
+  ChoDemLai: ['Cần đếm lại (Vòng 2)', 'yellow'],
   ChoDuyet: ['Chờ duyệt', 'yellow'],
   DaDuyet: ['Đã duyệt', 'green'],
   DaHuy: ['Đã hủy', 'red'],
+  ConHan: ['Còn hạn', 'green'],
+  CanDate: ['Cận date', 'yellow'],
+  HetHan: ['Hết hạn', 'red'],
+  DaHet: ['Đã xuất hết', 'gray'],
+  ChuaThanhToan: ['Chưa thanh toán', 'red'],
+  ThanhToanMotPhan: ['Thanh toán một phần', 'yellow'],
+  DaThanhToanNCC: ['Đã thanh toán NCC', 'green'],
   SapDienRa: ['Sắp diễn ra', 'blue'],
   DangDienRa: ['Đang diễn ra', 'green'],
   TamDung: ['Tạm dừng', 'yellow'],
