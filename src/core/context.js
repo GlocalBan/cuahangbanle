@@ -223,7 +223,7 @@ const statusLabels = {
   TamDung: ['Tạm dừng', 'yellow'],
   KetThuc: ['Đã kết thúc', 'gray'],
   DaThanhToan: ['Đã thanh toán', 'green'],
-  TraMotPhan: ['Trả một phần', 'yellow'],
+  TraMotPhan: ['Có hàng hoàn trả', 'yellow'],
   DaHoanTra: ['Đã hoàn trả', 'red'],
   DaXacNhan: ['Đã xác nhận', 'green'],
   TuChoi: ['Đã từ chối', 'red'],

@@ -56,7 +56,7 @@ function ordersView() {
     stats([
       ['Tổng hóa đơn', number(summary.total || 0), 'Đồng bộ từ CSDL SQLite', 'receipt'],
       ['Đã thanh toán', number(summary.paidCount || 0), 'Hoàn tất, chưa phát sinh trả hàng', 'check'],
-      ['Có hoàn trả', number(summary.returnedCount || 0), 'Trả một phần hoặc hoàn trả toàn bộ', 'return'],
+      ['Có hoàn trả', number(summary.returnedCount || 0), 'Có hàng hoàn trả hoặc hoàn trả toàn bộ', 'return'],
       [
         'Doanh thu ròng (BR-08)',
         money(summary.netRevenue || 0),
@@ -76,7 +76,7 @@ function ordersView() {
         ${filterSelect('orderStatus', [
           ['', 'Tất cả trạng thái'],
           ['DaThanhToan', 'Đã thanh toán'],
-          ['TraMotPhan', 'Trả một phần'],
+          ['TraMotPhan', 'Có hàng hoàn trả'],
           ['DaHoanTra', 'Đã hoàn trả'],
         ])}
         ${filterSelect('orderPayment', [

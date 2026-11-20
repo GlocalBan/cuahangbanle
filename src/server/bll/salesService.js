@@ -12,7 +12,7 @@ const PROMO_STATUS_LABELS = {
 
 const ORDER_STATUS_LABELS = {
   DaThanhToan: 'Đã thanh toán',
-  TraMotPhan: 'Trả một phần',
+  TraMotPhan: 'Có hàng hoàn trả',
   DaHoanTra: 'Đã hoàn trả',
   DaHuy: 'Đã hủy',
 };
