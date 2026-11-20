@@ -111,6 +111,28 @@ const apiState = {
   writeoffs: [],
   writeoffsSummary: { total: 0, pendingCount: 0, approvedCount: 0, cancelledCount: 0, totalApprovedLoss: 0 },
   writeoffsLoaded: false,
+  // Phase 2 (BƯỚC 2): Vouchers, Near-Expiry Promo Suggestions, Shifts, GRNs, Payables, Supplier Returns, Supplier Portal
+  vouchers: [],
+  vouchersSummary: { total: 0, activeCount: 0, pausedCount: 0, endedCount: 0, totalRedemptions: 0 },
+  vouchersLoaded: false,
+  activeVouchers: [],
+  activeVouchersLoaded: false,
+  nearExpirySuggestions: [],
+  currentShift: null,
+  currentShiftLoaded: false,
+  shifts: [],
+  shiftsLoaded: false,
+  supplierPortalPurchases: [],
+  supplierPortalLoaded: false,
+  grns: [],
+  grnsSummary: { total: 0, draftCount: 0, approvedCount: 0, totalAmount: 0 },
+  grnsLoaded: false,
+  payables: [],
+  payablesSummary: { total: 0, unpaidCount: 0, partialCount: 0, paidCount: 0, totalBalance: 0, overdueCount: 0 },
+  payablesLoaded: false,
+  supplierReturns: [],
+  supplierReturnsSummary: { total: 0, pendingCount: 0, approvedCount: 0, totalAmount: 0 },
+  supplierReturnsLoaded: false,
   loading: {},
 };
 
@@ -234,6 +256,27 @@ function resetApiCaches() {
   apiState.writeoffs = [];
   apiState.writeoffsSummary = { total: 0, pendingCount: 0, approvedCount: 0, cancelledCount: 0, totalApprovedLoss: 0 };
   apiState.writeoffsLoaded = false;
+  apiState.vouchers = [];
+  apiState.vouchersSummary = { total: 0, activeCount: 0, pausedCount: 0, endedCount: 0, totalRedemptions: 0 };
+  apiState.vouchersLoaded = false;
+  apiState.activeVouchers = [];
+  apiState.activeVouchersLoaded = false;
+  apiState.nearExpirySuggestions = [];
+  apiState.currentShift = null;
+  apiState.currentShiftLoaded = false;
+  apiState.shifts = [];
+  apiState.shiftsLoaded = false;
+  apiState.supplierPortalPurchases = [];
+  apiState.supplierPortalLoaded = false;
+  apiState.grns = [];
+  apiState.grnsSummary = { total: 0, draftCount: 0, approvedCount: 0, totalAmount: 0 };
+  apiState.grnsLoaded = false;
+  apiState.payables = [];
+  apiState.payablesSummary = { total: 0, unpaidCount: 0, partialCount: 0, paidCount: 0, totalBalance: 0, overdueCount: 0 };
+  apiState.payablesLoaded = false;
+  apiState.supplierReturns = [];
+  apiState.supplierReturnsSummary = { total: 0, pendingCount: 0, approvedCount: 0, totalAmount: 0 };
+  apiState.supplierReturnsLoaded = false;
   apiState.loading = {};
 }
 
@@ -409,6 +452,57 @@ const api = {
   approveWriteOff: (id) => apiRequest('POST', `/api/writeoffs/${encodeURIComponent(id)}/approve`, {}),
   cancelWriteOff: (id, reason = '') =>
     apiRequest('POST', `/api/writeoffs/${encodeURIComponent(id)}/cancel`, { reason }),
+
+  // Phase 2 (BƯỚC 2): Vouchers, Near-Expiry Promo Suggestions, Cashier Shifts, Two-Way PO, Supplier Portal, GRN, Payables, Supplier Returns, Blind Audit
+  getNearExpiryPromoSuggestions: (days = '') =>
+    apiRequest('GET', `/api/promotions/near-expiry-suggestions${buildQuery({ days })}`),
+  listVouchers: (params = {}) => apiRequest('GET', `/api/vouchers${buildQuery(params)}`),
+  createVoucher: (data) => apiRequest('POST', '/api/vouchers', data),
+  bulkGenerateVouchers: (data) => apiRequest('POST', '/api/vouchers/bulk', data),
+  updateVoucher: (id, data) => apiRequest('PUT', `/api/vouchers/${encodeURIComponent(id)}`, data),
+  setVoucherStatus: (id, status) =>
+    apiRequest('PATCH', `/api/vouchers/${encodeURIComponent(id)}/status`, { status }),
+  validateVoucher: (code, subtotal, customerId = null) =>
+    apiRequest('POST', '/api/vouchers/validate', { code, subtotal, customerId }),
+
+  getCurrentShift: () => apiRequest('GET', '/api/shifts/current'),
+  listShifts: (params = {}) => apiRequest('GET', `/api/shifts${buildQuery(params)}`),
+  openShift: (data) => apiRequest('POST', '/api/shifts/open', data),
+  closeShift: (id, data) => apiRequest('POST', `/api/shifts/${encodeURIComponent(id)}/close`, data),
+
+  sendPurchaseToSupplier: (id, data = {}) =>
+    apiRequest('POST', `/api/purchases/${encodeURIComponent(id)}/send`, data),
+  respondPurchase: (id, data) =>
+    apiRequest('POST', `/api/purchases/${encodeURIComponent(id)}/respond`, data),
+  counterPurchase: (id, data) =>
+    apiRequest('POST', `/api/purchases/${encodeURIComponent(id)}/counter`, data),
+  agreePurchase: (id, data = {}) =>
+    apiRequest('POST', `/api/purchases/${encodeURIComponent(id)}/agree`, data),
+  listSupplierPortalPurchases: (params = {}) =>
+    apiRequest('GET', `/api/supplier-portal/purchases${buildQuery(params)}`),
+  getSupplierPortalPurchase: (id) =>
+    apiRequest('GET', `/api/supplier-portal/purchases/${encodeURIComponent(id)}`),
+
+  listGrns: (params = {}) => apiRequest('GET', `/api/grns${buildQuery(params)}`),
+  getGrn: (id) => apiRequest('GET', `/api/grns/${encodeURIComponent(id)}`),
+  createGrn: (data) => apiRequest('POST', '/api/grns', data),
+  confirmGrn: (id) => apiRequest('POST', `/api/grns/${encodeURIComponent(id)}/confirm`, {}),
+
+  listPayables: (params = {}) => apiRequest('GET', `/api/payables${buildQuery(params)}`),
+  getPayable: (id) => apiRequest('GET', `/api/payables/${encodeURIComponent(id)}`),
+  recordSupplierPayment: (id, data) =>
+    apiRequest('POST', `/api/payables/${encodeURIComponent(id)}/pay`, data),
+
+  listSupplierReturns: (params = {}) => apiRequest('GET', `/api/supplier-returns${buildQuery(params)}`),
+  getSupplierReturn: (id) => apiRequest('GET', `/api/supplier-returns/${encodeURIComponent(id)}`),
+  createSupplierReturn: (data) => apiRequest('POST', '/api/supplier-returns', data),
+  approveSupplierReturn: (id) =>
+    apiRequest('POST', `/api/supplier-returns/${encodeURIComponent(id)}/approve`, {}),
+
+  submitBlindCount: (id, data) =>
+    apiRequest('POST', `/api/stock-audits/${encodeURIComponent(id)}/count`, data),
+  submitRecount: (id, data) =>
+    apiRequest('POST', `/api/stock-audits/${encodeURIComponent(id)}/recount`, data),
 };
 
 async function loadStaffData(force = false) {
@@ -693,10 +787,22 @@ async function loadPosData(force = false) {
         apiState.activePromotions = res.items || [];
         apiState.activePromotionsLoaded = true;
       }),
+      api.listVouchers({ activeOnly: 'true' }).then((res) => {
+        apiState.activeVouchers = res.items || [];
+        apiState.activeVouchersLoaded = true;
+      }),
       api.getStoreConfig().then((cfg) => {
         syncStoreSettingsFromServer(cfg.storeConfig);
       }),
     ];
+    if (store.hasPermission('SHIFT_MANAGE')) {
+      jobs.push(
+        api.getCurrentShift().then((res) => {
+          apiState.currentShift = res.shift || null;
+          apiState.currentShiftLoaded = true;
+        }),
+      );
+    }
     if (store.hasPermission('CUSTOMER_MANAGE')) {
       jobs.push(
         api.listCustomers().then((res) => {
@@ -909,5 +1015,104 @@ async function loadNearExpiryData(force = false) {
   } finally {
     apiState.loading.nearExpiry = false;
     if (page === 'inventory' && $('#content')) render();
+  }
+}
+
+async function loadVouchersData(force = false) {
+  if (!store.hasPermission('VOUCHER_MANAGE')) return;
+  if (apiState.loading.vouchers && !force) return;
+  apiState.loading.vouchers = true;
+  try {
+    const res = await api.listVouchers({
+      search: filters.vouchers || '',
+      status: filters.voucherStatus || '',
+    });
+    apiState.vouchers = res.items || [];
+    apiState.vouchersSummary = res.summary || apiState.vouchersSummary;
+    apiState.vouchersLoaded = true;
+  } catch (err) {
+    notify(err.message, true);
+  } finally {
+    apiState.loading.vouchers = false;
+    if (page === 'promotions' && $('#content')) render();
+  }
+}
+
+async function loadSupplierPortalData(force = false) {
+  if (!store.hasPermission('SUPPLIER_PORTAL')) return;
+  if (apiState.loading.supplierPortal && !force) return;
+  apiState.loading.supplierPortal = true;
+  try {
+    const res = await api.listSupplierPortalPurchases({
+      search: filters.portalSearch || '',
+      status: filters.portalStatus || '',
+    });
+    apiState.supplierPortalPurchases = res.items || [];
+    apiState.supplierPortalLoaded = true;
+  } catch (err) {
+    notify(err.message, true);
+  } finally {
+    apiState.loading.supplierPortal = false;
+    if (page === 'supplier-portal' && $('#content')) render();
+  }
+}
+
+async function loadGrnsData(force = false) {
+  if (!store.hasPermission('PURCHASE_CREATE')) return;
+  if (apiState.loading.grns && !force) return;
+  apiState.loading.grns = true;
+  try {
+    const res = await api.listGrns({
+      search: filters.grnSearch || '',
+      status: filters.grnStatus || '',
+    });
+    apiState.grns = res.items || [];
+    apiState.grnsSummary = res.summary || apiState.grnsSummary;
+    apiState.grnsLoaded = true;
+  } catch (err) {
+    notify(err.message, true);
+  } finally {
+    apiState.loading.grns = false;
+    if (page === 'purchases' && $('#content')) render();
+  }
+}
+
+async function loadPayablesData(force = false) {
+  if (!store.hasPermission('PAYABLE_MANAGE')) return;
+  if (apiState.loading.payables && !force) return;
+  apiState.loading.payables = true;
+  try {
+    const res = await api.listPayables({
+      search: filters.payableSearch || '',
+      status: filters.payableStatus || '',
+    });
+    apiState.payables = res.items || [];
+    apiState.payablesSummary = res.summary || apiState.payablesSummary;
+    apiState.payablesLoaded = true;
+  } catch (err) {
+    notify(err.message, true);
+  } finally {
+    apiState.loading.payables = false;
+    if (page === 'purchases' && $('#content')) render();
+  }
+}
+
+async function loadSupplierReturnsData(force = false) {
+  if (!store.hasPermission('PURCHASE_CREATE')) return;
+  if (apiState.loading.supplierReturns && !force) return;
+  apiState.loading.supplierReturns = true;
+  try {
+    const res = await api.listSupplierReturns({
+      search: filters.supRetSearch || '',
+      status: filters.supRetStatus || '',
+    });
+    apiState.supplierReturns = res.items || [];
+    apiState.supplierReturnsSummary = res.summary || apiState.supplierReturnsSummary;
+    apiState.supplierReturnsLoaded = true;
+  } catch (err) {
+    notify(err.message, true);
+  } finally {
+    apiState.loading.supplierReturns = false;
+    if (page === 'purchases' && $('#content')) render();
   }
 }

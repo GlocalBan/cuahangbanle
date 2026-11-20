@@ -29,6 +29,12 @@ const ROLE_DEFINITIONS = [
     short_name: 'NhanVienKho',
     description: 'Lập phiếu nhập (Draft), kiểm kê kho, xem thẻ kho (LichSuTonKho), tra cứu sản phẩm & NCC.',
   },
+  {
+    code: 'SUPPLIER',
+    display_name: 'Nhà cung cấp (NhaCungCap)',
+    short_name: 'NhaCungCap',
+    description: 'Cổng nhà cung cấp xác nhận, phản hồi giá/số lượng và thương lượng đơn đặt hàng (PO) của riêng mình.',
+  },
 ];
 
 const PERMISSION_DEFINITIONS = [
@@ -105,9 +111,11 @@ const ROLE_PERMISSION_MATRIX = {
     'PRODUCT_COST_VIEW',
     'INVENTORY_VIEW',
     'INVENTORY_AUDIT',
+    'BATCH_MANAGE',
     'PURCHASE_CREATE',
     'SUPPLIER_VIEW',
   ],
+  SUPPLIER: ['SUPPLIER_PORTAL'],
 };
 
 const DEFAULT_THAM_SO = [
@@ -1000,18 +1008,25 @@ function seedCoreData(db) {
     const userCount = db.prepare('SELECT COUNT(*) AS cnt FROM users').get().cnt;
     if (userCount === 0) {
       const insertUser = db.prepare(`
-        INSERT INTO users (id, username, password_hash, full_name, email, phone, role_code, status, must_change_password, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'ACTIVE', 0, ?, ?)
+        INSERT INTO users (id, username, password_hash, full_name, email, phone, role_code, supplier_id, status, must_change_password, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', 0, ?, ?)
       `);
       const seedUsers = [
-        ['NV001', 'admin', 'Lê Hoàng Nam', 'admin@retailflow.vn', '0901000001', 'ADMIN'],
-        ['NV002', 'quanly', 'Phạm Minh Quân', 'quanly@retailflow.vn', '0901000002', 'MANAGER'],
-        ['NV003', 'thungan', 'Nguyễn Hà Linh', 'thungan@retailflow.vn', '0901000003', 'CASHIER'],
-        ['NV004', 'kho', 'Trần Quốc Bảo', 'kho@retailflow.vn', '0901000004', 'WAREHOUSE'],
+        ['NV001', 'admin', 'Lê Hoàng Nam', 'admin@retailflow.vn', '0901000001', 'ADMIN', null],
+        ['NV002', 'quanly', 'Phạm Minh Quân', 'quanly@retailflow.vn', '0901000002', 'MANAGER', null],
+        ['NV003', 'thungan', 'Nguyễn Hà Linh', 'thungan@retailflow.vn', '0901000003', 'CASHIER', null],
+        ['NV004', 'kho', 'Trần Quốc Bảo', 'kho@retailflow.vn', '0901000004', 'WAREHOUSE', null],
+        ['NV005', 'ncc01', 'Đại diện NCC Trung Nguyên', 'ncc01@trungnguyen.vn', '02838231111', 'SUPPLIER', 'NCC003'],
       ];
-      for (const [uid, username, fullName, email, phone, roleCode] of seedUsers) {
-        insertUser.run(uid, username, hashPassword('123456'), fullName, email, phone, roleCode, nowIso, nowIso);
+      for (const [uid, username, fullName, email, phone, roleCode, supplierId] of seedUsers) {
+        insertUser.run(uid, username, hashPassword('123456'), fullName, email, phone, roleCode, supplierId, nowIso, nowIso);
       }
+    } else {
+      // Đảm bảo tài khoản cổng NCC (ncc01) tồn tại trên CSDL đã nâng cấp
+      db.prepare(`
+        INSERT OR IGNORE INTO users (id, username, password_hash, full_name, email, phone, role_code, supplier_id, status, must_change_password, created_at, updated_at)
+        VALUES ('NV005', 'ncc01', ?, 'Đại diện NCC Trung Nguyên', 'ncc01@trungnguyen.vn', '02838231111', 'SUPPLIER', 'NCC003', 'ACTIVE', 0, ?, ?)
+      `).run(hashPassword('123456'), nowIso, nowIso);
     }
 
     const insertThamSo = db.prepare(`

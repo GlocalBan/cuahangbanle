@@ -76,7 +76,7 @@ test('M1-1: 9-rule OOD schema, 4 seeded accounts with scrypt hashes, and THAM_SO
     }
 
     const users = db.prepare('SELECT id, username, password_hash, role_code, status FROM users ORDER BY id').all();
-    assert.equal(users.length, 4);
+    assert.equal(users.length, 5);
     assert.deepEqual(
       users.map((u) => [u.username, u.role_code, u.status]),
       [
@@ -84,6 +84,7 @@ test('M1-1: 9-rule OOD schema, 4 seeded accounts with scrypt hashes, and THAM_SO
         ['quanly', 'MANAGER', 'ACTIVE'],
         ['thungan', 'CASHIER', 'ACTIVE'],
         ['kho', 'WAREHOUSE', 'ACTIVE'],
+        ['ncc01', 'SUPPLIER', 'ACTIVE'],
       ],
     );
     for (const u of users) {

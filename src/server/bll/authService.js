@@ -15,6 +15,7 @@ function sanitizeUser(userRow, permissions = []) {
     role: userRow.role_code,
     roleDisplayName: userRow.role_display_name || userRow.role_code,
     roleShortName: userRow.role_short_name || userRow.role_code,
+    supplierId: userRow.supplier_id || null,
     status: userRow.status,
     active: userRow.status === 'ACTIVE',
     mustChangePassword: Boolean(userRow.must_change_password),

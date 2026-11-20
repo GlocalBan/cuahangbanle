@@ -1,4 +1,4 @@
-/* M2 + M3: Xử lý sự kiện Nhập hàng, Thẻ kho & Kiểm kê kho (API SQLite). */
+/* M2 + M3 + Phase 2: Xử lý sự kiện Kho, Cận date & Hủy hàng, Thẻ kho, Kiểm kê mù/2 vòng, PO 2 chiều, GRN, Công nợ & Cổng NCC. */
 'use strict';
 
 function handleInventoryAction(a) {
@@ -11,7 +11,17 @@ function handleInventoryAction(a) {
       apiState.stockAuditError = '';
       if (inventoryTab === 'movements') loadStockMovementsData(true);
       else if (inventoryTab === 'audits') loadStockAuditsData(true);
+      else if (inventoryTab === 'near-expiry') loadNearExpiryData(true);
       else if (inventoryTab === 'stock') loadProductsData(true);
+      render();
+      break;
+
+    case 'purchases-tab':
+      purchasesTab = a.tab || 'pos';
+      if (purchasesTab === 'grns') loadGrnsData(true);
+      else if (purchasesTab === 'payables') loadPayablesData(true);
+      else if (purchasesTab === 'supplier-returns') loadSupplierReturnsData(true);
+      else loadPurchasesData(true);
       render();
       break;
 
@@ -53,9 +63,58 @@ function handleInventoryAction(a) {
       loadPurchasesData(true);
       break;
 
-    // ─── M3: STOCK AUDITS (BR-06) ────────────────────────────────────────────
+    // ─── PHASE 2: NEAR-EXPIRY & WRITE-OFFS ───────────────────────────────────
+    case 'writeoff-new':
+      Promise.resolve(writeOffModal(a.batchId || '')).catch((err) => notify(err.message, true));
+      break;
+
+    case 'writeoff-approve': {
+      const wid = a.id;
+      confirmation(
+        `Duyệt xuất hủy hàng ${e(wid)}?`,
+        `Hệ thống sẽ trừ tồn lô, đồng bộ tồn sản phẩm và ghi <strong>Thẻ kho (HUY_HANG)</strong> trong 1 Transaction nguyên tử.`,
+        async () => {
+          await api.approveWriteOff(wid);
+          notify(`Đã duyệt phiếu xuất hủy ${wid}.`);
+          await Promise.all([loadNearExpiryData(true), loadProductsData(true), loadStockMovementsData(true)]);
+        },
+      );
+      break;
+    }
+
+    case 'writeoff-cancel': {
+      const wid = a.id;
+      confirmation(
+        `Hủy phiếu xuất hủy ${e(wid)}?`,
+        `Phiếu <strong>${e(wid)}</strong> sẽ chuyển sang trạng thái Đã hủy và không trừ tồn lô.`,
+        async () => {
+          await api.cancelWriteOff(wid, 'Hủy phiếu chờ duyệt');
+          notify(`Đã hủy phiếu xuất hủy ${wid}.`);
+          await loadNearExpiryData(true);
+        },
+      );
+      break;
+    }
+
+    // ─── M3 + PHASE 2: STOCK AUDITS (BLIND COUNT, ROUND 2, APPROVAL) ─────────
     case 'audit-new':
       Promise.resolve(auditModal()).catch((err) => notify(err.message, true));
+      break;
+
+    case 'audit-new-blind':
+      Promise.resolve(blindAuditModal()).catch((err) => notify(err.message, true));
+      break;
+
+    case 'audit-count':
+      Promise.resolve(auditCountModal(a.id, false)).catch((err) => notify(err.message, true));
+      break;
+
+    case 'audit-recount':
+      Promise.resolve(auditCountModal(a.id, true)).catch((err) => notify(err.message, true));
+      break;
+
+    case 'audit-print':
+      Promise.resolve(printAuditReport(a.id)).catch((err) => notify(err.message, true));
       break;
 
     case 'audit-line-add': {
@@ -69,10 +128,14 @@ function handleInventoryAction(a) {
       if (!Number.isSafeInteger(actualQty) || actualQty < 0) {
         throw new Error('Số lượng tồn thực tế phải là số nguyên không âm (>= 0).');
       }
+      const reasonCode = String($('#audit-reason-code-input')?.value || '').trim().toUpperCase();
       const reason = String($('#audit-reason-input')?.value || '').trim();
       const diff = actualQty - Number(prod.stockQty || 0);
-      if (diff !== 0 && reason.length < 3) {
-        throw new Error('Có chênh lệch tồn kho: vui lòng nhập Lý do chênh lệch (tối thiểu 3 ký tự) theo BR-06.');
+      if (diff !== 0 && !reasonCode && reason.length < 3) {
+        throw new Error('Có chênh lệch tồn kho: vui lòng chọn Mã lý do chuẩn hoặc nhập Lý do chênh lệch (tối thiểu 3 ký tự).');
+      }
+      if (diff !== 0 && reasonCode === 'KHAC' && reason.length < 3) {
+        throw new Error('Chọn mã KHAC: vui lòng nhập mô tả cụ thể tối thiểu 3 ký tự.');
       }
       auditLines.push({
         productId: prod.id,
@@ -80,9 +143,11 @@ function handleInventoryAction(a) {
         name: prod.name,
         systemQty: Number(prod.stockQty || 0),
         actualQty,
+        reasonCode,
         reason,
       });
       if ($('#audit-reason-input')) $('#audit-reason-input').value = '';
+      if ($('#audit-reason-code-input')) $('#audit-reason-code-input').value = '';
       renderAuditLines();
       break;
     }
@@ -100,15 +165,11 @@ function handleInventoryAction(a) {
       const aid = a.id;
       confirmation(
         `Duyệt phiếu kiểm kê ${e(aid)}?`,
-        `Hệ thống sẽ điều chỉnh tồn kho thực tế cho các sản phẩm có chênh lệch trong phiếu <strong>${e(aid)}</strong>, ghi <strong>Thẻ kho (KIEM_KE)</strong> và <strong>Audit Log</strong> trong cùng 1 Transaction. Hành động không thể hoàn tác.`,
+        `Hệ thống sẽ tự đối chiếu biến động phát sinh sau chốt sổ, điều chỉnh tồn kho thực tế cho phiếu <strong>${e(aid)}</strong>, ghi <strong>Thẻ kho (KIEM_KE)</strong> và <strong>Audit Log</strong> trong cùng 1 Transaction.`,
         async () => {
           const res = await api.approveStockAudit(aid);
           notify(`Đã duyệt kiểm kê ${res.item.id} và cập nhật tồn kho thành công.`);
-          await Promise.all([
-            loadStockAuditsData(true),
-            loadProductsData(true),
-            loadStockMovementsData(true),
-          ]);
+          await Promise.all([loadStockAuditsData(true), loadProductsData(true), loadStockMovementsData(true)]);
         },
       );
       break;
@@ -128,7 +189,7 @@ function handleInventoryAction(a) {
       break;
     }
 
-    // ─── M3: PURCHASES (BR-02) ───────────────────────────────────────────────
+    // ─── M3 + PHASE 2: TWO-WAY PO, GRN, PAYABLES, SUPPLIER RETURNS & PORTAL ─
     case 'purchase-new':
       Promise.resolve(purchaseModal()).catch((err) => notify(err.message, true));
       break;
@@ -146,7 +207,102 @@ function handleInventoryAction(a) {
       break;
 
     case 'purchase-detail':
-      Promise.resolve(purchaseDetail(a.id)).catch((err) => notify(err.message, true));
+      Promise.resolve(purchaseDetail(a.id, false)).catch((err) => notify(err.message, true));
+      break;
+
+    case 'purchase-send': {
+      const pid = a.id;
+      confirmation(
+        `Gửi đơn đặt hàng ${e(pid)} cho Nhà cung cấp?`,
+        `Đơn đặt hàng <strong>${e(pid)}</strong> sẽ chuyển từ Nháp sang <strong>Đã gửi NCC (GuiNCC)</strong> và xuất hiện trên Cổng Nhà cung cấp để xác nhận hoặc thương lượng.`,
+        async () => {
+          await api.sendPurchaseToSupplier(pid, { note: 'Gửi đơn đặt hàng cho NCC xác nhận' });
+          notify(`Đã gửi đơn đặt hàng ${pid} tới Cổng Nhà cung cấp.`);
+          await loadPurchasesData(true);
+        },
+      );
+      break;
+    }
+
+    case 'purchase-counter':
+      Promise.resolve(supplierRespondModal(a.id, true)).catch((err) => notify(err.message, true));
+      break;
+
+    case 'purchase-agree': {
+      const pid = a.id;
+      confirmation(
+        `Chốt thống nhất điều khoản PO ${e(pid)}?`,
+        `Đơn hàng <strong>${e(pid)}</strong> sẽ chuyển sang trạng thái <strong>Đã thống nhất (DaThongNhat)</strong> để kho tiến hành lập Phiếu nhận hàng (GRN).`,
+        async () => {
+          await api.agreePurchase(pid, { note: 'Cửa hàng chốt thống nhất điều khoản đặt hàng' });
+          notify(`Đã chốt thống nhất PO ${pid}. Có thể lập phiếu nhận hàng (GRN).`);
+          await loadPurchasesData(true);
+        },
+      );
+      break;
+    }
+
+    case 'grn-new':
+      Promise.resolve(createGrnModal(a.purchaseId || '')).catch((err) => notify(err.message, true));
+      break;
+
+    case 'grn-confirm': {
+      const gid = a.id;
+      confirmation(
+        `Duyệt phiếu nhận hàng ${e(gid)}?`,
+        `Hệ thống sẽ cộng tồn kho, tạo lô HSD, cập nhật giá vốn bình quân, ghi Thẻ kho (<code>NHAP_KHO</code>) và tự động tạo công nợ phải trả NCC cho phiếu <strong>${e(gid)}</strong> trong 1 Transaction.`,
+        async () => {
+          await api.confirmGrn(gid);
+          notify(`Đã duyệt phiếu nhận hàng ${gid} và tạo công nợ NCC.`);
+          await Promise.all([
+            loadGrnsData(true),
+            loadPurchasesData(true),
+            store.hasPermission('PAYABLE_MANAGE') ? loadPayablesData(true) : Promise.resolve(),
+            loadProductsData(true),
+            loadStockMovementsData(true),
+          ]);
+        },
+      );
+      break;
+    }
+
+    case 'payable-pay':
+      Promise.resolve(payablePayModal(a.id)).catch((err) => notify(err.message, true));
+      break;
+
+    case 'supret-new':
+      Promise.resolve(supplierReturnModal()).catch((err) => notify(err.message, true));
+      break;
+
+    case 'supret-approve': {
+      const srid = a.id;
+      confirmation(
+        `Duyệt phiếu trả hàng NCC ${e(srid)}?`,
+        `Hệ thống sẽ trừ tồn lô hàng, ghi Thẻ kho <code>TRA_NCC</code> và tự động giảm trừ công nợ NCC tương ứng trong 1 Transaction.`,
+        async () => {
+          await api.approveSupplierReturn(srid);
+          notify(`Đã duyệt phiếu trả hàng NCC ${srid}.`);
+          await Promise.all([
+            loadSupplierReturnsData(true),
+            store.hasPermission('PAYABLE_MANAGE') ? loadPayablesData(true) : Promise.resolve(),
+            loadProductsData(true),
+            loadStockMovementsData(true),
+          ]);
+        },
+      );
+      break;
+    }
+
+    case 'portal-refresh':
+      loadSupplierPortalData(true);
+      break;
+
+    case 'portal-detail':
+      Promise.resolve(purchaseDetail(a.id, true)).catch((err) => notify(err.message, true));
+      break;
+
+    case 'portal-respond':
+      Promise.resolve(supplierRespondModal(a.id, false)).catch((err) => notify(err.message, true));
       break;
 
     case 'purchase-line-add': {
@@ -164,6 +320,12 @@ function handleInventoryAction(a) {
       if (purchaseLines.some((i) => i.productId === p.id)) {
         throw new Error(`Sản phẩm ${p.sku} đã có trong phiếu. Hãy sửa trực tiếp trên dòng hoặc xóa dòng cũ.`);
       }
+      const expiryDate = String($('#purchase-expiry')?.value || '').trim();
+      const mfgDate = String($('#purchase-mfg')?.value || '').trim();
+      const batchCode = String($('#purchase-batch')?.value || '').trim();
+      if (p.hasExpiry !== false && !expiryDate) {
+        throw new Error(`Sản phẩm "${p.name}" có quản lý HSD: vui lòng chọn Hạn sử dụng (*).`);
+      }
       purchaseLines.push({
         productId: p.id,
         sku: p.sku,
@@ -171,6 +333,10 @@ function handleInventoryAction(a) {
         unitName: p.unitName || '',
         qty,
         unitCost,
+        expiryDate,
+        mfgDate,
+        batchCode,
+        hasExpiry: p.hasExpiry !== false,
       });
       renderPurchaseLines();
       break;
@@ -192,7 +358,7 @@ function handleInventoryAction(a) {
             : '';
           confirmation(
             `Duyệt xác nhận nhập kho phiếu ${e(pid)}?`,
-            `Phiếu <strong>${e(pid)}</strong> sẽ chuyển sang trạng thái <strong>Đã nhập kho (Confirmed)</strong>. Trong cùng 1 Transaction, hệ thống sẽ cộng <strong>Tồn hiện tại</strong>, tính lại <strong>Giá vốn bình quân gia quyền</strong>, ghi <strong>Thẻ kho (NHAP_KHO)</strong> và khóa chỉnh sửa phiếu.${zeroCostWarning}`,
+            `Phiếu <strong>${e(pid)}</strong> sẽ chuyển sang trạng thái <strong>Đã nhập kho (Confirmed)</strong>. Trong cùng 1 Transaction, hệ thống sẽ cộng <strong>Tồn hiện tại</strong>, tính lại <strong>Giá vốn bình quân gia quyền</strong>, ghi <strong>Thẻ kho (NHAP_KHO)</strong>, tạo công nợ NCC và khóa phiếu.${zeroCostWarning}`,
             async () => {
               const res = await api.confirmPurchase(pid);
               notify(`Đã duyệt nhập kho phiếu ${res.item.id} thành công (tồn kho & giá vốn đã cập nhật).`);
@@ -200,6 +366,7 @@ function handleInventoryAction(a) {
                 loadPurchasesData(true),
                 loadProductsData(true),
                 loadStockMovementsData(true),
+                store.hasPermission('PAYABLE_MANAGE') ? loadPayablesData(true) : Promise.resolve(),
               ]);
             },
           );

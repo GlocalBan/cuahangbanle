@@ -29,6 +29,26 @@ const PAYMENT_METHOD_LABELS = {
   CARD: 'Thẻ ngân hàng',
 };
 
+const VOUCHER_STATUS_LABELS = {
+  SapDienRa: 'Sắp diễn ra',
+  DangDienRa: 'Đang diễn ra',
+  TamDung: 'Tạm dừng',
+  KetThuc: 'Đã kết thúc',
+  DaHuy: 'Đã hủy',
+};
+
+const PROMO_SCOPE_LABELS = {
+  INVOICE: 'Toàn hóa đơn',
+  CATEGORY: 'Theo danh mục',
+  PRODUCT: 'Sản phẩm chỉ định',
+  NEAR_EXPIRY: 'Hàng cận date (FEFO)',
+};
+
+const SHIFT_STATUS_LABELS = {
+  DangMo: 'Đang mở ca',
+  DaDong: 'Đã chốt ca',
+};
+
 function todayYmdVn(nowDate = new Date()) {
   return new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Ho_Chi_Minh',
@@ -36,6 +56,13 @@ function todayYmdVn(nowDate = new Date()) {
     month: '2-digit',
     day: '2-digit',
   }).format(nowDate);
+}
+
+function diffDaysYmd(fromYmd, toYmd) {
+  if (!fromYmd || !toYmd) return null;
+  const [y1, m1, d1] = String(fromYmd).split('-').map(Number);
+  const [y2, m2, d2] = String(toYmd).split('-').map(Number);
+  return Math.round((Date.UTC(y2, m2 - 1, d2) - Date.UTC(y1, m1 - 1, d1)) / 86400000);
 }
 
 function validateDateRange(fromDate, toDate, labelFrom = 'Từ ngày', labelTo = 'Đến ngày') {
@@ -150,7 +177,8 @@ function allocateOrderPaidTotals(order) {
   return map;
 }
 
-function toPromotionDto(row) {
+function toPromotionDto(row, productIds = []) {
+  const scope = row.scope || 'INVOICE';
   return {
     id: row.id,
     code: row.code,
@@ -164,9 +192,66 @@ function toPromotionDto(row) {
     usageLimit: Number(row.usage_limit) || 0,
     usedCount: Number(row.used_count) || 0,
     remainingUses: Math.max(0, (Number(row.usage_limit) || 0) - (Number(row.used_count) || 0)),
+    scope,
+    scopeLabel: PROMO_SCOPE_LABELS[scope] || scope,
+    categoryCode: row.category_code || '',
+    nearExpiryDays: Number(row.near_expiry_days) || 14,
+    productIds: Array.isArray(productIds) ? productIds : [],
     status: row.status,
     statusLabel: PROMO_STATUS_LABELS[row.status] || row.status,
     createdAt: row.created_at,
+  };
+}
+
+function toVoucherDto(row) {
+  return {
+    id: row.id,
+    code: row.code,
+    name: row.name,
+    discountType: row.discount_type,
+    discountValue: Number(row.discount_value) || 0,
+    minOrderAmount: Number(row.min_order_amount) || 0,
+    maxDiscount: Number(row.max_discount) || 0,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    usageLimit: Number(row.usage_limit) || 0,
+    usedCount: Number(row.used_count) || 0,
+    remainingUses: Math.max(0, (Number(row.usage_limit) || 0) - (Number(row.used_count) || 0)),
+    maxUsesPerCustomer: Number(row.max_uses_per_customer) || 1,
+    status: row.status,
+    statusLabel: VOUCHER_STATUS_LABELS[row.status] || row.status,
+    createdAt: row.created_at,
+  };
+}
+
+function toShiftDto(row, liveMetrics = null) {
+  if (!row) return null;
+  const openingCash = Number(row.opening_cash) || 0;
+  const cashSales = liveMetrics ? liveMetrics.cashSales : Number(row.cash_sales) || 0;
+  const cashRefunds = liveMetrics ? liveMetrics.cashRefunds : Number(row.cash_refunds) || 0;
+  const nonCashSales = liveMetrics ? liveMetrics.nonCashSales : Number(row.non_cash_sales) || 0;
+  const orderCount = liveMetrics ? liveMetrics.orderCount : Number(row.order_count) || 0;
+  const expectedCash =
+    row.status === 'DangMo' ? Math.max(0, openingCash + cashSales - cashRefunds) : Number(row.expected_cash) || 0;
+  return {
+    id: row.id,
+    cashierId: row.cashier_id,
+    cashierName: row.cashier_name || '',
+    cashierUsername: row.cashier_username || '',
+    openedAt: row.opened_at,
+    closedAt: row.closed_at || null,
+    openingCash,
+    expectedCash,
+    actualCash: row.actual_cash !== null && row.actual_cash !== undefined ? Number(row.actual_cash) : null,
+    variance: row.variance !== null && row.variance !== undefined ? Number(row.variance) : null,
+    cashSales,
+    cashRefunds,
+    nonCashSales,
+    totalSales: cashSales + nonCashSales,
+    orderCount,
+    status: row.status,
+    statusLabel: SHIFT_STATUS_LABELS[row.status] || row.status,
+    note: row.note || '',
   };
 }
 
@@ -194,9 +279,14 @@ function toOrderSummaryDto(row) {
     customerPhone: row.customer_phone || '',
     cashierId: row.cashier_id,
     cashierName: row.cashier_name,
+    shiftId: row.shift_id || null,
+    discountMode: row.discount_mode || (row.voucher_id ? 'VOUCHER' : row.promotion_id ? 'PROMOTION' : 'NONE'),
     promotionId: row.promotion_id || null,
     promotionCode: row.promotion_code || '',
     promotionName: row.promotion_name || '',
+    voucherId: row.voucher_id || null,
+    voucherCode: row.voucher_code || '',
+    voucherName: row.voucher_name || '',
     subtotal: Number(row.subtotal) || 0,
     invoiceDiscount: Number(row.invoice_discount) || 0,
     taxRate: Number(row.tax_rate) || 0,
@@ -232,6 +322,7 @@ function toOrderDetailDto(row, { canViewCost = false, storeConfig = null, pendin
       productName: i.product_name_snapshot,
       unitName: i.unit_name,
       imageUrl: i.image_url,
+      nonReturnable: Number(i.non_returnable) === 1,
       unitPrice: Number(i.unit_price_snapshot) || 0,
       qty,
       lineDiscount: Number(i.line_discount) || 0,
@@ -239,7 +330,7 @@ function toOrderDetailDto(row, { canViewCost = false, storeConfig = null, pendin
       paidLineTotal: paidMap.get(i.product_id) || 0,
       returnedQty,
       pendingReturnQty: pendingQty,
-      returnableQty: Math.max(0, qty - returnedQty - pendingQty),
+      returnableQty: Number(i.non_returnable) === 1 ? 0 : Math.max(0, qty - returnedQty - pendingQty),
     };
     if (canViewCost) {
       dto.unitCost = Number(i.unit_cost_snapshot) || 0;
@@ -360,13 +451,83 @@ class SalesService {
       : rows;
     const allRows = this.repos.promotions.list({});
     return {
-      items: filtered.map(toPromotionDto),
+      items: filtered.map((r) => toPromotionDto(r, this.repos.promotions.getProductIds(r.id))),
       summary: {
         total: allRows.length,
         activeCount: allRows.filter((r) => r.status === 'DangDienRa').length,
         upcomingCount: allRows.filter((r) => r.status === 'SapDienRa').length,
         pausedCount: allRows.filter((r) => r.status === 'TamDung').length,
         endedCount: allRows.filter((r) => ['KetThuc', 'DaHuy'].includes(r.status)).length,
+        nearExpiryCount: allRows.filter((r) => r.scope === 'NEAR_EXPIRY').length,
+      },
+    };
+  }
+
+  getNearExpiryPromoSuggestions(days = '') {
+    const defaultDays = Number(this.repos.thamSo?.findByCode?.('SoNgayCanhBaoCanDate')?.gia_tri) || 14;
+    const maxDays =
+      days !== '' && days !== undefined && days !== null
+        ? Math.max(1, Math.min(90, Math.round(Number(days) || defaultDays)))
+        : defaultDays;
+    const today = todayYmdVn();
+    const rows = this.repos.batches.findNearExpiryAndExpired({
+      maxDays,
+      includeExpired: false,
+      refDate: today,
+    });
+    const byProd = new Map();
+    for (const r of rows) {
+      const daysLeft = diffDaysYmd(today, r.expiry_date);
+      if (daysLeft === null || daysLeft <= 0) continue;
+      const qty = Number(r.qty_remaining) || 0;
+      const unitCost = Number(r.unit_cost) || Number(r.cost_price) || 0;
+      if (!byProd.has(r.product_id)) {
+        byProd.set(r.product_id, {
+          productId: r.product_id,
+          sku: r.sku,
+          productName: r.product_name,
+          categoryCode: r.category_code,
+          categoryName: r.category_name,
+          unitName: r.unit_name,
+          imageUrl: r.image_url,
+          thumbUrl: r.thumb_url || '',
+          salePrice: Number(r.sale_price) || 0,
+          costPrice: unitCost,
+          earliestExpiryDate: r.expiry_date,
+          minDaysLeft: daysLeft,
+          nearExpiryQty: 0,
+          atRiskCostValue: 0,
+          batches: [],
+        });
+      }
+      const entry = byProd.get(r.product_id);
+      entry.nearExpiryQty += qty;
+      entry.atRiskCostValue += qty * unitCost;
+      if (r.expiry_date < entry.earliestExpiryDate) {
+        entry.earliestExpiryDate = r.expiry_date;
+        entry.minDaysLeft = daysLeft;
+      }
+      entry.batches.push({
+        batchId: r.id,
+        batchCode: r.batch_code,
+        expiryDate: r.expiry_date,
+        daysLeft,
+        qtyRemaining: qty,
+      });
+    }
+    const items = Array.from(byProd.values())
+      .map((e) => ({
+        ...e,
+        suggestedDiscountPct: e.minDaysLeft <= 3 ? 50 : e.minDaysLeft <= 7 ? 35 : 25,
+      }))
+      .sort((a, b) => a.minDaysLeft - b.minDaysLeft || b.atRiskCostValue - a.atRiskCostValue);
+    return {
+      maxDays,
+      items,
+      summary: {
+        productCount: items.length,
+        totalNearExpiryQty: items.reduce((s, i) => s + i.nearExpiryQty, 0),
+        totalAtRiskCostValue: items.reduce((s, i) => s + i.atRiskCostValue, 0),
       },
     };
   }
@@ -382,10 +543,29 @@ class SalesService {
     const status = String(input?.status ?? existing?.status ?? 'DangDienRa').trim();
     const startDate = String(input?.startDate ?? existing?.start_date ?? '').trim();
     const endDate = String(input?.endDate ?? existing?.end_date ?? '').trim();
+    const scope = String(input?.scope ?? existing?.scope ?? 'INVOICE')
+      .trim()
+      .toUpperCase();
+    const categoryCode = String(input?.categoryCode ?? existing?.category_code ?? '').trim();
+    const nearExpiryDays = parsePositiveInt(
+      input?.nearExpiryDays !== undefined ? input.nearExpiryDays : existing?.near_expiry_days ?? 14,
+      'Ngưỡng ngày cận date',
+    );
+    const productIds = Array.isArray(input?.productIds)
+      ? [...new Set(input.productIds.map((p) => String(p || '').trim()).filter(Boolean))]
+      : undefined;
 
     assertRule(/^[A-Z0-9_-]{3,30}$/.test(code), 'Mã khuyến mãi chỉ gồm chữ in hoa, số, gạch ngang/dưới (3–30 ký tự).', 400);
     assertRule(name.length >= 3 && name.length <= 160, 'Tên chương trình khuyến mãi phải từ 3 đến 160 ký tự.', 400);
     assertRule(['PERCENT', 'FIXED'].includes(discountType), 'Loại giảm giá phải là PERCENT (%) hoặc FIXED (₫).', 400);
+    assertRule(
+      ['INVOICE', 'CATEGORY', 'PRODUCT', 'NEAR_EXPIRY'].includes(scope),
+      'Phạm vi khuyến mãi không hợp lệ (INVOICE / CATEGORY / PRODUCT / NEAR_EXPIRY).',
+      400,
+    );
+    if (scope === 'CATEGORY') {
+      assertRule(categoryCode.length > 0, 'Khuyến mãi theo danh mục bắt buộc chọn mã danh mục.', 400);
+    }
     assertRule(
       ['SapDienRa', 'DangDienRa', 'TamDung', 'KetThuc'].includes(status),
       'Trạng thái khuyến mãi không hợp lệ (SapDienRa / DangDienRa / TamDung / KetThuc).',
@@ -437,6 +617,10 @@ class SalesService {
       start_date: startDate,
       end_date: endDate,
       usage_limit: usageLimit,
+      scope,
+      category_code: scope === 'CATEGORY' || scope === 'NEAR_EXPIRY' ? categoryCode : '',
+      near_expiry_days: Math.min(365, nearExpiryDays),
+      product_ids: productIds,
       status,
     };
   }
@@ -450,17 +634,18 @@ class SalesService {
 
     const created = withTransaction(this.db, () => {
       const promo = this.repos.promotions.create(clean);
+      const pids = this.repos.promotions.getProductIds(promo.id);
       this.repos.auditLogs.append({
         actor,
         action: 'PROMOTION_CREATE',
         entityType: 'Promotion',
         entityId: promo.id,
-        detail: `Tạo khuyến mãi ${promo.code} (${promo.name})`,
-        after: toPromotionDto(promo),
+        detail: `Tạo khuyến mãi ${promo.code} (${promo.name} · phạm vi ${promo.scope})`,
+        after: toPromotionDto(promo, pids),
       });
-      return promo;
+      return { promo, pids };
     });
-    return toPromotionDto(created);
+    return toPromotionDto(created.promo, created.pids);
   }
 
   updatePromotion(actor, id, input) {
@@ -473,19 +658,21 @@ class SalesService {
     }
 
     const updated = withTransaction(this.db, () => {
+      const oldPids = this.repos.promotions.getProductIds(id);
       const promo = this.repos.promotions.update(id, clean);
+      const newPids = this.repos.promotions.getProductIds(id);
       this.repos.auditLogs.append({
         actor,
         action: 'PROMOTION_UPDATE',
         entityType: 'Promotion',
         entityId: id,
         detail: `Cập nhật khuyến mãi ${promo.code} (${promo.status})`,
-        before: toPromotionDto(existing),
-        after: toPromotionDto(promo),
+        before: toPromotionDto(existing, oldPids),
+        after: toPromotionDto(promo, newPids),
       });
-      return promo;
+      return { promo, pids: newPids };
     });
-    return toPromotionDto(updated);
+    return toPromotionDto(updated.promo, updated.pids);
   }
 
   setPromotionStatus(actor, id, nextStatus) {
@@ -511,7 +698,7 @@ class SalesService {
       });
       return promo;
     });
-    return toPromotionDto(updated);
+    return toPromotionDto(updated, this.repos.promotions.getProductIds(id));
   }
 
   validatePromotionForSubtotal(codeOrId, subtotal, nowDate = new Date()) {
@@ -553,9 +740,11 @@ class SalesService {
     const taxRate = this._getTaxRate();
     const afterDiscount = Math.max(0, safeSubtotal - discountAmount);
     const taxAmount = Math.round((afterDiscount * taxRate) / 100);
+    const pids = this.repos.promotions.getProductIds(promo.id);
     return {
-      promotion: toPromotionDto(promo),
+      promotion: toPromotionDto(promo, pids),
       promoRow: promo,
+      productIds: pids,
       subtotal: safeSubtotal,
       discountAmount,
       afterDiscount,
@@ -563,6 +752,428 @@ class SalesService {
       taxAmount,
       totalAmount: Math.max(0, afterDiscount + taxAmount),
     };
+  }
+
+  _computeEligibleSubtotalForPromotion(promo, productIds, resolvedLines, today) {
+    const scope = promo.scope || 'INVOICE';
+    const fullSubtotal = resolvedLines.reduce(
+      (s, l) => s + Math.max(0, l.qty * l.unitPriceSnapshot - l.lineDiscount),
+      0,
+    );
+    if (scope === 'INVOICE') return fullSubtotal;
+
+    const pidSet = new Set(productIds || []);
+    if (scope === 'CATEGORY') {
+      return resolvedLines
+        .filter((l) => l.product.category_code === promo.category_code)
+        .reduce((s, l) => s + Math.max(0, l.qty * l.unitPriceSnapshot - l.lineDiscount), 0);
+    }
+    if (scope === 'PRODUCT') {
+      return resolvedLines
+        .filter((l) => pidSet.has(l.product.id))
+        .reduce((s, l) => s + Math.max(0, l.qty * l.unitPriceSnapshot - l.lineDiscount), 0);
+    }
+    if (scope === 'NEAR_EXPIRY') {
+      const maxDays = Number(promo.near_expiry_days) || 14;
+      let eligible = 0;
+      for (const l of resolvedLines) {
+        if (pidSet.size > 0 && !pidSet.has(l.product.id)) continue;
+        if (promo.category_code && l.product.category_code !== promo.category_code) continue;
+        // Chỉ giảm giá cho số đơn vị thực sự xuất từ lô cận date (0 < daysLeft <= maxDays)
+        const nearQty = (l.batchDeductions || []).reduce((acc, bd) => {
+          if (!bd.expiryDate) return acc;
+          const dl = diffDaysYmd(today, bd.expiryDate);
+          if (dl !== null && dl > 0 && dl <= maxDays) {
+            return acc + bd.takeQty;
+          }
+          return acc;
+        }, 0);
+        if (nearQty > 0 && l.qty > 0) {
+          const lineNet = Math.max(0, l.qty * l.unitPriceSnapshot - l.lineDiscount);
+          eligible += Math.round((lineNet * nearQty) / l.qty);
+        }
+      }
+      return eligible;
+    }
+    return fullSubtotal;
+  }
+
+  // ─── VOUCHERS (PHASE 2 — BƯỚC 2a) ─────────────────────────────────────────
+
+  listVouchers(filters = {}, { activeOnly = false } = {}) {
+    const rows = this.repos.vouchers.list({
+      search: filters.search || '',
+      status: activeOnly ? 'DangDienRa' : filters.status || '',
+    });
+    const today = todayYmdVn();
+    const filtered = activeOnly
+      ? rows.filter(
+          (v) =>
+            v.status === 'DangDienRa' &&
+            v.start_date <= today &&
+            today <= v.end_date &&
+            Number(v.used_count) < Number(v.usage_limit),
+        )
+      : rows;
+    const allRows = this.repos.vouchers.list({});
+    return {
+      items: filtered.map(toVoucherDto),
+      summary: {
+        total: allRows.length,
+        activeCount: allRows.filter((r) => r.status === 'DangDienRa').length,
+        pausedCount: allRows.filter((r) => r.status === 'TamDung').length,
+        endedCount: allRows.filter((r) => ['KetThuc', 'DaHuy'].includes(r.status)).length,
+        totalRedeemed: allRows.reduce((s, r) => s + (Number(r.used_count) || 0), 0),
+      },
+    };
+  }
+
+  _validateVoucherInput(input, existing = null) {
+    const code = String(input?.code ?? existing?.code ?? '')
+      .trim()
+      .toUpperCase();
+    const name = String(input?.name ?? existing?.name ?? '').trim();
+    const discountType = String(input?.discountType ?? existing?.discount_type ?? 'FIXED')
+      .trim()
+      .toUpperCase();
+    const status = String(input?.status ?? existing?.status ?? 'DangDienRa').trim();
+    const startDate = String(input?.startDate ?? existing?.start_date ?? '').trim();
+    const endDate = String(input?.endDate ?? existing?.end_date ?? '').trim();
+
+    assertRule(/^[A-Z0-9_-]{3,32}$/.test(code), 'Mã Voucher chỉ gồm chữ in hoa, số, gạch ngang/dưới (3–32 ký tự).', 400);
+    assertRule(name.length >= 3 && name.length <= 160, 'Tên Voucher phải từ 3 đến 160 ký tự.', 400);
+    assertRule(['PERCENT', 'FIXED'].includes(discountType), 'Loại giảm giá Voucher phải là PERCENT (%) hoặc FIXED (₫).', 400);
+    assertRule(
+      ['SapDienRa', 'DangDienRa', 'TamDung', 'KetThuc'].includes(status),
+      'Trạng thái Voucher không hợp lệ (SapDienRa / DangDienRa / TamDung / KetThuc).',
+      400,
+    );
+
+    const discountValue = parseNonNegativeInt(
+      input?.discountValue !== undefined ? input.discountValue : existing?.discount_value,
+      'Giá trị giảm Voucher',
+    );
+    if (discountType === 'PERCENT') {
+      assertRule(discountValue >= 1 && discountValue <= 100, 'Tỷ lệ giảm Voucher (%) phải từ 1 đến 100%.', 400);
+    } else {
+      assertRule(discountValue >= 1000, 'Số tiền giảm Voucher cố định phải tối thiểu 1.000 ₫.', 400);
+    }
+
+    const minOrderAmount = parseNonNegativeInt(
+      input?.minOrderAmount !== undefined ? input.minOrderAmount : existing?.min_order_amount ?? 0,
+      'Giá trị đơn tối thiểu',
+    );
+    const maxDiscount = parseNonNegativeInt(
+      input?.maxDiscount !== undefined ? input.maxDiscount : existing?.max_discount ?? (discountType === 'FIXED' ? discountValue : 0),
+      'Trần giảm tối đa',
+    );
+    const usageLimit = parsePositiveInt(
+      input?.usageLimit !== undefined ? input.usageLimit : existing?.usage_limit ?? 100,
+      'Giới hạn lượt dùng Voucher',
+    );
+    const maxUsesPerCustomer = parsePositiveInt(
+      input?.maxUsesPerCustomer !== undefined ? input.maxUsesPerCustomer : existing?.max_uses_per_customer ?? 1,
+      'Số lần dùng tối đa / khách',
+    );
+
+    assertRule(/^\d{4}-\d{2}-\d{2}$/.test(startDate), 'Ngày bắt đầu Voucher không hợp lệ (YYYY-MM-DD).', 400);
+    assertRule(/^\d{4}-\d{2}-\d{2}$/.test(endDate), 'Ngày kết thúc Voucher không hợp lệ (YYYY-MM-DD).', 400);
+    assertRule(startDate <= endDate, 'Ngày bắt đầu Voucher phải nhỏ hơn hoặc bằng Ngày kết thúc.', 400);
+
+    if (existing && usageLimit < Number(existing.used_count)) {
+      assertRule(false, `Giới hạn lượt dùng (${usageLimit}) không được nhỏ hơn lượt đã dùng (${existing.used_count}).`, 400);
+    }
+
+    return {
+      code,
+      name,
+      discount_type: discountType,
+      discount_value: discountValue,
+      min_order_amount: minOrderAmount,
+      max_discount: discountType === 'PERCENT' ? maxDiscount : discountValue,
+      start_date: startDate,
+      end_date: endDate,
+      usage_limit: usageLimit,
+      max_uses_per_customer: maxUsesPerCustomer,
+      status,
+    };
+  }
+
+  createVoucher(actor, input) {
+    const clean = this._validateVoucherInput(input);
+    if (this.repos.vouchers.findByCode(clean.code)) {
+      throw new ConflictException(`Mã Voucher "${clean.code}" đã tồn tại trong hệ thống.`);
+    }
+    const created = withTransaction(this.db, () => {
+      const v = this.repos.vouchers.create(clean);
+      this.repos.auditLogs.append({
+        actor,
+        action: 'VOUCHER_CREATE',
+        entityType: 'Voucher',
+        entityId: v.id,
+        detail: `Tạo mã Voucher ${v.code} (${v.name})`,
+        after: toVoucherDto(v),
+      });
+      return v;
+    });
+    return toVoucherDto(created);
+  }
+
+  bulkGenerateVouchers(actor, input) {
+    const prefix = String(input?.prefix || 'RFVC')
+      .trim()
+      .toUpperCase();
+    assertRule(/^[A-Z0-9_-]{2,14}$/.test(prefix), 'Tiền tố phát hành hàng loạt gồm 2–14 ký tự chữ hoa/số.', 400);
+    const count = parsePositiveInt(input?.count ?? 5, 'Số lượng Voucher cần phát hành');
+    assertRule(count <= 100, 'Mỗi đợt phát hành hàng loạt tối đa 100 mã Voucher.', 400);
+
+    const template = this._validateVoucherInput({
+      ...input,
+      code: `${prefix}-SAMPLE01`,
+      usageLimit: input?.usageLimit ?? 1,
+      maxUsesPerCustomer: input?.maxUsesPerCustomer ?? 1,
+    });
+
+    const created = withTransaction(this.db, () => {
+      const batch = [];
+      for (let idx = 1; idx <= count; idx += 1) {
+        let code = '';
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          const rand = Math.random().toString(36).slice(2, 6).toUpperCase();
+          const candidate = `${prefix}-${String(idx).padStart(2, '0')}${rand}`;
+          if (!this.repos.vouchers.findByCode(candidate)) {
+            code = candidate;
+            break;
+          }
+        }
+        assertRule(code.length > 0, 'Không thể sinh mã Voucher duy nhất, vui lòng đổi tiền tố.', 409);
+        const v = this.repos.vouchers.create({
+          ...template,
+          code,
+          name: `${template.name} (#${idx})`,
+        });
+        batch.push(toVoucherDto(v));
+      }
+      this.repos.auditLogs.append({
+        actor,
+        action: 'VOUCHER_BULK_CREATE',
+        entityType: 'Voucher',
+        entityId: prefix,
+        detail: `Phát hành hàng loạt ${batch.length} mã Voucher (tiền tố ${prefix})`,
+        after: { prefix, count: batch.length, sampleCodes: batch.slice(0, 5).map((b) => b.code) },
+      });
+      return batch;
+    });
+
+    return { items: created, count: created.length };
+  }
+
+  updateVoucher(actor, id, input) {
+    const existing = this.repos.vouchers.findById(id);
+    if (!existing) throw new NotFoundException(`Không tìm thấy Voucher mã "${id}".`);
+    const clean = this._validateVoucherInput(input, existing);
+    const updated = withTransaction(this.db, () => {
+      const v = this.repos.vouchers.update(id, clean);
+      this.repos.auditLogs.append({
+        actor,
+        action: 'VOUCHER_UPDATE',
+        entityType: 'Voucher',
+        entityId: id,
+        detail: `Cập nhật Voucher ${v.code} (${v.status})`,
+        before: toVoucherDto(existing),
+        after: toVoucherDto(v),
+      });
+      return v;
+    });
+    return toVoucherDto(updated);
+  }
+
+  setVoucherStatus(actor, id, nextStatus) {
+    const existing = this.repos.vouchers.findById(id);
+    if (!existing) throw new NotFoundException(`Không tìm thấy Voucher mã "${id}".`);
+    const cleanStatus = String(nextStatus || '').trim();
+    assertRule(
+      ['SapDienRa', 'DangDienRa', 'TamDung', 'KetThuc'].includes(cleanStatus),
+      'Trạng thái Voucher không hợp lệ (SapDienRa / DangDienRa / TamDung / KetThuc).',
+      400,
+    );
+    const updated = withTransaction(this.db, () => {
+      const v = this.repos.vouchers.update(id, { status: cleanStatus });
+      this.repos.auditLogs.append({
+        actor,
+        action: 'VOUCHER_STATUS',
+        entityType: 'Voucher',
+        entityId: id,
+        detail: `Chuyển trạng thái Voucher ${v.code}: ${existing.status} → ${cleanStatus}`,
+        before: { status: existing.status },
+        after: { status: cleanStatus },
+      });
+      return v;
+    });
+    return toVoucherDto(updated);
+  }
+
+  validateVoucher(codeOrId, subtotal, customerId = null, nowDate = new Date()) {
+    const key = String(codeOrId || '').trim();
+    assertRule(key.length > 0, 'Vui lòng nhập mã Voucher.', 400);
+    const v = this.repos.vouchers.findByCode(key) || this.repos.vouchers.findById(key);
+    assertRule(Boolean(v), `Mã Voucher "${key}" không tồn tại trong hệ thống.`, 400);
+
+    const safeSubtotal = parseNonNegativeInt(subtotal, 'Tạm tính hóa đơn');
+    assertRule(
+      v.status === 'DangDienRa',
+      `Mã Voucher "${v.code}" hiện ở trạng thái "${VOUCHER_STATUS_LABELS[v.status] || v.status}", không thể áp dụng.`,
+      400,
+    );
+    const today = todayYmdVn(nowDate);
+    assertRule(today >= v.start_date, `Mã Voucher "${v.code}" chưa đến ngày hiệu lực (${v.start_date}).`, 400);
+    assertRule(today <= v.end_date, `Mã Voucher "${v.code}" đã hết hạn sử dụng (${v.end_date}).`, 400);
+    assertRule(
+      Number(v.used_count) < Number(v.usage_limit),
+      `Mã Voucher "${v.code}" đã hết lượt sử dụng (${v.used_count}/${v.usage_limit}).`,
+      400,
+    );
+    assertRule(
+      safeSubtotal >= Number(v.min_order_amount),
+      `Đơn hàng chưa đạt giá trị tối thiểu ${Number(v.min_order_amount).toLocaleString('vi-VN')} ₫ để áp dụng Voucher "${v.code}".`,
+      400,
+    );
+    if (customerId) {
+      const custUses = this.repos.vouchers.countCustomerUses(v.id, customerId);
+      assertRule(
+        custUses < Number(v.max_uses_per_customer || 1),
+        `Khách hàng đã sử dụng hết giới hạn Voucher "${v.code}" (${custUses}/${v.max_uses_per_customer}).`,
+        400,
+      );
+    }
+
+    const discountAmount = computePromotionDiscount(v, safeSubtotal);
+    const taxRate = this._getTaxRate();
+    const afterDiscount = Math.max(0, safeSubtotal - discountAmount);
+    const taxAmount = Math.round((afterDiscount * taxRate) / 100);
+    return {
+      voucher: toVoucherDto(v),
+      voucherRow: v,
+      subtotal: safeSubtotal,
+      discountAmount,
+      afterDiscount,
+      taxRate,
+      taxAmount,
+      totalAmount: Math.max(0, afterDiscount + taxAmount),
+    };
+  }
+
+  // ─── CASHIER SHIFTS (PHASE 2 — BƯỚC 2c) ───────────────────────────────────
+
+  getCurrentShift(actor) {
+    const open = this.repos.shifts.findOpenByCashier(actor.id);
+    if (!open) return { shift: null };
+    const metrics = this.repos.shifts.computeShiftMetrics(open.id, open.cashier_id, open.opened_at);
+    return { shift: toShiftDto(open, metrics) };
+  }
+
+  listShifts(actor, filters = {}) {
+    const cashierId = actor.role_code === 'CASHIER' ? actor.id : String(filters.cashierId || '').trim();
+    const rows = this.repos.shifts.list({
+      cashierId,
+      status: String(filters.status || '').trim(),
+      limit: filters.limit || 30,
+    });
+    const items = rows.map((r) => {
+      if (r.status === 'DangMo') {
+        const metrics = this.repos.shifts.computeShiftMetrics(r.id, r.cashier_id, r.opened_at);
+        return toShiftDto(r, metrics);
+      }
+      return toShiftDto(r);
+    });
+    return {
+      items,
+      summary: {
+        total: items.length,
+        openCount: items.filter((s) => s.status === 'DangMo').length,
+        closedCount: items.filter((s) => s.status === 'DaDong').length,
+      },
+    };
+  }
+
+  openShift(actor, input = {}) {
+    const existing = this.repos.shifts.findOpenByCashier(actor.id);
+    if (existing) {
+      throw new ConflictException(`Thu ngân "${actor.full_name}" đang có ca mở (${existing.id}). Vui lòng chốt ca hiện tại trước khi mở ca mới.`);
+    }
+    const openingCash = parseNonNegativeInt(input?.openingCash ?? 0, 'Tiền đầu ca');
+    const note = String(input?.note || '').trim().slice(0, 300);
+
+    const created = withTransaction(this.db, () => {
+      const s = this.repos.shifts.open({ cashierId: actor.id, openingCash, note });
+      this.repos.auditLogs.append({
+        actor,
+        action: 'SHIFT_OPEN',
+        entityType: 'CashierShift',
+        entityId: s.id,
+        detail: `Mở ca thu ngân ${s.id} · Tiền đầu ca ${openingCash.toLocaleString('vi-VN')} ₫`,
+        after: { shiftId: s.id, openingCash },
+      });
+      return s;
+    });
+    return toShiftDto(created, { orderCount: 0, cashSales: 0, nonCashSales: 0, cashRefunds: 0 });
+  }
+
+  closeShift(actor, shiftId, input = {}) {
+    const closed = withTransaction(this.db, () => {
+      const existing = this.repos.shifts.findById(shiftId);
+      if (!existing) throw new NotFoundException(`Không tìm thấy ca thu ngân mã "${shiftId}".`);
+      if (existing.status !== 'DangMo') {
+        throw new ConflictException(`Ca thu ngân "${shiftId}" đã được chốt trước đó.`);
+      }
+      if (actor.role_code === 'CASHIER' && existing.cashier_id !== actor.id) {
+        throw new ForbiddenException('Thu ngân chỉ được chốt ca do chính mình mở.');
+      }
+
+      const actualCash = parseNonNegativeInt(input?.actualCash, 'Tiền mặt thực đếm cuối ca');
+      const note = String(input?.note || '').trim().slice(0, 300);
+      const metrics = this.repos.shifts.computeShiftMetrics(existing.id, existing.cashier_id, existing.opened_at);
+      const expectedCash = Math.max(0, Number(existing.opening_cash) + metrics.cashSales - metrics.cashRefunds);
+      const variance = actualCash - expectedCash;
+
+      if (variance !== 0) {
+        assertRule(
+          note.length >= 3,
+          `Tiền mặt cuối ca lệch ${variance > 0 ? `+${variance.toLocaleString('vi-VN')}` : variance.toLocaleString('vi-VN')} ₫ so với dự kiến (${expectedCash.toLocaleString('vi-VN')} ₫): bắt buộc nhập ghi chú giải trình tối thiểu 3 ký tự.`,
+          400,
+        );
+      }
+
+      const finalNote = note || existing.note || '';
+      const updated = this.repos.shifts.close(existing.id, {
+        expectedCash,
+        actualCash,
+        variance,
+        cashSales: metrics.cashSales,
+        cashRefunds: metrics.cashRefunds,
+        nonCashSales: metrics.nonCashSales,
+        orderCount: metrics.orderCount,
+        note: finalNote,
+      });
+
+      this.repos.auditLogs.append({
+        actor,
+        action: 'SHIFT_CLOSE',
+        entityType: 'CashierShift',
+        entityId: updated.id,
+        detail: `Chốt ca ${updated.id}: dự kiến ${expectedCash.toLocaleString('vi-VN')} ₫, thực đếm ${actualCash.toLocaleString('vi-VN')} ₫, chênh lệch ${variance.toLocaleString('vi-VN')} ₫ (${metrics.orderCount} đơn)`,
+        after: {
+          shiftId: updated.id,
+          expectedCash,
+          actualCash,
+          variance,
+          orderCount: metrics.orderCount,
+          note: finalNote,
+        },
+      });
+      return updated;
+    });
+    return toShiftDto(closed);
   }
 
   // ─── CUSTOMERS ─────────────────────────────────────────────────────────────
@@ -694,9 +1305,29 @@ class SalesService {
     const rawItems = input?.items;
     assertRule(Array.isArray(rawItems) && rawItems.length >= 1, 'Giỏ hàng trống: vui lòng chọn tối thiểu 1 sản phẩm để thanh toán (BR-03).', 400);
 
+    // BƯỚC 3: Khóa chặt KHÔNG cho phép thanh toán một phần, tách nhiều phương thức hoặc ghi nợ tại POS
+    const hasForbiddenPartial =
+      Boolean(input?.partial) ||
+      Boolean(input?.isPartial) ||
+      Boolean(input?.partialPayment) ||
+      Boolean(input?.splitPayment) ||
+      Boolean(input?.debt) ||
+      Boolean(input?.allowDebt) ||
+      Array.isArray(input?.payments);
+    assertRule(
+      !hasForbiddenPartial,
+      'POS bán lẻ chỉ hỗ trợ thanh toán đủ 100% một lần — nghiêm cấm thanh toán một phần, chia đợt hoặc ghi nợ khách lẻ.',
+      400,
+    );
+
     const rawMethod = String(input?.paymentMethod || input?.payment || 'CASH')
       .trim()
       .toUpperCase();
+    assertRule(
+      !/(PARTIAL|DEBT|SPLIT|CONG_NO)/.test(rawMethod),
+      'POS bán lẻ chỉ hỗ trợ thanh toán đủ 100% một lần — không hỗ trợ ghi nợ hay trả góp.',
+      400,
+    );
     const methodMap = { CASH: 'CASH', TIENMAT: 'CASH', VIETQR: 'VIETQR', TRANSFER: 'VIETQR', CARD: 'CARD' };
     const paymentMethod = methodMap[rawMethod] || '';
     assertRule(
@@ -706,6 +1337,14 @@ class SalesService {
     );
 
     const promoInput = String(input?.promotionCode || input?.promotionId || '').trim();
+    const voucherInput = String(input?.voucherCode || input?.voucherId || '').trim();
+    // BƯỚC 2a: Chỉ cho phép MỘT trong hai hình thức giảm giá hóa đơn (XOR)
+    assertRule(
+      !(promoInput && voucherInput),
+      'Mỗi hóa đơn chỉ được áp dụng MỘT hình thức giảm giá hóa đơn: Mã Voucher HOẶC Chương trình khuyến mãi (không được dùng đồng thời cả hai).',
+      400,
+    );
+
     const customerId = String(input?.customerId || '').trim() || null;
     const note = String(input?.note || '').trim();
     const paymentRef = String(input?.paymentRef || '').trim();
@@ -821,30 +1460,72 @@ class SalesService {
         });
       }
 
-      // Bước 2: Tính Tạm tính, kiểm tra lại Khuyến mãi & tính VAT từ THAM_SO (BR-04)
+      // Bước 2: Tính Tạm tính, kiểm tra lại Voucher HOẶC Khuyến mãi (XOR) & tính VAT từ THAM_SO (BR-04)
       const baseSubtotal = resolvedLines.reduce(
         (sum, l) => sum + (l.qty * l.unitPriceSnapshot - l.lineDiscount),
         0,
       );
 
       let appliedPromo = null;
-      if (promoInput) {
-        const validated = this.validatePromotionForSubtotal(promoInput, baseSubtotal);
-        appliedPromo = validated.promoRow;
+      let appliedVoucher = null;
+      let discountMode = 'NONE';
+      let invoiceDiscount = 0;
+
+      if (voucherInput) {
+        const validatedV = this.validateVoucher(voucherInput, baseSubtotal, customerId);
+        appliedVoucher = validatedV.voucherRow;
+        discountMode = 'VOUCHER';
+        invoiceDiscount = validatedV.discountAmount;
+      } else if (promoInput) {
+        const validatedP = this.validatePromotionForSubtotal(promoInput, baseSubtotal);
+        appliedPromo = validatedP.promoRow;
+        discountMode = 'PROMOTION';
+        const today = todayYmdVn();
+        const eligibleSubtotal = this._computeEligibleSubtotalForPromotion(
+          appliedPromo,
+          validatedP.productIds,
+          resolvedLines,
+          today,
+        );
+        if (appliedPromo.scope === 'NEAR_EXPIRY') {
+          assertRule(
+            eligibleSubtotal > 0,
+            `Giỏ hàng không có sản phẩm/lô hàng cận date (<= ${appliedPromo.near_expiry_days || 14} ngày) hợp lệ cho chương trình "${appliedPromo.code}".`,
+            400,
+          );
+        } else if (appliedPromo.scope !== 'INVOICE') {
+          assertRule(
+            eligibleSubtotal > 0,
+            `Giỏ hàng không có sản phẩm thuộc phạm vi áp dụng của chương trình "${appliedPromo.code}".`,
+            400,
+          );
+        }
+        invoiceDiscount = computePromotionDiscount(appliedPromo, eligibleSubtotal);
       }
 
       const taxRate = this._getTaxRate();
-      const pricing = calculateOrderPricing({
-        items: resolvedLines.map((l) => ({
-          qty: l.qty,
-          unitPrice: l.unitPriceSnapshot,
-          lineDiscount: l.lineDiscount,
-        })),
-        promotion: appliedPromo,
+      const afterDiscount = Math.max(0, baseSubtotal - invoiceDiscount);
+      const taxAmount = Math.round((afterDiscount * taxRate) / 100);
+      const totalAmount = Math.max(0, afterDiscount + taxAmount);
+      const pricing = {
+        subtotal: baseSubtotal,
+        invoiceDiscount,
+        afterDiscount,
         taxRate,
-      });
+        taxAmount,
+        totalAmount,
+      };
 
-      // Bước 3: Kiểm tra thanh toán (BR-05)
+      // Bước 3: Kiểm tra thanh toán đủ 100% một lần (BR-05 & BƯỚC 3)
+      if (input?.paidAmount !== undefined && input?.paidAmount !== null && input?.paidAmount !== '') {
+        const paidAmt = parseNonNegativeInt(input.paidAmount, 'Số tiền thanh toán');
+        assertRule(
+          paidAmt >= pricing.totalAmount,
+          `POS chỉ hỗ trợ thanh toán đủ 100% một lần (${pricing.totalAmount.toLocaleString('vi-VN')} ₫), không hỗ trợ thanh toán một phần (${paidAmt.toLocaleString('vi-VN')} ₫).`,
+          400,
+        );
+      }
+
       let cashReceived = pricing.totalAmount;
       let cashChange = 0;
       if (paymentMethod === 'CASH') {
@@ -866,12 +1547,18 @@ class SalesService {
         );
       }
 
+      // Gắn ca thu ngân đang mở (nếu có)
+      const openShift = this.repos.shifts ? this.repos.shifts.findOpenByCashier(actor.id) : null;
+
       // Bước 4: Lưu Hóa đơn & Chi tiết hóa đơn (Price Snapshot)
       const order = this.repos.orders.create(
         {
           customer_id: customerId,
           cashier_id: actor.id,
+          shift_id: openShift ? openShift.id : null,
+          discount_mode: discountMode,
           promotion_id: appliedPromo ? appliedPromo.id : null,
+          voucher_id: appliedVoucher ? appliedVoucher.id : null,
           subtotal: pricing.subtotal,
           invoice_discount: pricing.invoiceDiscount,
           tax_rate: pricing.taxRate,
@@ -934,9 +1621,17 @@ class SalesService {
         }
       }
 
-      // Bước 7: Tăng lượt dùng khuyến mãi (nếu có)
+      // Bước 7: Tăng lượt dùng khuyến mãi hoặc ghi nhận sử dụng Voucher
       if (appliedPromo) {
         this.repos.promotions.incrementUsedCount(appliedPromo.id);
+      }
+      if (appliedVoucher) {
+        this.repos.vouchers.recordRedemption({
+          voucherId: appliedVoucher.id,
+          orderId: order.id,
+          customerId,
+          discountAmount: pricing.invoiceDiscount,
+        });
       }
 
       // Hook kiểm thử rollback nguyên tử trong test nội bộ (không gọi từ HTTP)
@@ -950,9 +1645,11 @@ class SalesService {
         action: 'ORDER_CHECKOUT',
         entityType: 'Order',
         entityId: order.id,
-        detail: `Thanh toán POS ${order.id}: ${resolvedLines.length} mặt hàng, tổng ${pricing.totalAmount.toLocaleString('vi-VN')} ₫ (${PAYMENT_METHOD_LABELS[paymentMethod]}${appliedPromo ? `, KM ${appliedPromo.code}` : ''}${totalLineDiscount > 0 ? `, giảm dòng hàng ${totalLineDiscount.toLocaleString('vi-VN')} ₫` : ''})`,
+        detail: `Thanh toán POS ${order.id}: ${resolvedLines.length} mặt hàng, tổng ${pricing.totalAmount.toLocaleString('vi-VN')} ₫ (${PAYMENT_METHOD_LABELS[paymentMethod]}${appliedVoucher ? `, Voucher ${appliedVoucher.code}` : appliedPromo ? `, KM ${appliedPromo.code}` : ''}${totalLineDiscount > 0 ? `, giảm dòng hàng ${totalLineDiscount.toLocaleString('vi-VN')} ₫` : ''})`,
         after: {
           orderId: order.id,
+          shiftId: openShift?.id || null,
+          discountMode,
           subtotal: pricing.subtotal,
           totalLineDiscount,
           invoiceDiscount: pricing.invoiceDiscount,
@@ -960,6 +1657,7 @@ class SalesService {
           totalAmount: pricing.totalAmount,
           paymentMethod,
           promotionCode: appliedPromo?.code || null,
+          voucherCode: appliedVoucher?.code || null,
         },
       });
 
@@ -1076,6 +1774,13 @@ class SalesService {
 
         const orderItem = orderItemMap.get(productId);
         assertRule(Boolean(orderItem), `Sản phẩm "${productId}" không nằm trong hóa đơn "${orderId}".`, 400);
+        // BƯỚC 3: Chặn trả hàng cho sản phẩm không hỗ trợ đổi trả (non_returnable = 1)
+        const prodRow = this.repos.products.findById(productId);
+        assertRule(
+          Number(orderItem.non_returnable) !== 1 && Number(prodRow?.non_returnable) !== 1,
+          `Sản phẩm "${orderItem.product_name_snapshot}" thuộc nhóm không áp dụng đổi trả (hàng tươi sống / dễ hỏng / chính sách không đổi trả).`,
+          400,
+        );
 
         const qty = parsePositiveInt(raw?.qty, `Số lượng trả của ${orderItem.product_name_snapshot}`);
         const purchased = Number(orderItem.qty) || 0;
@@ -1302,6 +2007,9 @@ module.exports = {
   calculateOrderPricing,
   computePromotionDiscount,
   PROMO_STATUS_LABELS,
+  PROMO_SCOPE_LABELS,
+  VOUCHER_STATUS_LABELS,
+  SHIFT_STATUS_LABELS,
   ORDER_STATUS_LABELS,
   RETURN_STATUS_LABELS,
   PAYMENT_METHOD_LABELS,

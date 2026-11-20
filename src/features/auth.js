@@ -33,7 +33,15 @@ function loginScreen(initialError = '') {
       badge: 'Kho',
       ico: 'warehouse',
       accent: 'amber',
-      scope: 'Tạo phiếu nhập Draft, kiểm kê chênh lệch, tra cứu Thẻ kho & NCC',
+      scope: 'Tạo PO/GRN, đếm kiểm kê mù, cận date/hủy hàng & Thẻ kho',
+    },
+    {
+      username: 'ncc01',
+      label: 'Nhà cung cấp (NCC003)',
+      badge: 'NCC',
+      ico: 'truck',
+      accent: 'teal',
+      scope: 'Cổng NCC: xem đơn đặt hàng gửi tới mình, chấp nhận / báo giá ngược',
     },
   ];
 
@@ -43,15 +51,15 @@ function loginScreen(initialError = '') {
         ${logo()}
         <div class="login-kicker">RETAIL OPERATIONS PLATFORM · OOD 3-TIER</div>
         <h1>Quản trị bán lẻ chuẩn mực.<br><span>Chính xác đến từng giao dịch.</span></h1>
-        <p class="login-lead">Kiến trúc 3 tầng tách biệt (Presentation · BLL · DAL), bảo mật RBAC 3 lớp, giao dịch SQLite nguyên tử và chuẩn hạch toán doanh thu – lợi nhuận tách VAT.</p>
+        <p class="login-lead">Kiến trúc 3 tầng tách biệt (Presentation · BLL · DAL), bảo mật RBAC 3 lớp (5 vai trò), xuất kho FEFO theo lô/HSD, giao dịch SQLite nguyên tử và chuẩn hạch toán tách VAT.</p>
         <div class="login-metrics">
           <div class="login-metric-card">
             <div class="login-metric-ico">${icon('shield')}</div>
-            <div><b>RBAC 3 lớp</b><small>DB · API Guard · UI Route</small></div>
+            <div><b>RBAC 5 vai trò</b><small>Admin · QL · TN · Kho · NCC</small></div>
           </div>
           <div class="login-metric-card">
             <div class="login-metric-ico">${icon('box')}</div>
-            <div><b>93 SKU thật</b><small>Đối chứng 1-1 siêu thị VN</small></div>
+            <div><b>438 SKU thật</b><small>Ảnh 1:1 + FEFO lô &amp; HSD</small></div>
           </div>
           <div class="login-metric-card">
             <div class="login-metric-ico">${icon('receipt')}</div>
@@ -74,7 +82,7 @@ function loginScreen(initialError = '') {
         </form>
         <div class="login-hint">
           <div class="login-hint-head">
-            <strong>4 tài khoản trải nghiệm theo vai trò</strong>
+            <strong>5 tài khoản trải nghiệm theo vai trò</strong>
             <span class="badge gray">Mật khẩu chung: <code>123456</code></span>
           </div>
           <div class="role-cards">

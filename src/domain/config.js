@@ -6,12 +6,14 @@
     MANAGER: 'Quản lý cửa hàng',
     CASHIER: 'Thu ngân',
     WAREHOUSE: 'Nhân viên kho',
+    SUPPLIER: 'Nhà cung cấp (Portal)',
   };
   const ROLE_SHORT = {
     ADMIN: 'Admin',
     MANAGER: 'QuanLy',
     CASHIER: 'ThuNgan',
     WAREHOUSE: 'NhanVienKho',
+    SUPPLIER: 'NCC',
   };
   const METHODS = {
     cash: 'Tiền mặt',
@@ -31,6 +33,7 @@
       'purchases',
       'promotions',
       'suppliers',
+      'supplier-portal',
       'customers',
       'staff',
       'returns',
@@ -55,6 +58,7 @@
     ],
     CASHIER: ['pos', 'orders', 'products', 'customers', 'returns'],
     WAREHOUSE: ['products', 'inventory', 'purchases', 'suppliers'],
+    SUPPLIER: ['supplier-portal'],
   };
   const PAGE_PERMISSIONS = {
     dashboard: 'DASHBOARD_VIEW',
@@ -66,6 +70,7 @@
     purchases: 'PURCHASE_CREATE',
     promotions: 'PROMOTION_MANAGE',
     suppliers: 'SUPPLIER_VIEW',
+    'supplier-portal': 'SUPPLIER_PORTAL',
     customers: 'CUSTOMER_MANAGE',
     reports: 'REPORT_VIEW',
     branches: 'REPORT_VIEW',

@@ -48,8 +48,9 @@ class PromotionRepository {
       .prepare(
         `INSERT INTO promotions (
            id, code, name, discount_type, discount_value, min_order_amount,
-           max_discount, start_date, end_date, usage_limit, used_count, status, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+           max_discount, start_date, end_date, usage_limit, used_count,
+           scope, category_code, near_expiry_days, status, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -62,9 +63,15 @@ class PromotionRepository {
         data.start_date,
         data.end_date,
         data.usage_limit ?? 1000,
+        data.scope || 'INVOICE',
+        data.category_code || '',
+        data.near_expiry_days ?? 14,
         data.status || 'DangDienRa',
         nowIso,
       );
+    if (Array.isArray(data.product_ids)) {
+      this.setProducts(id, data.product_ids);
+    }
     return this.findById(id);
   }
 
@@ -79,6 +86,9 @@ class PromotionRepository {
       'start_date',
       'end_date',
       'usage_limit',
+      'scope',
+      'category_code',
+      'near_expiry_days',
       'status',
     ];
     const sets = [];
@@ -89,10 +99,29 @@ class PromotionRepository {
         params.push(fields[key]);
       }
     }
-    if (!sets.length) return this.findById(id);
-    params.push(id);
-    this.db.prepare(`UPDATE promotions SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+    if (sets.length) {
+      params.push(id);
+      this.db.prepare(`UPDATE promotions SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+    }
+    if (Array.isArray(fields.product_ids)) {
+      this.setProducts(id, fields.product_ids);
+    }
     return this.findById(id);
+  }
+
+  setProducts(promoId, productIds = []) {
+    this.db.prepare('DELETE FROM promotion_products WHERE promotion_id = ?').run(promoId);
+    const ins = this.db.prepare('INSERT OR IGNORE INTO promotion_products (promotion_id, product_id) VALUES (?, ?)');
+    for (const pid of productIds) {
+      if (pid) ins.run(promoId, String(pid).trim());
+    }
+  }
+
+  getProductIds(promoId) {
+    return this.db
+      .prepare('SELECT product_id FROM promotion_products WHERE promotion_id = ? ORDER BY product_id ASC')
+      .all(promoId)
+      .map((r) => r.product_id);
   }
 
   incrementUsedCount(id) {
@@ -237,6 +266,8 @@ class OrderRepository {
                 u.username AS cashier_username,
                 pr.code AS promotion_code,
                 pr.name AS promotion_name,
+                v.code AS voucher_code,
+                v.name AS voucher_name,
                 (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS item_count,
                 (SELECT COALESCE(SUM(oi.qty), 0) FROM order_items oi WHERE oi.order_id = o.id) AS total_qty,
                 (SELECT COALESCE(SUM(r.refund_amount), 0) FROM returns r WHERE r.order_id = o.id AND r.status = 'DaXacNhan') AS refunded_amount
@@ -244,6 +275,7 @@ class OrderRepository {
          LEFT JOIN customers c ON c.id = o.customer_id
          JOIN users u ON u.id = o.cashier_id
          LEFT JOIN promotions pr ON pr.id = o.promotion_id
+         LEFT JOIN vouchers v ON v.id = o.voucher_id
          ${where}
          ORDER BY o.created_at DESC, o.id DESC`,
       )
@@ -261,11 +293,14 @@ class OrderRepository {
                   u.username AS cashier_username,
                   pr.code AS promotion_code,
                   pr.name AS promotion_name,
+                  v.code AS voucher_code,
+                  v.name AS voucher_name,
                   (SELECT COALESCE(SUM(r.refund_amount), 0) FROM returns r WHERE r.order_id = o.id AND r.status = 'DaXacNhan') AS refunded_amount
            FROM orders o
            LEFT JOIN customers c ON c.id = o.customer_id
            JOIN users u ON u.id = o.cashier_id
            LEFT JOIN promotions pr ON pr.id = o.promotion_id
+           LEFT JOIN vouchers v ON v.id = o.voucher_id
            WHERE o.id = ?`,
         )
         .get(id) || null;
@@ -273,7 +308,7 @@ class OrderRepository {
 
     const items = this.db
       .prepare(
-        `SELECT oi.*, p.sku, p.barcode, p.image_url, un.name AS unit_name
+        `SELECT oi.*, p.sku, p.barcode, p.image_url, p.non_returnable, un.name AS unit_name
          FROM order_items oi
          JOIN products p ON p.id = oi.product_id
          JOIN units un ON un.code = p.unit_code
@@ -302,17 +337,20 @@ class OrderRepository {
     this.db
       .prepare(
         `INSERT INTO orders (
-           id, customer_id, cashier_id, promotion_id,
+           id, customer_id, cashier_id, shift_id, discount_mode, promotion_id, voucher_id,
            subtotal, invoice_discount, tax_rate, tax_amount, total_amount,
            payment_method, cash_received, cash_change, payment_ref,
            status, note, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
         header.customer_id || null,
         header.cashier_id,
+        header.shift_id || null,
+        header.discount_mode || 'NONE',
         header.promotion_id || null,
+        header.voucher_id || null,
         header.subtotal,
         header.invoice_discount || 0,
         header.tax_rate || 0,

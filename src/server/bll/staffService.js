@@ -50,6 +50,11 @@ class StaffService {
       throw new ConflictException(`Tên đăng nhập "${username}" đã tồn tại trong hệ thống.`);
     }
 
+    const supplierId = String(input.supplierId || input.supplier_id || '').trim() || null;
+    if (roleCode === 'SUPPLIER') {
+      assertRule(Boolean(supplierId), 'Tài khoản vai trò Nhà cung cấp bắt buộc gắn với một Nhà cung cấp.', 400);
+    }
+
     const created = withTransaction(this.db, () => {
       const record = this.repos.users.create({
         username,
@@ -58,6 +63,7 @@ class StaffService {
         email,
         phone,
         role_code: roleCode,
+        supplier_id: roleCode === 'SUPPLIER' ? supplierId : null,
         status,
       });
       this.repos.auditLogs.append({
@@ -113,11 +119,16 @@ class StaffService {
       assertRule(otherAdmins > 0, 'Hệ thống bắt buộc phải giữ ít nhất một Quản trị viên (Admin) đang hoạt động.', 400);
     }
 
+    const supplierId =
+      input.supplierId !== undefined || input.supplier_id !== undefined
+        ? String(input.supplierId ?? input.supplier_id ?? '').trim() || null
+        : existing.supplier_id || null;
     const updateFields = {
       full_name: fullName,
       email,
       phone,
       role_code: roleCode,
+      supplier_id: roleCode === 'SUPPLIER' ? supplierId : null,
       status: nextStatus,
     };
 

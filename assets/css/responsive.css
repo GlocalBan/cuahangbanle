@@ -17,6 +17,14 @@
   }
   .topbar {
     padding: 0 22px;
+    gap: 12px;
+  }
+  .global-search {
+    width: 220px;
+    max-width: 32%;
+  }
+  .stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .pos-layout {
     grid-template-columns: minmax(0, 1fr) 340px;
@@ -187,6 +195,18 @@
   }
   .login-form {
     padding: 24px 18px 20px;
+  }
+  .btn:not(.xs),
+  .icon-btn,
+  .btn-icon {
+    min-height: 44px;
+  }
+  .modal-footer {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .discount-mode-group {
+    grid-template-columns: 1fr;
   }
 }
 

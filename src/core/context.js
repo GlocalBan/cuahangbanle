@@ -249,9 +249,10 @@ const pages = [
   ['returns', 'Đổi trả & Hoàn tiền', 'return', 'BÁN HÀNG (POS)'],
   ['products', 'Sản phẩm & Bảng giá', 'box', 'QUẢN LÝ HÀNG HÓA'],
   ['inventory', 'Kho & Kiểm kê', 'warehouse', 'QUẢN LÝ KHO'],
-  ['purchases', 'Nhập hàng', 'truck', 'QUẢN LÝ KHO'],
-  ['promotions', 'Khuyến mãi', 'tag', 'KHUYẾN MÃI & ĐỐI TÁC'],
+  ['purchases', 'Nhập hàng & Công nợ', 'truck', 'QUẢN LÝ KHO'],
+  ['promotions', 'Khuyến mãi & Voucher', 'tag', 'KHUYẾN MÃI & ĐỐI TÁC'],
   ['suppliers', 'Nhà cung cấp', 'branch', 'KHUYẾN MÃI & ĐỐI TÁC'],
+  ['supplier-portal', 'Cổng Nhà cung cấp', 'truck', 'KHUYẾN MÃI & ĐỐI TÁC'],
   ['customers', 'Khách hàng', 'users', 'KHUYẾN MÃI & ĐỐI TÁC'],
   ['reports', 'Báo cáo & Thống kê', 'chart', 'BÁO CÁO & THỐNG KÊ'],
   ['staff', 'Nhân viên & Phân quyền', 'user', 'QUẢN TRỊ HỆ THỐNG'],
@@ -266,15 +267,21 @@ let page = 'dashboard',
   chartDays = 7,
   activeCategory = 'Tất cả',
   productsTab = 'products',
-  inventoryTab = 'stock';
+  inventoryTab = 'stock',
+  promotionsTab = 'promotions',
+  purchasesTab = 'pos';
 let purchaseLines = [];
 let auditLines = [];
 let posCart = {
   items: [],
   customerId: '',
+  discountMode: 'NONE',
   promotionCode: '',
   appliedPromotion: null,
   promoError: '',
+  voucherCode: '',
+  appliedVoucher: null,
+  voucherError: '',
   note: '',
 };
 let posHeldOrders = [];

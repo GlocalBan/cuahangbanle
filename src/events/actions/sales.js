@@ -1,4 +1,4 @@
-/* M4: Click Actions cho Bán hàng POS, Đơn tạm & Quản lý Khuyến mãi (SQLite API). */
+/* M4 + Phase 2: Click Actions cho Bán hàng POS, Ca bán hàng, Voucher XOR KM, Đơn tạm & Khuyến mãi. */
 'use strict';
 
 function handleSalesAction(a) {
@@ -21,7 +21,15 @@ function handleSalesAction(a) {
       if (input) {
         const val = (Number(input.value) || 1) + Number(a.step || 1);
         const max = Number(input.max) || 999;
-        input.value = Math.max(1, Math.min(max, val));
+        const clamped = Math.max(1, Math.min(max, val));
+        input.value = clamped;
+        const wrap = input.closest('.pos-card-stepper');
+        if (wrap) {
+          const minusBtn = wrap.querySelector('[data-step="-1"]');
+          const plusBtn = wrap.querySelector('[data-step="1"]');
+          if (minusBtn) minusBtn.disabled = clamped <= 1;
+          if (plusBtn) plusBtn.disabled = clamped >= max;
+        }
       }
       break;
     }
@@ -31,7 +39,8 @@ function handleSalesAction(a) {
       if (input) {
         const val = Number(a.qty) || 1;
         const max = Number(input.max) || 999;
-        input.value = Math.max(1, Math.min(max, val));
+        const clamped = Math.max(1, Math.min(max, val));
+        input.value = clamped;
       }
       break;
     }
@@ -58,6 +67,8 @@ function handleSalesAction(a) {
       if (!posCart.items.length) {
         posCart.appliedPromotion = null;
         posCart.promoError = '';
+        posCart.appliedVoucher = null;
+        posCart.voucherError = '';
       }
       render();
       break;
@@ -72,6 +83,10 @@ function handleSalesAction(a) {
           notify('Đã làm trống giỏ hàng POS.');
         },
       );
+      break;
+
+    case 'pos-discount-mode':
+      setPosDiscountMode(a.mode || 'NONE');
       break;
 
     case 'apply-promo-code': {
@@ -92,6 +107,32 @@ function handleSalesAction(a) {
       notify('Đã gỡ mã khuyến mãi khỏi hóa đơn.');
       break;
 
+    case 'apply-voucher-code': {
+      const code = $('#pos-voucher-code')?.value || posCart.voucherCode || '';
+      applyPosVoucherCode(code).catch((err) => notify(err.message, true));
+      break;
+    }
+
+    case 'apply-voucher-pick':
+      applyPosVoucherCode(a.code || '').catch((err) => notify(err.message, true));
+      break;
+
+    case 'remove-voucher':
+      posCart.voucherCode = '';
+      posCart.appliedVoucher = null;
+      posCart.voucherError = '';
+      render();
+      notify('Đã gỡ mã Voucher khỏi hóa đơn.');
+      break;
+
+    case 'shift-open':
+      openShiftModal();
+      break;
+
+    case 'shift-close':
+      closeShiftModal();
+      break;
+
     case 'hold':
       holdCurrentPosOrder();
       notify('Đã lưu đơn tạm. Bạn có thể lập đơn hàng mới ngay.');
@@ -106,6 +147,7 @@ function handleSalesAction(a) {
       if (idx === -1) throw new Error('Đơn tạm không còn tồn tại.');
       const [held] = posHeldOrders.splice(idx, 1);
       posCart = JSON.parse(JSON.stringify(held.cart));
+      if (!posCart.discountMode) posCart.discountMode = posCart.appliedVoucher ? 'VOUCHER' : posCart.appliedPromotion ? 'PROMO' : 'NONE';
       customerSearchState.customerId = posCart.customerId || '';
       closeModal();
       render();
@@ -184,13 +226,24 @@ function handleSalesAction(a) {
       $('#global-results')?.remove();
       break;
 
-    // ─── PROMOTIONS MANAGEMENT (M4) ────────────────────────────────────
+    // ─── PROMOTIONS & VOUCHERS MANAGEMENT (M4 + Phase 2) ───────────────
+    case 'promotions-tab':
+      promotionsTab = a.tab || 'promotions';
+      if (promotionsTab === 'vouchers') loadVouchersData(true);
+      else loadPromotionsData(true);
+      render();
+      break;
+
     case 'promo-new':
       promotionModal('');
       break;
 
     case 'promo-edit':
       promotionModal(a.id);
+      break;
+
+    case 'promo-load-near-expiry':
+      loadNearExpiryPromoSuggestionsIntoModal();
       break;
 
     case 'promo-toggle-status': {
@@ -219,6 +272,42 @@ function handleSalesAction(a) {
       delete filters.promoStatus;
       pagination.promotions = 1;
       loadPromotionsData(true);
+      render();
+      break;
+
+    case 'voucher-new':
+      voucherModal('');
+      break;
+
+    case 'voucher-edit':
+      voucherModal(a.id);
+      break;
+
+    case 'voucher-bulk':
+      voucherBulkModal();
+      break;
+
+    case 'voucher-toggle-status': {
+      const targetId = a.id;
+      const targetCode = a.code || targetId;
+      const nextStatus = a.nextStatus;
+      confirmation(
+        `Chuyển trạng thái Voucher ${targetCode}?`,
+        `Mã Voucher <strong>${e(targetCode)}</strong> sẽ chuyển sang trạng thái <strong>${e(statusLabels[nextStatus]?.[0] || nextStatus)}</strong>.`,
+        async () => {
+          await api.setVoucherStatus(targetId, nextStatus);
+          notify(`Đã cập nhật trạng thái Voucher ${targetCode}.`);
+          await loadVouchersData(true);
+        },
+      );
+      break;
+    }
+
+    case 'vouchers-reset':
+      delete filters.vouchers;
+      delete filters.voucherStatus;
+      pagination.vouchers = 1;
+      loadVouchersData(true);
       render();
       break;
 

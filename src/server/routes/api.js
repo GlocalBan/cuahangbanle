@@ -440,6 +440,45 @@ function createApiRouter(db) {
         }
       }
 
+      const purchaseSendMatch = /^\/api\/purchases\/([^/]+)\/send$/.exec(pathname);
+      if (method === 'POST' && purchaseSendMatch) {
+        const auth = authorize(req, 'PURCHASE_CREATE');
+        const body = await readJsonBody(req);
+        const item = warehouseService.sendPurchaseToSupplier(auth.user, decodeURIComponent(purchaseSendMatch[1]), body);
+        return sendJson(res, 200, { item });
+      }
+
+      const purchaseRespondMatch = /^\/api\/purchases\/([^/]+)\/respond$/.exec(pathname);
+      if (method === 'POST' && purchaseRespondMatch) {
+        const auth = authenticate(req);
+        const canRespond =
+          auth.permissions.includes('SUPPLIER_PORTAL') || auth.permissions.includes('PURCHASE_CREATE');
+        if (!canRespond) {
+          throw new ForbiddenException(
+            `Vai trò ${auth.user.role_short_name} không có quyền phản hồi đơn đặt hàng NCC.`,
+          );
+        }
+        const body = await readJsonBody(req);
+        const item = warehouseService.respondToPurchase(auth.user, decodeURIComponent(purchaseRespondMatch[1]), body);
+        return sendJson(res, 200, { item });
+      }
+
+      const purchaseCounterMatch = /^\/api\/purchases\/([^/]+)\/counter$/.exec(pathname);
+      if (method === 'POST' && purchaseCounterMatch) {
+        const auth = authorize(req, 'PURCHASE_CREATE');
+        const body = await readJsonBody(req);
+        const item = warehouseService.counterPurchase(auth.user, decodeURIComponent(purchaseCounterMatch[1]), body);
+        return sendJson(res, 200, { item });
+      }
+
+      const purchaseAgreeMatch = /^\/api\/purchases\/([^/]+)\/agree$/.exec(pathname);
+      if (method === 'POST' && purchaseAgreeMatch) {
+        const auth = authorize(req, 'PURCHASE_APPROVE');
+        const body = await readJsonBody(req);
+        const item = warehouseService.agreePurchase(auth.user, decodeURIComponent(purchaseAgreeMatch[1]), body);
+        return sendJson(res, 200, { item });
+      }
+
       const purchaseConfirmMatch = /^\/api\/purchases\/([^/]+)\/confirm$/.exec(pathname);
       if (method === 'POST' && purchaseConfirmMatch) {
         const auth = authorize(req, 'PURCHASE_APPROVE');
@@ -481,6 +520,114 @@ function createApiRouter(db) {
         }
       }
 
+      // ─── PHASE 2 (BƯỚC 2d): SUPPLIER PORTAL, GRN, PAYABLES & SUPPLIER RETURNS ─
+      if (method === 'GET' && pathname === '/api/supplier-portal/purchases') {
+        const auth = authorize(req, 'SUPPLIER_PORTAL');
+        const result = warehouseService.listSupplierPortalPurchases(auth.user, {
+          search: urlObj.searchParams.get('search') || '',
+          status: urlObj.searchParams.get('status') || '',
+          supplierId: urlObj.searchParams.get('supplierId') || '',
+        });
+        return sendJson(res, 200, result);
+      }
+
+      const portalPoIdMatch = /^\/api\/supplier-portal\/purchases\/([^/]+)$/.exec(pathname);
+      if (method === 'GET' && portalPoIdMatch) {
+        const auth = authorize(req, 'SUPPLIER_PORTAL');
+        const item = warehouseService.getSupplierPortalPurchase(auth.user, decodeURIComponent(portalPoIdMatch[1]));
+        return sendJson(res, 200, { item });
+      }
+
+      if (pathname === '/api/grns') {
+        if (method === 'GET') {
+          authorize(req, 'PURCHASE_CREATE');
+          const result = warehouseService.listGoodsReceipts({
+            purchaseId: urlObj.searchParams.get('purchaseId') || '',
+            supplierId: urlObj.searchParams.get('supplierId') || '',
+            status: urlObj.searchParams.get('status') || '',
+            search: urlObj.searchParams.get('search') || '',
+          });
+          return sendJson(res, 200, result);
+        }
+        if (method === 'POST') {
+          const auth = authorize(req, 'PURCHASE_CREATE');
+          const body = await readJsonBody(req);
+          const item = warehouseService.createGoodsReceipt(auth.user, body);
+          return sendJson(res, 201, { item });
+        }
+      }
+
+      const grnConfirmMatch = /^\/api\/grns\/([^/]+)\/confirm$/.exec(pathname);
+      if (method === 'POST' && grnConfirmMatch) {
+        const auth = authorize(req, 'PURCHASE_APPROVE');
+        const item = warehouseService.confirmGoodsReceipt(auth.user, decodeURIComponent(grnConfirmMatch[1]));
+        return sendJson(res, 200, { item });
+      }
+
+      const grnIdMatch = /^\/api\/grns\/([^/]+)$/.exec(pathname);
+      if (grnIdMatch && method === 'GET') {
+        authorize(req, 'PURCHASE_CREATE');
+        const item = warehouseService.getGoodsReceipt(decodeURIComponent(grnIdMatch[1]));
+        return sendJson(res, 200, { item });
+      }
+
+      if (method === 'GET' && pathname === '/api/payables') {
+        authorize(req, 'PAYABLE_MANAGE');
+        const result = warehouseService.listPayables({
+          supplierId: urlObj.searchParams.get('supplierId') || '',
+          status: urlObj.searchParams.get('status') || '',
+          search: urlObj.searchParams.get('search') || '',
+        });
+        return sendJson(res, 200, result);
+      }
+
+      const payablePayMatch = /^\/api\/payables\/([^/]+)\/pay$/.exec(pathname);
+      if (method === 'POST' && payablePayMatch) {
+        const auth = authorize(req, 'PAYABLE_MANAGE');
+        const body = await readJsonBody(req);
+        const item = warehouseService.recordSupplierPayment(auth.user, decodeURIComponent(payablePayMatch[1]), body);
+        return sendJson(res, 200, { item });
+      }
+
+      const payableIdMatch = /^\/api\/payables\/([^/]+)$/.exec(pathname);
+      if (payableIdMatch && method === 'GET') {
+        authorize(req, 'PAYABLE_MANAGE');
+        const item = warehouseService.getPayable(decodeURIComponent(payableIdMatch[1]));
+        return sendJson(res, 200, { item });
+      }
+
+      if (pathname === '/api/supplier-returns') {
+        if (method === 'GET') {
+          authorize(req, 'PURCHASE_CREATE');
+          const result = warehouseService.listSupplierReturns({
+            supplierId: urlObj.searchParams.get('supplierId') || '',
+            status: urlObj.searchParams.get('status') || '',
+            search: urlObj.searchParams.get('search') || '',
+          });
+          return sendJson(res, 200, result);
+        }
+        if (method === 'POST') {
+          const auth = authorize(req, 'PURCHASE_CREATE');
+          const body = await readJsonBody(req);
+          const item = warehouseService.createSupplierReturn(auth.user, body);
+          return sendJson(res, 201, { item });
+        }
+      }
+
+      const supRetApproveMatch = /^\/api\/supplier-returns\/([^/]+)\/approve$/.exec(pathname);
+      if (method === 'POST' && supRetApproveMatch) {
+        const auth = authorize(req, 'PURCHASE_APPROVE');
+        const item = warehouseService.approveSupplierReturn(auth.user, decodeURIComponent(supRetApproveMatch[1]));
+        return sendJson(res, 200, { item });
+      }
+
+      const supRetIdMatch = /^\/api\/supplier-returns\/([^/]+)$/.exec(pathname);
+      if (supRetIdMatch && method === 'GET') {
+        authorize(req, 'PURCHASE_CREATE');
+        const item = warehouseService.getSupplierReturn(decodeURIComponent(supRetIdMatch[1]));
+        return sendJson(res, 200, { item });
+      }
+
       // ─── M3: STOCK AUDITS (Phiếu kiểm kê kho — BR-06) ──────────────────────
       if (pathname === '/api/stock-audits') {
         if (method === 'GET') {
@@ -499,6 +646,22 @@ function createApiRouter(db) {
           const item = warehouseService.createStockAudit(auth.user, body);
           return sendJson(res, 201, { item });
         }
+      }
+
+      const auditCountMatch = /^\/api\/stock-audits\/([^/]+)\/count$/.exec(pathname);
+      if (method === 'POST' && auditCountMatch) {
+        const auth = authorize(req, 'INVENTORY_AUDIT');
+        const body = await readJsonBody(req);
+        const item = warehouseService.submitBlindCount(auth.user, decodeURIComponent(auditCountMatch[1]), body);
+        return sendJson(res, 200, { item });
+      }
+
+      const auditRecountMatch = /^\/api\/stock-audits\/([^/]+)\/recount$/.exec(pathname);
+      if (method === 'POST' && auditRecountMatch) {
+        const auth = authorize(req, 'INVENTORY_AUDIT');
+        const body = await readJsonBody(req);
+        const item = warehouseService.submitRecount(auth.user, decodeURIComponent(auditRecountMatch[1]), body);
+        return sendJson(res, 200, { item });
       }
 
       const auditApproveMatch = /^\/api\/stock-audits\/([^/]+)\/approve$/.exec(pathname);
@@ -524,8 +687,8 @@ function createApiRouter(db) {
       if (auditIdMatch) {
         const targetId = decodeURIComponent(auditIdMatch[1]);
         if (method === 'GET') {
-          authorize(req, 'INVENTORY_VIEW');
-          const item = warehouseService.getStockAudit(targetId);
+          const auth = authorize(req, 'INVENTORY_VIEW');
+          const item = warehouseService.getStockAudit(targetId, auth.user);
           return sendJson(res, 200, { item });
         }
         if (method === 'DELETE') {
@@ -610,7 +773,13 @@ function createApiRouter(db) {
         }
       }
 
-      // ─── M4: PROMOTIONS (Khuyến mãi — BR-04) ───────────────────────────────
+      // ─── M4 & PHASE 2: PROMOTIONS (Khuyến mãi + Gợi ý cận date — BR-04) ─────
+      if (method === 'GET' && pathname === '/api/promotions/near-expiry-suggestions') {
+        authorize(req, 'PROMOTION_MANAGE');
+        const result = salesService.getNearExpiryPromoSuggestions(urlObj.searchParams.get('days') || '');
+        return sendJson(res, 200, result);
+      }
+
       if (method === 'POST' && pathname === '/api/promotions/validate') {
         authorize(req, 'POS_SELL');
         const body = await readJsonBody(req);
@@ -687,6 +856,127 @@ function createApiRouter(db) {
             'Không cho phép xóa cứng chương trình khuyến mãi. Hãy chuyển trạng thái sang Tạm dừng hoặc Kết thúc để bảo toàn lịch sử hóa đơn.',
           );
         }
+      }
+
+      // ─── PHASE 2 (BƯỚC 2a): VOUCHERS (Phiếu giảm giá riêng biệt với KM) ─────
+      if (method === 'POST' && pathname === '/api/vouchers/bulk') {
+        const auth = authorize(req, 'VOUCHER_MANAGE');
+        const body = await readJsonBody(req);
+        const result = salesService.bulkGenerateVouchers(auth.user, body);
+        return sendJson(res, 201, result);
+      }
+
+      if (method === 'POST' && pathname === '/api/vouchers/validate') {
+        authorize(req, 'POS_SELL');
+        const body = await readJsonBody(req);
+        const result = salesService.validateVoucher(
+          body.code || body.voucherId,
+          body.subtotal,
+          body.customerId || null,
+        );
+        return sendJson(res, 200, {
+          voucher: result.voucher,
+          subtotal: result.subtotal,
+          discountAmount: result.discountAmount,
+          afterDiscount: result.afterDiscount,
+          taxRate: result.taxRate,
+          taxAmount: result.taxAmount,
+          totalAmount: result.totalAmount,
+        });
+      }
+
+      if (pathname === '/api/vouchers') {
+        if (method === 'GET') {
+          const requestedActiveOnly = urlObj.searchParams.get('activeOnly') === 'true';
+          const auth = authenticate(req);
+          const canManage = auth.permissions.includes('VOUCHER_MANAGE');
+          const canSell = auth.permissions.includes('POS_SELL');
+          if (requestedActiveOnly) {
+            if (!canManage && !canSell) {
+              throw new ForbiddenException(
+                `Vai trò ${auth.user.role_short_name} không có quyền xem Voucher áp dụng tại POS.`,
+              );
+            }
+          } else if (!canManage) {
+            throw new ForbiddenException(
+              `Vai trò ${auth.user.role_short_name} không có quyền quản lý Voucher (yêu cầu VOUCHER_MANAGE).`,
+            );
+          }
+          const result = salesService.listVouchers(
+            {
+              search: urlObj.searchParams.get('search') || '',
+              status: urlObj.searchParams.get('status') || '',
+            },
+            { activeOnly: requestedActiveOnly },
+          );
+          return sendJson(res, 200, result);
+        }
+        if (method === 'POST') {
+          const auth = authorize(req, 'VOUCHER_MANAGE');
+          const body = await readJsonBody(req);
+          const item = salesService.createVoucher(auth.user, body);
+          return sendJson(res, 201, { item });
+        }
+      }
+
+      const voucherStatusMatch = /^\/api\/vouchers\/([^/]+)\/status$/.exec(pathname);
+      if (method === 'PATCH' && voucherStatusMatch) {
+        const auth = authorize(req, 'VOUCHER_MANAGE');
+        const body = await readJsonBody(req);
+        const item = salesService.setVoucherStatus(
+          auth.user,
+          decodeURIComponent(voucherStatusMatch[1]),
+          body.status,
+        );
+        return sendJson(res, 200, { item });
+      }
+
+      const voucherIdMatch = /^\/api\/vouchers\/([^/]+)$/.exec(pathname);
+      if (voucherIdMatch) {
+        const targetId = decodeURIComponent(voucherIdMatch[1]);
+        if (method === 'PUT' || method === 'PATCH') {
+          const auth = authorize(req, 'VOUCHER_MANAGE');
+          const body = await readJsonBody(req);
+          const item = salesService.updateVoucher(auth.user, targetId, body);
+          return sendJson(res, 200, { item });
+        }
+        if (method === 'DELETE') {
+          authorize(req, 'VOUCHER_MANAGE');
+          throw new ForbiddenException(
+            'Không cho phép xóa cứng Voucher. Hãy chuyển trạng thái sang Tạm dừng hoặc Kết thúc để bảo toàn lịch sử đối soát.',
+          );
+        }
+      }
+
+      // ─── PHASE 2 (BƯỚC 2c): CASHIER SHIFTS (Mở ca / Chốt ca đối soát tiền) ──
+      if (method === 'GET' && pathname === '/api/shifts/current') {
+        const auth = authorize(req, 'SHIFT_MANAGE');
+        return sendJson(res, 200, salesService.getCurrentShift(auth.user));
+      }
+
+      if (method === 'POST' && pathname === '/api/shifts/open') {
+        const auth = authorize(req, 'SHIFT_MANAGE');
+        const body = await readJsonBody(req);
+        const item = salesService.openShift(auth.user, body);
+        return sendJson(res, 201, { item });
+      }
+
+      const shiftCloseMatch = /^\/api\/shifts\/([^/]+)\/close$/.exec(pathname);
+      if (method === 'POST' && shiftCloseMatch) {
+        const auth = authorize(req, 'SHIFT_MANAGE');
+        const body = await readJsonBody(req);
+        const item = salesService.closeShift(auth.user, decodeURIComponent(shiftCloseMatch[1]), body);
+        return sendJson(res, 200, { item });
+      }
+
+      if (method === 'GET' && pathname === '/api/shifts') {
+        const auth = authorize(req, 'SHIFT_MANAGE');
+        const result = salesService.listShifts(auth.user, {
+          cashierId: urlObj.searchParams.get('cashierId') || '',
+          status: urlObj.searchParams.get('status') || '',
+          limit: urlObj.searchParams.get('limit') || 30,
+        });
+        return sendJson(res, 200, result);
       }
 
       // ─── M4: CUSTOMERS (Khách hàng cho POS & Tra cứu) ──────────────────────

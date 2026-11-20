@@ -163,21 +163,29 @@ async function searchReturn() {
     input.value = o.id;
 
     box.innerHTML = `<div class="note green mb16">
-      <strong>${e(o.id)}</strong> · Khách hàng: <strong>${e(o.customerName)}</strong> · ${date(o.createdAt)} · ${e(METHODS[o.paymentMethod] || o.paymentMethod)}<br>
-      Tổng hóa đơn: <strong class="money">${money(o.totalAmount)}</strong> (đã gồm KM &amp; VAT ${o.taxRate}%) · Còn lại tối đa ${Math.max(0, Math.ceil(returnDays - elapsedDays))} ngày trong hạn trả.
+      <strong>${e(o.id)}</strong> · Khách hàng: <strong>${e(o.customerName)}</strong> · ${date(o.createdAt)} · ${badge(METHODS[o.paymentMethod] || o.paymentMethod, 'blue')}<br>
+      Tổng hóa đơn: <strong class="money">${money(o.totalAmount)}</strong> (đã gồm KM/Voucher &amp; VAT ${o.taxRate}%) · Còn lại tối đa ${Math.max(0, Math.ceil(returnDays - elapsedDays))} ngày trong hạn trả.
     </div>
     ${table(
       ['Sản phẩm', 'Đơn giá gốc', 'Đã mua', 'Đã trả / Chờ duyệt', 'Có thể trả', 'SL trả'],
       (o.items || []).map((i) => {
-        const available = Number(i.returnableQty) || 0;
+        const isNonReturnable = Boolean(i.nonReturnable);
+        const available = isNonReturnable ? 0 : Number(i.returnableQty) || 0;
         return `<tr>
-          <td class="name">${e(i.productName)}<div class="sub"><code>${e(i.sku)}</code></div></td>
+          <td class="name">
+            ${e(i.productName)}
+            <div class="sub"><code>${e(i.sku)}</code> ${isNonReturnable ? badge('Không áp dụng đổi trả (hàng tươi/đông lạnh)', 'red') : ''}</div>
+          </td>
           <td class="money">${money(i.unitPrice)}</td>
           <td>${number(i.qty)}</td>
           <td>${number(i.returnedQty)}${i.pendingReturnQty ? ` (+${number(i.pendingReturnQty)} chờ duyệt)` : ''}</td>
           <td><strong>${number(available)}</strong></td>
           <td>
-            <input class="return-qty" type="number" data-return-id="${e(i.productId)}" min="0" max="${available}" step="1" value="0" ${available ? '' : 'disabled'} aria-label="Số lượng trả ${e(i.productName)}">
+            <input class="return-qty" type="number" data-return-id="${e(i.productId)}" min="0" max="${available}" step="1" value="0" ${
+              available
+                ? ''
+                : `disabled title="${isNonReturnable ? 'Mặt hàng tươi sống/đông lạnh không áp dụng đổi trả' : 'Không còn số lượng có thể trả'}"`
+            } aria-label="Số lượng trả ${e(i.productName)}">
           </td>
         </tr>`;
       }),

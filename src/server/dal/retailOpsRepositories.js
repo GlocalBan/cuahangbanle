@@ -833,6 +833,20 @@ class SupplierOpsRepository {
     );
   }
 
+  findPayableByReceipt(receiptId) {
+    if (!receiptId) return null;
+    return this.db
+      .prepare(
+        `SELECT sp.*, s.name AS supplier_name, s.phone AS supplier_phone
+         FROM supplier_payables sp
+         JOIN suppliers s ON s.id = sp.supplier_id
+         WHERE sp.receipt_id = ?
+         ORDER BY sp.created_at DESC
+         LIMIT 1`,
+      )
+      .get(receiptId);
+  }
+
   listPayables({ supplierId = '', status = '' } = {}) {
     const clauses = [];
     const params = [];

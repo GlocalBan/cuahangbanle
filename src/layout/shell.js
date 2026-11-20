@@ -158,14 +158,21 @@ function navigate(target, options = {}) {
     loadProductsData(true);
     if (inventoryTab === 'movements') loadStockMovementsData(true);
     if (inventoryTab === 'audits') loadStockAuditsData(true);
+    if (inventoryTab === 'near-expiry') loadNearExpiryData(true);
   } else if (page === 'purchases') {
     loadCatalogMeta();
     loadProductsData(true);
     loadPurchasesData(true);
+    if (purchasesTab === 'grns') loadGrnsData(true);
+    if (purchasesTab === 'payables') loadPayablesData(true);
+    if (purchasesTab === 'supplier-returns') loadSupplierReturnsData(true);
+  } else if (page === 'supplier-portal') {
+    loadSupplierPortalData(true);
   } else if (page === 'pos') {
     loadPosData(true);
   } else if (page === 'promotions') {
     loadPromotionsData(true);
+    if (promotionsTab === 'vouchers') loadVouchersData(true);
   } else if (page === 'customers') {
     loadCustomersData(true);
   } else if (page === 'orders') {
@@ -198,6 +205,7 @@ function render() {
     purchases: purchasesView,
     promotions: promotionsView,
     suppliers: () => entitiesView('suppliers'),
+    'supplier-portal': supplierPortalView,
     customers: () => entitiesView('customers'),
     staff: staffView,
     returns: returnsView,

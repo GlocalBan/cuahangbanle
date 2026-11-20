@@ -95,7 +95,7 @@ test('M3-02: 401/403/200 RBAC matrix across all M3 Purchases, Restock Suggestion
       body: {
         supplierId: 'NCC003',
         note: 'Kho tạo phiếu nháp',
-        items: [{ productId: 'SP006', qty: 10, unitCost: 46000 }],
+        items: [{ productId: 'SP006', qty: 10, unitCost: 46000, expiryDate: '2027-06-30' }],
       },
     });
     assert.equal(whPo.status, 201);
@@ -196,7 +196,7 @@ test('M3-03: BR-02 Purchases lifecycle (Draft -> Confirmed/Cancelled), active su
       body: {
         supplierId: 'NCC003',
         note: 'Nhập bổ sung SP006',
-        items: [{ productId: 'SP006', qty: 10, unitCost: 50000 }],
+        items: [{ productId: 'SP006', qty: 10, unitCost: 50000, expiryDate: '2027-06-30' }],
       },
     });
     assert.equal(created.status, 201);
@@ -220,7 +220,7 @@ test('M3-03: BR-02 Purchases lifecycle (Draft -> Confirmed/Cancelled), active su
       body: {
         supplierId: 'NCC003',
         note: 'Cập nhật số lượng nhập 12 hộp',
-        items: [{ productId: 'SP006', qty: 12, unitCost: 50000 }],
+        items: [{ productId: 'SP006', qty: 12, unitCost: 50000, expiryDate: '2027-06-30' }],
       },
     });
     assert.equal(edited.status, 200);
@@ -264,7 +264,7 @@ test('M3-03: BR-02 Purchases lifecycle (Draft -> Confirmed/Cancelled), active su
     // Create Draft PN002 and Cancel -> stock unchanged
     const po2 = await srv.reqJson('POST', '/api/purchases', {
       token: warehouseToken,
-      body: { supplierId: 'NCC003', items: [{ productId: 'SP006', qty: 5, unitCost: 48000 }] },
+      body: { supplierId: 'NCC003', items: [{ productId: 'SP006', qty: 5, unitCost: 48000, expiryDate: '2027-06-30' }] },
     });
     assert.equal(po2.status, 201);
     const cancelled = await srv.reqJson('POST', `/api/purchases/${po2.data.item.id}/cancel`, {
@@ -391,7 +391,7 @@ test('M3-05: Atomic transaction rollback on confirmPurchase/approveStockAudit fa
     const po = svc.createPurchase(managerUser, {
       supplierId: 'NCC003',
       note: 'Kiểm thử rollback nhập kho',
-      items: [{ productId: 'SP003', qty: 15, unitCost: 42000 }],
+      items: [{ productId: 'SP003', qty: 15, unitCost: 42000, expiryDate: '2027-06-30' }],
     });
     const moveCountBeforePo = srv.db.prepare('SELECT COUNT(*) AS cnt FROM stock_movements').get().cnt;
 
@@ -409,8 +409,9 @@ test('M3-05: Atomic transaction rollback on confirmPurchase/approveStockAudit fa
     assert.equal(repos.products.findById('SP003').cost_price, sp3Before.cost_price);
     assert.equal(srv.db.prepare('SELECT COUNT(*) AS cnt FROM stock_movements').get().cnt, moveCountBeforePo);
 
-    // Direct BLL atomic rollback test for approveStockAudit
-    const audit = svc.createStockAudit(managerUser, {
+    // Direct BLL atomic rollback test for approveStockAudit (warehouse creates, manager approves — segregation of duties)
+    const warehouseUser = repos.users.findByUsername('kho');
+    const audit = svc.createStockAudit(warehouseUser, {
       note: 'Kiểm thử rollback kiểm kê',
       items: [{ productId: 'SP003', actualQty: sp3Before.stock_qty - 2, reason: 'Vỡ chai khi vận chuyển' }],
     });
@@ -433,7 +434,7 @@ test('M3-05: Atomic transaction rollback on confirmPurchase/approveStockAudit fa
   }
 });
 
-test('M3-06: approveStockAudit rejects stale stock with 409 Conflict when concurrent movement occurs (no overwrite)', async () => {
+test('M3-06: approveStockAudit reconciles live system stock without overwriting concurrent movements', async () => {
   const srv = await startTestServer();
   try {
     const warehouseToken = await srv.loginAs('kho');
@@ -443,7 +444,7 @@ test('M3-06: approveStockAudit rejects stale stock with 409 Conflict when concur
     const sp6Initial = (await srv.reqJson('GET', '/api/products/SP006', { token: managerToken })).data.item.stockQty;
     const sp1Initial = (await srv.reqJson('GET', '/api/products/SP001', { token: managerToken })).data.item.stockQty;
 
-    // 1. Warehouse creates multi-item Stock Audit (ChoDuyet) with SP001 and SP006
+    // 1. Warehouse creates multi-item Stock Audit (ChoDuyet) with SP001 (-1) and SP006 (-1)
     const auditRes = await srv.reqJson('POST', '/api/stock-audits', {
       token: warehouseToken,
       body: {
@@ -463,7 +464,7 @@ test('M3-06: approveStockAudit rejects stale stock with 409 Conflict when concur
       body: {
         supplierId: 'NCC003',
         note: 'Nhập chen ngang trước khi duyệt kiểm kê',
-        items: [{ productId: 'SP006', qty: 10, unitCost: 45000 }],
+        items: [{ productId: 'SP006', qty: 10, unitCost: 45000, expiryDate: '2027-06-30' }],
       },
     });
     assert.equal(poRes.status, 201);
@@ -475,18 +476,24 @@ test('M3-06: approveStockAudit rejects stale stock with 409 Conflict when concur
     const sp6AfterPo = (await srv.reqJson('GET', '/api/products/SP006', { token: managerToken })).data.item.stockQty;
     assert.equal(sp6AfterPo, sp6Initial + 10);
 
-    // 3. Manager tries to approve stale audit -> MUST return 409 Conflict and NOT overwrite SP006 or SP001
+    // 3. Manager approves audit -> recalculates live system stock (sp6Initial + 10) and applies audit diff (-1)
+    // instead of overwriting with stale actualQty (sp6Initial - 1)!
     const approveRes = await srv.reqJson('POST', `/api/stock-audits/${auditId}/approve`, { token: managerToken });
-    assert.equal(approveRes.status, 409);
-    assert.match(approveRes.data.error?.message || '', /SP006/);
+    assert.equal(approveRes.status, 200);
+    assert.equal(approveRes.data.item.status, 'DaDuyet');
 
-    // Verify audit stays ChoDuyet, neither SP001 nor SP006 overwritten, and 0 KIEM_KE movements appended
-    const auditAfter = (await srv.reqJson('GET', `/api/stock-audits/${auditId}`, { token: managerToken })).data.item;
-    assert.equal(auditAfter.status, 'ChoDuyet');
-    assert.equal((await srv.reqJson('GET', '/api/products/SP006', { token: managerToken })).data.item.stockQty, sp6AfterPo);
-    assert.equal((await srv.reqJson('GET', '/api/products/SP001', { token: managerToken })).data.item.stockQty, sp1Initial);
+    const sp6Final = (await srv.reqJson('GET', '/api/products/SP006', { token: managerToken })).data.item.stockQty;
+    const sp1Final = (await srv.reqJson('GET', '/api/products/SP001', { token: managerToken })).data.item.stockQty;
+    assert.equal(sp6Final, sp6Initial + 10 - 1, 'Concurrent +10 receipt must be preserved when applying -1 audit diff');
+    assert.equal(sp1Final, sp1Initial - 1);
+
+    const sp6Line = approveRes.data.item.items.find((i) => i.productId === 'SP006');
+    assert.equal(sp6Line.movementsSinceSnapshot, 10);
+    assert.equal(sp6Line.effectiveSystemQty, sp6Initial + 10);
+
     const kiemKeMoves = await srv.reqJson('GET', '/api/stock-movements?docType=KIEM_KE', { token: managerToken });
-    assert.equal(kiemKeMoves.data.items.length, 0);
+    assert.equal(kiemKeMoves.data.items.length, 2);
+    assert.ok(kiemKeMoves.data.items.some((m) => m.productId === 'SP006' && m.delta === -1 && m.stockAfter === sp6Final));
   } finally {
     await srv.close();
   }

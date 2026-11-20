@@ -1,4 +1,4 @@
-/* M4: Modal Thanh toán POS (BR-04 & BR-05) — Tiền mặt / VietQR / Thẻ kết nối SQLite API. */
+/* M4 + Phase 2: Modal Thanh toán POS (BR-04 & BR-05) — Thanh toán 100% một lần (Tiền mặt / VietQR / Thẻ), không bán chịu/tách đơn. */
 'use strict';
 
 const POS_PAYMENT_METHODS = [
@@ -20,20 +20,20 @@ function checkoutModal(method = 'CASH') {
   const suggestedRef = `VQR${Date.now().toString().slice(-6)}`;
 
   showModal(
-    'Thanh toán hóa đơn POS (BR-05)',
+    'Thanh toán hóa đơn POS · 100% một lần (BR-05)',
     `<form id="checkout-form">
       <div class="modal-content">
         <div class="payment-breakdown" style="background:#f8fafc;padding:12px 14px;border:1px solid #e2e8f0;border-radius:8px;margin-bottom:12px;font-size:12.5px;display:flex;flex-direction:column;gap:6px">
           <div class="between"><span class="muted">1. Tạm tính (${number(totalQty)} sản phẩm)</span><span class="money">${money(t.subtotal)}</span></div>
           ${
             t.invoiceDiscount > 0
-              ? `<div class="between positive"><span>2. Giảm giá khuyến mãi (${e(posCart.appliedPromotion?.code || '')})</span><span class="money">−${money(t.invoiceDiscount)}</span></div>`
+              ? `<div class="between positive"><span>2. Giảm giá hóa đơn (${e(t.discountLabel || '')})</span><span class="money">−${money(t.invoiceDiscount)}</span></div>`
               : ''
           }
           <div class="between"><span class="muted">3. Tiền sau giảm</span><span class="money">${money(t.afterDiscount)}</span></div>
           <div class="between"><span class="muted">4. Thuế VAT (${t.taxRate}% · THAM_SO)</span><span class="money">${money(t.taxAmount)}</span></div>
         </div>
-        <div class="payment-total">5. TỔNG THANH TOÁN<b>${money(t.totalAmount)}</b></div>
+        <div class="payment-total">5. TỔNG THANH TOÁN ĐỦ 100%<b>${money(t.totalAmount)}</b></div>
         <div class="payment-methods">
           ${POS_PAYMENT_METHODS.map(
             ([key, label, ico]) =>
@@ -79,7 +79,7 @@ function checkoutModal(method = 'CASH') {
                 ${field('Mã tham chiếu giao dịch (*)', 'paymentRef', normalizedMethod === 'VIETQR' ? suggestedRef : '', 'text', 'required minlength="3" maxlength="100" placeholder="Nhập mã giao dịch VietQR / thẻ…"')}
                 <label class="check-label">
                   <input type="checkbox" name="confirmed" required>
-                  <span>Tôi xác nhận cửa hàng đã nhận đủ <strong>${money(t.totalAmount)}</strong>.</span>
+                  <span>Tôi xác nhận cửa hàng đã nhận đủ 100% số tiền <strong>${money(t.totalAmount)}</strong>.</span>
                 </label>
               </div>`
         }
@@ -87,7 +87,7 @@ function checkoutModal(method = 'CASH') {
       </div>
       <div class="modal-footer">
         ${action('close-modal', 'Hủy')}
-        <button class="btn teal" type="submit">${icon('check')}Xác nhận thanh toán</button>
+        <button class="btn teal" type="submit">${icon('check')}Xác nhận thanh toán ${money(t.totalAmount)}</button>
       </div>
     </form>`,
   );
@@ -107,16 +107,22 @@ function updateCash() {
     const shortage = t.totalAmount - received;
     if (warning) {
       warning.style.display = 'block';
-      warning.innerHTML = `<span class="badge red">Tiền khách đưa chưa đủ — Còn thiếu ${money(shortage)} (BR-05)</span>`;
+      warning.innerHTML = `<span class="badge red">Tiền khách đưa chưa đủ — Còn thiếu ${money(shortage)} (Cửa hàng chỉ nhận thanh toán đủ 100%, không bán chịu)</span>`;
     }
-    if (submitBtn) submitBtn.disabled = true;
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.title = `Tiền khách đưa còn thiếu ${money(shortage)}`;
+    }
     if (changeEl) changeEl.textContent = '0 ₫';
   } else {
     if (warning) {
       warning.style.display = 'none';
       warning.innerHTML = '';
     }
-    if (submitBtn) submitBtn.disabled = false;
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.title = '';
+    }
     if (changeEl) changeEl.textContent = money(received - t.totalAmount);
   }
 }

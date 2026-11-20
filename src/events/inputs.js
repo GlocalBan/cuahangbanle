@@ -1,3 +1,6 @@
+/* Input & change event handlers for live filters, POS inputs, Shift reconciliation & Phase 2 selectors. */
+'use strict';
+
 document.addEventListener('input', (event) => {
   const el = event.target;
   if (el.dataset.filter && el.tagName === 'INPUT' && el.type !== 'date') {
@@ -21,6 +24,12 @@ document.addEventListener('input', (event) => {
     } else if (el.dataset.filter === 'promotions') {
       clearTimeout(window.__promotionsSearchTimer);
       window.__promotionsSearchTimer = setTimeout(() => loadPromotionsData(true), 220);
+    } else if (el.dataset.filter === 'vouchers') {
+      clearTimeout(window.__vouchersSearchTimer);
+      window.__vouchersSearchTimer = setTimeout(() => loadVouchersData(true), 220);
+    } else if (el.dataset.filter === 'portalSearch') {
+      clearTimeout(window.__portalSearchTimer);
+      window.__portalSearchTimer = setTimeout(() => loadSupplierPortalData(true), 220);
     } else if (el.dataset.filter === 'customers') {
       clearTimeout(window.__customersSearchTimer);
       window.__customersSearchTimer = setTimeout(() => loadCustomersData(true), 220);
@@ -40,8 +49,12 @@ document.addEventListener('input', (event) => {
   }
   if (el.id === 'global-search') globalSearch(el.value);
   if (el.id === 'cash-input') updateCash();
+  if (el.id === 'shift-actual-cash') updateShiftVariancePreview();
   if (el.id === 'pos-promo-code') {
     posCart.promotionCode = el.value.toUpperCase();
+  }
+  if (el.id === 'pos-voucher-code') {
+    posCart.voucherCode = el.value.toUpperCase();
   }
   if (el.id === 'cart-note') {
     posCart.note = el.value;
@@ -75,6 +88,7 @@ document.addEventListener('input', (event) => {
     }
   }
 });
+
 document.addEventListener('change', async (event) => {
   const el = event.target;
   try {
@@ -87,12 +101,24 @@ document.addEventListener('change', async (event) => {
         loadProductsData(true);
       } else if (['moveDocType', 'moveFrom', 'moveTo'].includes(el.dataset.filter)) {
         loadStockMovementsData(true);
+      } else if (['nearExpiryDays', 'nearExpiryCategory', 'nearExpiryIncludeExpired', 'writeoffStatus'].includes(el.dataset.filter)) {
+        loadNearExpiryData(true);
       } else if (['purchaseSupplier', 'purchaseStatus', 'purchaseFrom', 'purchaseTo'].includes(el.dataset.filter)) {
         loadPurchasesData(true);
+      } else if (el.dataset.filter === 'grnStatus') {
+        loadGrnsData(true);
+      } else if (el.dataset.filter === 'payableStatus') {
+        loadPayablesData(true);
+      } else if (el.dataset.filter === 'supRetStatus') {
+        loadSupplierReturnsData(true);
+      } else if (el.dataset.filter === 'portalStatus') {
+        loadSupplierPortalData(true);
       } else if (['auditListStatus', 'auditListFrom', 'auditListTo'].includes(el.dataset.filter)) {
         loadStockAuditsData(true);
       } else if (el.dataset.filter === 'promoStatus') {
         loadPromotionsData(true);
+      } else if (el.dataset.filter === 'voucherStatus') {
+        loadVouchersData(true);
       } else if (el.dataset.filter === 'customerStatus') {
         loadCustomersData(true);
       } else if (['orderStatus', 'orderPayment', 'orderFrom', 'orderTo'].includes(el.dataset.filter)) {
@@ -109,6 +135,9 @@ document.addEventListener('change', async (event) => {
       posCart.note = el.value;
     }
     if (el.id === 'purchase-supplier') updatePurchaseOptions(true);
+    if (el.id === 'grn-po-select') {
+      await createGrnModal(el.value);
+    }
     if (el.id === 'purchase-product') {
       const prod = (apiState.products || []).find((p) => p.id === el.value);
       if ($('#purchase-price')) $('#purchase-price').value = prod ? Number(prod.costPrice || 0) : 0;
@@ -120,20 +149,25 @@ document.addEventListener('change', async (event) => {
     if (el.dataset.purchaseField) {
       const key = el.dataset.purchaseField,
         line = purchaseLines[Number(el.dataset.index)];
-      if (!line || !['qty', 'unitCost', 'price'].includes(key))
+      if (!line || !['qty', 'unitCost', 'price', 'expiryDate', 'batchCode', 'mfgDate'].includes(key))
         throw new Error('Mặt hàng không còn trong phiếu.');
-      const value = Number(el.value),
-        minimum = key === 'qty' ? 1 : 0;
-      if (!el.value.trim() || !Number.isSafeInteger(value) || value < minimum) {
-        el.value = line[key];
-        throw new Error(
-          key === 'qty'
-            ? 'Số lượng nhập phải là số nguyên lớn hơn 0.'
-            : 'Đơn giá nhập phải là số nguyên không âm.',
-        );
+      if (['expiryDate', 'batchCode', 'mfgDate'].includes(key)) {
+        line[key] = el.value.trim();
+        renderPurchaseLines();
+      } else {
+        const value = Number(el.value),
+          minimum = key === 'qty' ? 1 : 0;
+        if (!el.value.trim() || !Number.isSafeInteger(value) || value < minimum) {
+          el.value = line[key];
+          throw new Error(
+            key === 'qty'
+              ? 'Số lượng nhập phải là số nguyên lớn hơn 0.'
+              : 'Đơn giá nhập phải là số nguyên không âm.',
+          );
+        }
+        line[key] = value;
+        renderPurchaseLines();
       }
-      line[key] = value;
-      renderPurchaseLines();
     }
     if (el.dataset.auditField === 'actualQty') {
       const line = auditLines[Number(el.dataset.index)];

@@ -106,10 +106,18 @@ class PurchaseRepository {
     const nowIso = header.created_at || new Date().toISOString();
     this.db
       .prepare(
-        `INSERT INTO purchases (id, supplier_id, created_by, approved_by, total_amount, note, status, created_at, confirmed_at)
-         VALUES (?, ?, ?, NULL, ?, ?, 'Draft', ?, NULL)`,
+        `INSERT INTO purchases (id, supplier_id, created_by, approved_by, total_amount, expected_delivery_date, note, status, created_at, confirmed_at)
+         VALUES (?, ?, ?, NULL, ?, ?, ?, 'Draft', ?, NULL)`,
       )
-      .run(id, header.supplier_id, header.created_by, header.total_amount, header.note || '', nowIso);
+      .run(
+        id,
+        header.supplier_id,
+        header.created_by,
+        header.total_amount,
+        header.expected_delivery_date || '',
+        header.note || '',
+        nowIso,
+      );
 
     const insertItem = this.db.prepare(
       `INSERT INTO purchase_items (purchase_id, product_id, qty, unit_cost, batch_code, mfg_date, expiry_date)
@@ -129,14 +137,14 @@ class PurchaseRepository {
     return this.findById(id);
   }
 
-  updateDraft(id, { supplier_id, total_amount, note }, items) {
+  updateDraft(id, { supplier_id, total_amount, expected_delivery_date = '', note }, items) {
     this.db
       .prepare(
         `UPDATE purchases
-         SET supplier_id = ?, total_amount = ?, note = ?
+         SET supplier_id = ?, total_amount = ?, expected_delivery_date = ?, note = ?
          WHERE id = ? AND status = 'Draft'`,
       )
-      .run(supplier_id, total_amount, note || '', id);
+      .run(supplier_id, total_amount, expected_delivery_date || '', note || '', id);
 
     this.db.prepare('DELETE FROM purchase_items WHERE purchase_id = ?').run(id);
     const insertItem = this.db.prepare(
@@ -153,6 +161,45 @@ class PurchaseRepository {
         item.mfg_date || '',
         item.expiry_date || '',
       );
+    }
+    return this.findById(id);
+  }
+
+  updateNegotiationTerms(id, { total_amount, expected_delivery_date, note, status }, items = null) {
+    const sets = ['status = ?'];
+    const params = [status];
+    if (total_amount !== undefined) {
+      sets.push('total_amount = ?');
+      params.push(total_amount);
+    }
+    if (expected_delivery_date !== undefined) {
+      sets.push('expected_delivery_date = ?');
+      params.push(expected_delivery_date || '');
+    }
+    if (note !== undefined) {
+      sets.push('note = ?');
+      params.push(note);
+    }
+    params.push(id);
+    this.db.prepare(`UPDATE purchases SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+
+    if (Array.isArray(items) && items.length > 0) {
+      this.db.prepare('DELETE FROM purchase_items WHERE purchase_id = ?').run(id);
+      const insertItem = this.db.prepare(
+        `INSERT INTO purchase_items (purchase_id, product_id, qty, unit_cost, batch_code, mfg_date, expiry_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      );
+      for (const item of items) {
+        insertItem.run(
+          id,
+          item.product_id,
+          item.qty,
+          item.unit_cost,
+          item.batch_code || '',
+          item.mfg_date || '',
+          item.expiry_date || '',
+        );
+      }
     }
     return this.findById(id);
   }
@@ -178,13 +225,27 @@ class PurchaseRepository {
     return this.findById(id);
   }
 
+  getCumulativeReceivedMap(purchaseId, { approvedOnly = false } = {}) {
+    const statusClause = approvedOnly ? "grn.status = 'DaDuyet'" : "grn.status != 'DaHuy'";
+    const rows = this.db
+      .prepare(
+        `SELECT ri.product_id, COALESCE(SUM(ri.received_qty), 0) AS received_qty
+         FROM purchase_receipt_items ri
+         JOIN purchase_receipts grn ON grn.id = ri.receipt_id
+         WHERE grn.purchase_id = ? AND ${statusClause}
+         GROUP BY ri.product_id`,
+      )
+      .all(purchaseId);
+    return new Map(rows.map((r) => [r.product_id, Number(r.received_qty) || 0]));
+  }
+
   getPendingQtyByProduct() {
     const rows = this.db
       .prepare(
         `SELECT pi.product_id, COALESCE(SUM(pi.qty), 0) AS pending_qty
          FROM purchase_items pi
          JOIN purchases p ON p.id = pi.purchase_id
-         WHERE p.status = 'Draft'
+         WHERE p.status IN ('Draft', 'GuiNCC', 'NCCPhanHoi', 'ThuongLuong', 'DaThongNhat', 'DangNhanHang')
          GROUP BY pi.product_id`,
       )
       .all();
@@ -241,6 +302,8 @@ class StockAuditRepository {
         `SELECT a.*,
                 uc.full_name AS created_by_name,
                 uc.username AS created_by_username,
+                uas.full_name AS assigned_to_name,
+                ure.full_name AS recount_by_name,
                 ua.full_name AS approved_by_name,
                 (SELECT COUNT(*) FROM stock_audit_items sai WHERE sai.audit_id = a.id) AS item_count,
                 (SELECT COUNT(*) FROM stock_audit_items sai WHERE sai.audit_id = a.id AND sai.diff_qty != 0) AS diff_item_count,
@@ -251,6 +314,8 @@ class StockAuditRepository {
                  WHERE sai.audit_id = a.id) AS total_abs_diff_value
          FROM stock_audits a
          JOIN users uc ON uc.id = a.created_by
+         LEFT JOIN users uas ON uas.id = a.assigned_to
+         LEFT JOIN users ure ON ure.id = a.recount_by
          LEFT JOIN users ua ON ua.id = a.approved_by
          ${where}
          ORDER BY a.created_at DESC, a.id DESC`,
@@ -265,9 +330,13 @@ class StockAuditRepository {
           `SELECT a.*,
                   uc.full_name AS created_by_name,
                   uc.username AS created_by_username,
+                  uas.full_name AS assigned_to_name,
+                  ure.full_name AS recount_by_name,
                   ua.full_name AS approved_by_name
            FROM stock_audits a
            JOIN users uc ON uc.id = a.created_by
+           LEFT JOIN users uas ON uas.id = a.assigned_to
+           LEFT JOIN users ure ON ure.id = a.recount_by
            LEFT JOIN users ua ON ua.id = a.approved_by
            WHERE a.id = ?`,
         )
@@ -277,7 +346,11 @@ class StockAuditRepository {
     const items = this.db
       .prepare(
         `SELECT sai.id, sai.audit_id, sai.product_id,
-                sai.system_qty, sai.actual_qty, sai.diff_qty, sai.reason,
+                sai.batch_id, sai.batch_code, sai.expiry_date,
+                sai.system_qty, sai.actual_qty, sai.diff_qty,
+                sai.round1_qty, sai.round2_qty,
+                sai.movements_since_snapshot, sai.effective_system_qty,
+                sai.reason_code, sai.reason,
                 pr.sku, pr.name AS product_name, pr.image_url,
                 pr.stock_qty AS live_stock_qty, pr.cost_price,
                 u.name AS unit_name
@@ -289,7 +362,13 @@ class StockAuditRepository {
       )
       .all(id);
 
-    return { ...header, items };
+    const rounds = this.db
+      .prepare(
+        `SELECT * FROM stock_audit_rounds WHERE audit_id = ? ORDER BY round_no ASC, created_at ASC`,
+      )
+      .all(id);
+
+    return { ...header, items, rounds };
   }
 
   create(header, items) {
@@ -297,26 +376,111 @@ class StockAuditRepository {
     const nowIso = header.created_at || new Date().toISOString();
     this.db
       .prepare(
-        `INSERT INTO stock_audits (id, created_by, approved_by, note, status, created_at, approved_at)
-         VALUES (?, ?, NULL, ?, 'ChoDuyet', ?, NULL)`,
+        `INSERT INTO stock_audits (
+           id, created_by, assigned_to, recount_by, approved_by,
+           scope_type, scope_value, snapshot_at, requires_recount, requires_admin_approval,
+           note, status, created_at, approved_at
+         ) VALUES (?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
       )
-      .run(id, header.created_by, header.note || '', nowIso);
+      .run(
+        id,
+        header.created_by,
+        header.assigned_to || null,
+        header.scope_type || 'TOAN_KHO',
+        header.scope_value || '',
+        header.snapshot_at || nowIso,
+        header.requires_recount ? 1 : 0,
+        header.requires_admin_approval ? 1 : 0,
+        header.note || '',
+        header.status || 'ChoDuyet',
+        nowIso,
+      );
 
     const insertItem = this.db.prepare(
-      `INSERT INTO stock_audit_items (audit_id, product_id, system_qty, actual_qty, diff_qty, reason)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO stock_audit_items (
+         audit_id, product_id, batch_id, batch_code, expiry_date,
+         system_qty, actual_qty, diff_qty, round1_qty, round2_qty,
+         movements_since_snapshot, effective_system_qty, reason_code, reason
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)`,
     );
     for (const item of items) {
       insertItem.run(
         id,
         item.product_id,
+        item.batch_id || null,
+        item.batch_code || '',
+        item.expiry_date || '',
         item.system_qty,
         item.actual_qty,
         item.diff_qty,
+        item.round1_qty ?? null,
+        item.round2_qty ?? null,
+        item.reason_code || '',
         item.reason || '',
       );
     }
     return this.findById(id);
+  }
+
+  updateHeader(id, fields) {
+    const allowed = [
+      'assigned_to',
+      'recount_by',
+      'approved_by',
+      'requires_recount',
+      'requires_admin_approval',
+      'note',
+      'status',
+      'approved_at',
+    ];
+    const sets = [];
+    const params = [];
+    for (const key of allowed) {
+      if (fields[key] !== undefined) {
+        sets.push(`${key} = ?`);
+        params.push(fields[key]);
+      }
+    }
+    if (!sets.length) return this.findById(id);
+    params.push(id);
+    this.db.prepare(`UPDATE stock_audits SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+    return this.findById(id);
+  }
+
+  updateItem(itemId, fields) {
+    const allowed = [
+      'actual_qty',
+      'diff_qty',
+      'round1_qty',
+      'round2_qty',
+      'movements_since_snapshot',
+      'effective_system_qty',
+      'reason_code',
+      'reason',
+    ];
+    const sets = [];
+    const params = [];
+    for (const key of allowed) {
+      if (fields[key] !== undefined) {
+        sets.push(`${key} = ?`);
+        params.push(fields[key]);
+      }
+    }
+    if (!sets.length) return;
+    params.push(itemId);
+    this.db.prepare(`UPDATE stock_audit_items SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+  }
+
+  addRound({ auditId, roundNo, countedBy, countedByName, itemsJson = '[]', note = '' }) {
+    const id = `KKR-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    const nowIso = new Date().toISOString();
+    this.db
+      .prepare(
+        `INSERT INTO stock_audit_rounds (id, audit_id, round_no, counted_by, counted_by_name, items_json, note, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(id, auditId, roundNo, countedBy, countedByName, itemsJson, note || '', nowIso);
+    return this.db.prepare('SELECT * FROM stock_audit_rounds WHERE id = ?').get(id);
   }
 
   updateStatus(id, status, { approved_by = null, approved_at = null, note = undefined } = {}) {

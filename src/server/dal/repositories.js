@@ -55,7 +55,7 @@ class UserRepository {
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     return this.db
       .prepare(
-        `SELECT u.id, u.username, u.full_name, u.email, u.phone, u.role_code,
+        `SELECT u.id, u.username, u.full_name, u.email, u.phone, u.role_code, u.supplier_id,
                 r.display_name AS role_display_name, r.short_name AS role_short_name,
                 u.status, u.must_change_password, u.last_login_at, u.created_at, u.updated_at
          FROM users u
@@ -89,8 +89,8 @@ class UserRepository {
     const id = user.id || this.nextEmployeeId();
     this.db
       .prepare(
-        `INSERT INTO users (id, username, password_hash, full_name, email, phone, role_code, status, must_change_password, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO users (id, username, password_hash, full_name, email, phone, role_code, supplier_id, status, must_change_password, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -100,6 +100,7 @@ class UserRepository {
         user.email || '',
         user.phone || '',
         user.role_code,
+        user.supplier_id || null,
         user.status || 'ACTIVE',
         user.must_change_password ? 1 : 0,
         nowIso,
@@ -112,7 +113,7 @@ class UserRepository {
     const nowIso = new Date().toISOString();
     const sets = [];
     const params = [];
-    const allowed = ['full_name', 'email', 'phone', 'role_code', 'status', 'password_hash', 'must_change_password', 'last_login_at'];
+    const allowed = ['full_name', 'email', 'phone', 'role_code', 'supplier_id', 'status', 'password_hash', 'must_change_password', 'last_login_at'];
     for (const key of allowed) {
       if (fields[key] !== undefined) {
         sets.push(`${key} = ?`);

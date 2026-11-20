@@ -312,15 +312,27 @@ body.sidebar-collapsed .sidebar .sidebar-user-actions {
   gap: 16px;
 }
 .topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
   min-width: 0;
+  overflow: hidden;
+}
+.topbar-left .breadcrumb {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .icon-btn.mobile-menu {
   display: none;
 }
 .global-search {
   position: relative;
-  width: 340px;
-  max-width: 44%;
+  width: 320px;
+  max-width: 38%;
+  flex-shrink: 0;
 }
 .global-search input {
   height: 38px;
