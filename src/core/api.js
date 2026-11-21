@@ -419,8 +419,8 @@ const api = {
   updatePromotion: (id, data) => apiRequest('PUT', `/api/promotions/${encodeURIComponent(id)}`, data),
   setPromotionStatus: (id, status) =>
     apiRequest('PATCH', `/api/promotions/${encodeURIComponent(id)}/status`, { status }),
-  validatePromotion: (code, subtotal) =>
-    apiRequest('POST', '/api/promotions/validate', { code, subtotal }),
+  validatePromotion: (code, subtotal, items = undefined) =>
+    apiRequest('POST', '/api/promotions/validate', Array.isArray(items) ? { code, subtotal, items } : { code, subtotal }),
 
   listCustomers: (params = {}) => apiRequest('GET', `/api/customers${buildQuery(params)}`),
   createCustomer: (data) => apiRequest('POST', '/api/customers', data),

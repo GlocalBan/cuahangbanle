@@ -297,8 +297,8 @@ function promotionModal(promoId = '') {
           'id="promo-discount-type" required',
         )}
         ${field('Giá trị giảm (*) (% hoặc ₫)', 'discountValue', v.discountValue, 'number', 'required min="0" step="1"')}
-        ${field('Trần giảm tối đa (₫) (0 = không giới hạn)', 'maxDiscount', v.maxDiscount, 'number', 'min="0" step="1000"')}
-        ${field('Giá trị đơn tối thiểu (₫) (*)', 'minOrderAmount', v.minOrderAmount, 'number', 'required min="0" step="1000"')}
+        ${field('Trần giảm tối đa (₫) (0 = không giới hạn)', 'maxDiscount', v.maxDiscount, 'number', 'min="0" step="1"')}
+        ${field('Giá trị đơn tối thiểu (₫) (*)', 'minOrderAmount', v.minOrderAmount, 'number', 'required min="0" step="1"')}
         ${field('Ngày bắt đầu (*)', 'startDate', v.startDate, 'date', 'required')}
         ${field('Ngày kết thúc (*)', 'endDate', v.endDate, 'date', 'required')}
         ${field('Giới hạn tổng lượt dùng (*)', 'usageLimit', v.usageLimit, 'number', 'required min="1" step="1"', true)}
@@ -409,8 +409,8 @@ function voucherModal(voucherId = '') {
           'required',
         )}
         ${field('Giá trị giảm (*)', 'discountValue', v.discountValue, 'number', 'required min="1" step="1"')}
-        ${field('Trần giảm tối đa (₫) (dùng cho %)', 'maxDiscount', v.maxDiscount || 0, 'number', 'min="0" step="1000"')}
-        ${field('Đơn hàng tối thiểu (₫) (*)', 'minOrderAmount', v.minOrderAmount || 0, 'number', 'required min="0" step="1000"')}
+        ${field('Trần giảm tối đa (₫) (dùng cho %)', 'maxDiscount', v.maxDiscount || 0, 'number', 'min="0" step="1"')}
+        ${field('Đơn hàng tối thiểu (₫) (*)', 'minOrderAmount', v.minOrderAmount || 0, 'number', 'required min="0" step="1"')}
         ${field('Ngày bắt đầu (*)', 'startDate', v.startDate, 'date', 'required')}
         ${field('Ngày kết thúc (*)', 'endDate', v.endDate, 'date', 'required')}
         ${field('Tổng lượt dùng (*)', 'usageLimit', v.usageLimit || 1, 'number', 'required min="1" step="1"')}
@@ -452,8 +452,8 @@ function voucherBulkModal() {
           'required',
         )}
         ${field('Giá trị giảm (*)', 'discountValue', 15000, 'number', 'required min="1" step="1"')}
-        ${field('Trần giảm tối đa (₫)', 'maxDiscount', 0, 'number', 'min="0" step="1000"')}
-        ${field('Đơn tối thiểu (₫) (*)', 'minOrderAmount', 100000, 'number', 'required min="0" step="1000"')}
+        ${field('Trần giảm tối đa (₫)', 'maxDiscount', 0, 'number', 'min="0" step="1"')}
+        ${field('Đơn tối thiểu (₫) (*)', 'minOrderAmount', 100000, 'number', 'required min="0" step="1"')}
         ${field('Ngày bắt đầu (*)', 'startDate', today, 'date', 'required')}
         ${field('Ngày kết thúc (*)', 'endDate', nextMonth, 'date', 'required')}
         ${field('Lượt dùng / mỗi mã (*)', 'usageLimit', 1, 'number', 'required min="1" step="1"')}

@@ -6,7 +6,12 @@ function genId(prefix) {
 }
 
 function todayYmd() {
-  return new Date().toISOString().slice(0, 10);
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
 }
 
 class BatchRepository {
@@ -179,6 +184,74 @@ class BatchRepository {
     return salable;
   }
 
+  /**
+   * F-07C: Tự động quét và chuyển các lô đã hết hạn (expiry_date <= refDate) sang trạng thái 'HetHan',
+   * đồng thời đồng bộ lại products.stock_qty = SUM(salable batches) để lô hết hạn không bao giờ được
+   * tính vào tồn khả dụng trên danh mục, báo cáo tồn kho hay POS.
+   */
+  sweepExpiredBatches(refDate = todayYmd(), productId = '') {
+    const cleanPid = String(productId || '').trim();
+    const expiredCandidates = cleanPid
+      ? this.db
+          .prepare(
+            `SELECT DISTINCT b.product_id
+             FROM product_batches b
+             WHERE b.product_id = ?
+               AND b.expiry_date != ''
+               AND b.expiry_date <= ?
+               AND b.status NOT IN ('DaHuy', 'DaHet')`,
+          )
+          .all(cleanPid, refDate)
+      : this.db
+          .prepare(
+            `SELECT DISTINCT b.product_id
+             FROM product_batches b
+             WHERE b.expiry_date != ''
+               AND b.expiry_date <= ?
+               AND b.status NOT IN ('DaHuy', 'DaHet')`,
+          )
+          .all(refDate);
+
+    if (expiredCandidates.length === 0) return { transitionedBatches: 0, syncedProducts: 0 };
+
+    const updateRes = cleanPid
+      ? this.db
+          .prepare(
+            `UPDATE product_batches
+             SET status = 'HetHan'
+             WHERE product_id = ?
+               AND expiry_date != ''
+               AND expiry_date <= ?
+               AND status NOT IN ('HetHan', 'DaHuy', 'DaHet')`,
+          )
+          .run(cleanPid, refDate)
+      : this.db
+          .prepare(
+            `UPDATE product_batches
+             SET status = 'HetHan'
+             WHERE expiry_date != ''
+               AND expiry_date <= ?
+               AND status NOT IN ('HetHan', 'DaHuy', 'DaHet')`,
+          )
+          .run(refDate);
+
+    let syncedProducts = 0;
+    const getProdStock = this.db.prepare('SELECT stock_qty FROM products WHERE id = ?');
+    for (const row of expiredCandidates) {
+      const prod = getProdStock.get(row.product_id);
+      if (!prod) continue;
+      const salable = this.sumSalableQty(row.product_id, refDate);
+      if (Number(prod.stock_qty) !== salable) {
+        this.syncProductSalableStock(row.product_id, refDate);
+        syncedProducts += 1;
+      }
+    }
+    return {
+      transitionedBatches: Number(updateRes?.changes) || 0,
+      syncedProducts,
+    };
+  }
+
   findNearExpiryAndExpired({ maxDays = 14, categoryCode = '', includeExpired = true, refDate = todayYmd() } = {}) {
     const clauses = [
       'b.qty_remaining > 0',
@@ -333,23 +406,44 @@ class WriteOffRepository {
     return this.findById(id);
   }
 
-  sumApprovedLoss({ fromDate = '', toDate = '' } = {}) {
-    const clauses = ["status = 'DaDuyet'"];
+  sumApprovedLoss({ fromDate = '', toDate = '', categoryCode = '' } = {}) {
+    const cleanCat = String(categoryCode || '').trim();
+    const clauses = ["w.status = 'DaDuyet'"];
     const params = [];
     if (fromDate) {
-      clauses.push('substr(COALESCE(approved_at, created_at), 1, 10) >= ?');
+      clauses.push('substr(COALESCE(w.approved_at, w.created_at), 1, 10) >= ?');
       params.push(fromDate);
     }
     if (toDate) {
-      clauses.push('substr(COALESCE(approved_at, created_at), 1, 10) <= ?');
+      clauses.push('substr(COALESCE(w.approved_at, w.created_at), 1, 10) <= ?');
       params.push(toDate);
+    }
+    if (cleanCat) {
+      clauses.push('p.category_code = ?');
+      params.push(cleanCat);
+      const row = this.db
+        .prepare(
+          `SELECT COUNT(DISTINCT w.id) AS doc_count,
+                  COALESCE(SUM(wi.qty), 0) AS total_qty,
+                  COALESCE(SUM(wi.line_value), 0) AS total_value
+           FROM batch_writeoff_items wi
+           JOIN batch_writeoffs w ON w.id = wi.writeoff_id
+           JOIN products p ON p.id = wi.product_id
+           WHERE ${clauses.join(' AND ')}`,
+        )
+        .get(...params);
+      return {
+        docCount: Number(row?.doc_count) || 0,
+        totalQty: Number(row?.total_qty) || 0,
+        totalValue: Number(row?.total_value) || 0,
+      };
     }
     const row = this.db
       .prepare(
         `SELECT COUNT(*) AS doc_count,
-                COALESCE(SUM(total_qty), 0) AS total_qty,
-                COALESCE(SUM(total_value), 0) AS total_value
-         FROM batch_writeoffs
+                COALESCE(SUM(w.total_qty), 0) AS total_qty,
+                COALESCE(SUM(w.total_value), 0) AS total_value
+         FROM batch_writeoffs w
          WHERE ${clauses.join(' AND ')}`,
       )
       .get(...params);
@@ -575,10 +669,19 @@ class CashierShiftRepository {
          JOIN orders o ON o.id = r.order_id
          WHERE r.status = 'DaXacNhan'
            AND o.payment_method = 'CASH'
-           AND COALESCE(r.resolved_at, r.created_at) >= ?
-           AND (r.created_by = ? OR o.shift_id = ?)`,
+           AND (
+             r.refund_shift_id = ?
+             OR (
+               r.refund_shift_id IS NULL
+               AND COALESCE(r.resolved_at, r.created_at) >= ?
+               AND (
+                 (r.approved_by IS NOT NULL AND r.approved_by = ?)
+                 OR (r.approved_by IS NULL AND r.created_by = ?)
+               )
+             )
+           )`,
       )
-      .get(openedAt, cashierId, shiftId);
+      .get(shiftId, openedAt, cashierId, cashierId);
     return {
       orderCount: Number(salesRow?.order_count) || 0,
       cashSales: Number(salesRow?.cash_sales) || 0,
@@ -870,6 +973,63 @@ class SupplierOpsRepository {
       .all(...params);
   }
 
+  findPaymentByRef(paymentRef) {
+    const clean = String(paymentRef || '').trim();
+    if (!clean) return null;
+    return (
+      this.db
+        .prepare('SELECT * FROM supplier_payments WHERE lower(trim(payment_ref)) = lower(?) LIMIT 1')
+        .get(clean) || null
+    );
+  }
+
+  listOpenPayablesBySupplier(supplierId) {
+    return this.db
+      .prepare(
+        `SELECT sp.*, s.name AS supplier_name, s.phone AS supplier_phone
+         FROM supplier_payables sp
+         JOIN suppliers s ON s.id = sp.supplier_id
+         WHERE sp.supplier_id = ? AND sp.balance_amount > 0
+         ORDER BY sp.due_date ASC, sp.created_at ASC, sp.id ASC`,
+      )
+      .all(supplierId);
+  }
+
+  createSupplierCredit({ supplierId, supplierReturnId = null, payableId = null, amount, note = '' }) {
+    const safeAmt = Math.max(0, Math.round(Number(amount) || 0));
+    if (safeAmt <= 0) return null;
+    const id = genId('CRNCC');
+    const nowIso = new Date().toISOString();
+    this.db
+      .prepare(
+        `INSERT INTO supplier_credits (
+           id, supplier_id, supplier_return_id, payable_id, amount, remaining_amount, note, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(id, supplierId, supplierReturnId || null, payableId || null, safeAmt, safeAmt, note || '', nowIso);
+    return this.db.prepare('SELECT * FROM supplier_credits WHERE id = ?').get(id) || null;
+  }
+
+  listSupplierCredits(supplierId = '') {
+    if (supplierId) {
+      return this.db
+        .prepare('SELECT * FROM supplier_credits WHERE supplier_id = ? ORDER BY created_at DESC')
+        .all(supplierId);
+    }
+    return this.db.prepare('SELECT * FROM supplier_credits ORDER BY created_at DESC').all();
+  }
+
+  sumSupplierCredits(supplierId = '') {
+    if (supplierId) {
+      const row = this.db
+        .prepare('SELECT COALESCE(SUM(remaining_amount), 0) AS total FROM supplier_credits WHERE supplier_id = ?')
+        .get(supplierId);
+      return Number(row?.total) || 0;
+    }
+    const row = this.db.prepare('SELECT COALESCE(SUM(remaining_amount), 0) AS total FROM supplier_credits').get();
+    return Number(row?.total) || 0;
+  }
+
   recordPayment({ payableId, amount, paymentMethod = 'BANK_TRANSFER', paymentRef = '', createdBy, note = '' }) {
     const pay = this.findPayableById(payableId);
     if (!pay) return null;
@@ -890,17 +1050,41 @@ class SupplierOpsRepository {
     return this.findPayableById(payableId);
   }
 
-  reducePayableForReturn(payableId, creditAmount) {
+  reducePayableForReturn(payableId, returnAmount, { supplierReturnId = null, note = '' } = {}) {
     const pay = this.db.prepare('SELECT * FROM supplier_payables WHERE id = ?').get(payableId);
     if (!pay) return null;
     const nowIso = new Date().toISOString();
-    const newTotal = Math.max(0, Number(pay.total_amount) - creditAmount);
-    const newBalance = Math.max(0, newTotal - Number(pay.paid_amount));
-    const newStatus = newBalance === 0 ? 'DaThanhToanNCC' : Number(pay.paid_amount) > 0 ? 'ThanhToanMotPhan' : 'ChuaThanhToan';
+    const safeReturn = Math.max(0, Math.round(Number(returnAmount) || 0));
+    const prevTotal = Number(pay.total_amount) || 0;
+    const paid = Number(pay.paid_amount) || 0;
+    const prevCredit = Math.max(Number(pay.credit_amount) || 0, Math.max(0, paid - prevTotal));
+
+    const newTotal = Math.max(0, prevTotal - safeReturn);
+    const excessOverTotal = Math.max(0, safeReturn - prevTotal);
+    const newBalance = Math.max(0, newTotal - paid);
+    const overpaidCredit = Math.max(0, paid - newTotal);
+    const newCredit = Math.max(prevCredit, overpaidCredit) + excessOverTotal;
+    const deltaCredit = Math.max(0, newCredit - prevCredit);
+    const newStatus = newBalance === 0 ? 'DaThanhToanNCC' : paid > 0 ? 'ThanhToanMotPhan' : 'ChuaThanhToan';
+
     this.db
-      .prepare('UPDATE supplier_payables SET total_amount = ?, balance_amount = ?, status = ?, updated_at = ? WHERE id = ?')
-      .run(newTotal, newBalance, newStatus, nowIso, payableId);
-    return this.findPayableById(payableId);
+      .prepare(
+        'UPDATE supplier_payables SET total_amount = ?, balance_amount = ?, credit_amount = ?, status = ?, updated_at = ? WHERE id = ?',
+      )
+      .run(newTotal, newBalance, newCredit, newStatus, nowIso, payableId);
+
+    let createdCredit = null;
+    if (deltaCredit > 0) {
+      createdCredit = this.createSupplierCredit({
+        supplierId: pay.supplier_id,
+        supplierReturnId,
+        payableId,
+        amount: deltaCredit,
+        note: note || `Tín dụng dư trả NCC từ công nợ ${payableId}`,
+      });
+    }
+    const updated = this.findPayableById(payableId);
+    return { ...updated, deltaCredit, createdCredit };
   }
 
   nextSupplierReturnId() {

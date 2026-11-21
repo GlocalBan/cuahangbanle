@@ -13,6 +13,15 @@ function isoDateKey(d = new Date()) {
   return new Date(d).toISOString().slice(0, 10);
 }
 
+function todayYmdVn(nowDate = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(nowDate);
+}
+
 function isValidCalendarYmd(ymd) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
   const [y, m, d] = ymd.split('-').map(Number);
@@ -770,7 +779,10 @@ class ReportService {
   }
 
   getDashboard({ days = 7, fromDate = '', toDate = '' } = {}) {
-    const today = isoDateKey(new Date());
+    const today = todayYmdVn();
+    if (this.repos.batches && typeof this.repos.batches.sweepExpiredBatches === 'function') {
+      this.repos.batches.sweepExpiredBatches(today);
+    }
     let rangeFrom = String(fromDate || '').trim();
     let rangeTo = String(toDate || '').trim();
     let safeDays = Number(days) || 7;
@@ -835,6 +847,11 @@ class ReportService {
     const writeoffAgg = this.repos.writeoffs
       ? this.repos.writeoffs.sumApprovedLoss({ fromDate: rangeFrom, toDate: rangeTo })
       : { docCount: 0, totalQty: 0, totalValue: 0 };
+    const auditShrinkAgg =
+      typeof this.repos.reports.sumApprovedAuditShrinkage === 'function'
+        ? this.repos.reports.sumApprovedAuditShrinkage({ fromDate: rangeFrom, toDate: rangeTo })
+        : { docCount: 0, totalQty: 0, totalValue: 0 };
+    const totalShrinkageLoss = writeoffAgg.totalValue + auditShrinkAgg.totalValue;
     const warnRow = this.repos.thamSo?.findByCode?.('SoNgayCanhBaoCanDate');
     const warnDays = warnRow ? Math.max(1, Number(warnRow.gia_tri) || 14) : 14;
     const nearRows = this.repos.batches
@@ -852,7 +869,11 @@ class ReportService {
       writeoffLoss: writeoffAgg.totalValue,
       writeoffQty: writeoffAgg.totalQty,
       writeoffCount: writeoffAgg.docCount,
-      netProfitAfterShrinkage: (period.summary.grossProfit || 0) - writeoffAgg.totalValue,
+      auditShrinkageLoss: auditShrinkAgg.totalValue,
+      auditShrinkageQty: auditShrinkAgg.totalQty,
+      auditShrinkageCount: auditShrinkAgg.docCount,
+      totalShrinkageLoss,
+      netProfitAfterShrinkage: (period.summary.grossProfit || 0) - totalShrinkageLoss,
     };
 
     return {
@@ -904,7 +925,7 @@ class ReportService {
   }
 
   getSalesReport({ fromDate = '', toDate = '', categoryCode = '', groupBy = 'day' } = {}) {
-    const today = isoDateKey(new Date());
+    const today = todayYmdVn();
     const cleanFrom = String(fromDate || '').trim() || addUtcDays(today, -29);
     const cleanTo = String(toDate || '').trim() || today;
     const cleanCat = String(categoryCode || '').trim();
@@ -934,14 +955,27 @@ class ReportService {
 
     const storeConfig = this.systemService ? this.systemService.getPublicStoreConfig() : null;
     const writeoffAgg = this.repos.writeoffs
-      ? this.repos.writeoffs.sumApprovedLoss({ fromDate: cleanFrom, toDate: cleanTo })
+      ? this.repos.writeoffs.sumApprovedLoss({ fromDate: cleanFrom, toDate: cleanTo, categoryCode: cleanCat })
       : { docCount: 0, totalQty: 0, totalValue: 0 };
+    const auditShrinkAgg =
+      typeof this.repos.reports.sumApprovedAuditShrinkage === 'function'
+        ? this.repos.reports.sumApprovedAuditShrinkage({
+            fromDate: cleanFrom,
+            toDate: cleanTo,
+            categoryCode: cleanCat,
+          })
+        : { docCount: 0, totalQty: 0, totalValue: 0 };
+    const totalShrinkageLoss = writeoffAgg.totalValue + auditShrinkAgg.totalValue;
     const summaryWithShrinkage = {
       ...metrics.summary,
       writeoffLoss: writeoffAgg.totalValue,
       writeoffQty: writeoffAgg.totalQty,
       writeoffCount: writeoffAgg.docCount,
-      netProfitAfterShrinkage: (metrics.summary.grossProfit || 0) - writeoffAgg.totalValue,
+      auditShrinkageLoss: auditShrinkAgg.totalValue,
+      auditShrinkageQty: auditShrinkAgg.totalQty,
+      auditShrinkageCount: auditShrinkAgg.docCount,
+      totalShrinkageLoss,
+      netProfitAfterShrinkage: (metrics.summary.grossProfit || 0) - totalShrinkageLoss,
     };
 
     return {
@@ -959,6 +993,9 @@ class ReportService {
   }
 
   getInventoryReport({ categoryCode = '' } = {}) {
+    if (this.repos.batches && typeof this.repos.batches.sweepExpiredBatches === 'function') {
+      this.repos.batches.sweepExpiredBatches(todayYmdVn());
+    }
     const cleanCat = String(categoryCode || '').trim();
     const rows = this.repos.reports.getInventorySnapshot({ categoryCode: cleanCat });
 
@@ -1065,4 +1102,5 @@ module.exports = {
   validateReportDateRange,
   allocateOrderItemFinancials,
   isoDateKey,
+  todayYmdVn,
 };

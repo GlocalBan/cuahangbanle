@@ -178,8 +178,8 @@ function productsView() {
           ['out', 'Hết hàng (= 0)'],
           ['ok', 'Đủ hàng (> tối thiểu)'],
         ])}
-        <input id="filter-productMinPrice" data-filter="productMinPrice" type="number" min="0" step="1000" value="${e(filters.productMinPrice || '')}" placeholder="Giá từ (₫)" aria-label="Giá bán tối thiểu">
-        <input id="filter-productMaxPrice" data-filter="productMaxPrice" type="number" min="0" step="1000" value="${e(filters.productMaxPrice || '')}" placeholder="Giá đến (₫)" aria-label="Giá bán tối đa">
+        <input id="filter-productMinPrice" data-filter="productMinPrice" type="number" min="0" step="1" value="${e(filters.productMinPrice || '')}" placeholder="Giá từ (₫)" aria-label="Giá bán tối thiểu">
+        <input id="filter-productMaxPrice" data-filter="productMaxPrice" type="number" min="0" step="1" value="${e(filters.productMaxPrice || '')}" placeholder="Giá đến (₫)" aria-label="Giá bán tối đa">
       </div>
       ${apiState.productError ? `<div class="panel-body"><div class="note yellow" role="alert"><strong>Lỗi bộ lọc:</strong> ${e(apiState.productError)}</div></div>` : ''}
       ${
@@ -375,8 +375,8 @@ async function productApiModal(recordId = '') {
         ${selectField('Danh mục (*)', 'categoryCode', catOptions, v.categoryCode, 'required')}
         ${selectField('Đơn vị tính (*)', 'unitCode', unitOptions, v.unitCode, 'required')}
         ${selectField('Nhà cung cấp (*)', 'supplierId', supOptions, v.supplierId, 'required', true)}
-        ${field('Giá bán (₫) (*) (>= 0)', 'salePrice', v.salePrice, 'number', 'required min="0" step="100"')}
-        ${field('Giá vốn (₫) (*) (>= 0)', 'costPrice', v.costPrice ?? 0, 'number', 'required min="0" step="100"')}
+        ${field('Giá bán (₫) (*) (>= 0)', 'salePrice', v.salePrice, 'number', 'required min="0" step="1"')}
+        ${field('Giá vốn (₫) (*) (>= 0)', 'costPrice', v.costPrice ?? 0, 'number', 'required min="0" step="1"')}
         ${field('Ngưỡng tồn tối thiểu (*) (BR-01)', 'minStock', v.minStock, 'number', 'required min="0" step="1"')}
         ${
           !recordId

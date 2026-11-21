@@ -335,6 +335,7 @@ test('M5-02: End-to-end SQLite reports reconciliation across DaThanhToan, TraMot
   try {
     const cashierToken = await srv.loginAs('thungan');
     const managerToken = await srv.loginAs('quanly');
+    assert.equal((await srv.reqJson('POST', '/api/shifts/open', { token: cashierToken, body: { openingCash: 500000 } })).status, 201);
     const today = new Date().toISOString().slice(0, 10);
 
     const baseSales = await srv.reqJson('GET', `/api/reports/sales?fromDate=${today}&toDate=${today}`, {
@@ -520,6 +521,7 @@ test('M5-05: Accounting Patch Lock — Case A (8% VAT separation) & Case B (full
 
     const cashierToken = await srv.loginAs('thungan');
     const managerToken = await srv.loginAs('quanly');
+    assert.equal((await srv.reqJson('POST', '/api/shifts/open', { token: cashierToken, body: { openingCash: 500000 } })).status, 201);
     const today = new Date().toISOString().slice(0, 10);
 
     const prods = (await srv.reqJson('GET', '/api/products?status=DangKinhDoanh', { token: managerToken })).data.items;

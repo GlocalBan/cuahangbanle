@@ -232,7 +232,7 @@ function toShiftDto(row, liveMetrics = null) {
   const nonCashSales = liveMetrics ? liveMetrics.nonCashSales : Number(row.non_cash_sales) || 0;
   const orderCount = liveMetrics ? liveMetrics.orderCount : Number(row.order_count) || 0;
   const expectedCash =
-    row.status === 'DangMo' ? Math.max(0, openingCash + cashSales - cashRefunds) : Number(row.expected_cash) || 0;
+    row.status === 'DangMo' ? openingCash + cashSales - cashRefunds : Number(row.expected_cash) || 0;
   return {
     id: row.id,
     cashierId: row.cashier_id,
@@ -299,6 +299,7 @@ function toOrderSummaryDto(row) {
     cashReceived: Number(row.cash_received) || 0,
     cashChange: Number(row.cash_change) || 0,
     paymentRef: row.payment_ref || '',
+    idempotencyKey: row.idempotency_key || null,
     status: row.status,
     statusLabel: ORDER_STATUS_LABELS[row.status] || row.status,
     itemCount: Number(row.item_count) || 0,
@@ -374,6 +375,7 @@ function toReturnSummaryDto(row) {
     createdByName: row.created_by_name,
     approvedBy: row.approved_by || null,
     approvedByName: row.approved_by_name || null,
+    refundShiftId: row.refund_shift_id || null,
     reason: row.reason,
     restock: Boolean(row.restock),
     refundAmount: Number(row.refund_amount) || 0,
@@ -701,13 +703,116 @@ class SalesService {
     return toPromotionDto(updated, this.repos.promotions.getProductIds(id));
   }
 
-  validatePromotionForSubtotal(codeOrId, subtotal, nowDate = new Date()) {
+  _resolvePreviewLinesFromItems(rawItems, today) {
+    assertRule(Array.isArray(rawItems) && rawItems.length > 0, 'Giỏ hàng không có sản phẩm hợp lệ.', 400);
+    const seen = new Set();
+    const resolvedLines = [];
+    for (const raw of rawItems) {
+      const productId = String(raw?.productId || raw?.product_id || raw?.id || '').trim();
+      assertRule(productId.length > 0, 'Thiếu mã sản phẩm trong danh sách tính khuyến mãi.', 400);
+      assertRule(!seen.has(productId), `Sản phẩm "${productId}" bị trùng dòng trong giỏ hàng.`, 400);
+      seen.add(productId);
+
+      const qty = parsePositiveInt(raw?.qty, `Số lượng của ${productId}`);
+      const lineDiscount = parseNonNegativeInt(raw?.lineDiscount ?? 0, `Giảm giá dòng hàng ${productId}`);
+      const product = this.repos.products.findById(productId);
+      assertRule(Boolean(product), `Sản phẩm mã "${productId}" không tồn tại.`, 400);
+
+      // Authoritative server-side price & category (never trust client unitPrice/categoryId)
+      const unitPriceSnapshot = Number(product.sale_price);
+      const lineGross = qty * unitPriceSnapshot;
+      assertRule(lineDiscount <= lineGross, `Giảm giá dòng hàng của "${product.name}" vượt quá thành tiền dòng hàng.`, 400);
+
+      const fefoBatches = this.repos.batches ? this.repos.batches.findSalableFefo(product.id, today) : [];
+      const batchDeductions = [];
+      let remain = qty;
+      for (const b of fefoBatches) {
+        if (remain <= 0) break;
+        const take = Math.min(remain, Number(b.qty_remaining) || 0);
+        if (take > 0) {
+          batchDeductions.push({
+            batchId: b.id,
+            batchCode: b.batch_code,
+            expiryDate: b.expiry_date || '',
+            takeQty: take,
+          });
+          remain -= take;
+        }
+      }
+
+      resolvedLines.push({
+        product,
+        qty,
+        lineDiscount,
+        unitPriceSnapshot,
+        batchDeductions,
+      });
+    }
+    return resolvedLines;
+  }
+
+  _evaluatePromotionPricing({ promo, productIds, resolvedLines = null, fallbackSubtotal = 0, today, taxRate }) {
+    const scope = promo.scope || 'INVOICE';
+    const hasLines = Array.isArray(resolvedLines) && resolvedLines.length > 0;
+    const subtotal = hasLines
+      ? resolvedLines.reduce((s, l) => s + Math.max(0, l.qty * l.unitPriceSnapshot - l.lineDiscount), 0)
+      : parseNonNegativeInt(fallbackSubtotal, 'Tạm tính hóa đơn');
+
+    assertRule(
+      subtotal >= Number(promo.min_order_amount),
+      `Đơn hàng chưa đạt giá trị tối thiểu ${Number(promo.min_order_amount).toLocaleString('vi-VN')} ₫ để áp dụng mã "${promo.code}" (cần thêm ${(Number(promo.min_order_amount) - subtotal).toLocaleString('vi-VN')} ₫) (BR-04).`,
+      400,
+    );
+
+    let eligibleSubtotal = subtotal;
+    if (scope !== 'INVOICE' && scope !== 'ALL') {
+      assertRule(
+        hasLines,
+        `Chương trình khuyến mãi "${promo.code}" áp dụng theo phạm vi ${PROMO_SCOPE_LABELS[scope] || scope}: bắt buộc gửi danh sách sản phẩm trong giỏ (items) để tính giảm giá chính xác (F-03).`,
+        400,
+        'ITEMS_REQUIRED_FOR_SCOPED_PROMOTION',
+      );
+      eligibleSubtotal = this._computeEligibleSubtotalForPromotion(promo, productIds, resolvedLines, today);
+      if (scope === 'NEAR_EXPIRY') {
+        assertRule(
+          eligibleSubtotal > 0,
+          `Giỏ hàng không có sản phẩm/lô hàng cận date (<= ${promo.near_expiry_days || 14} ngày) hợp lệ cho chương trình "${promo.code}".`,
+          400,
+          'INELIGIBLE_PROMOTION_CART',
+        );
+      } else {
+        assertRule(
+          eligibleSubtotal > 0,
+          `Giỏ hàng không có sản phẩm thuộc phạm vi áp dụng của chương trình "${promo.code}".`,
+          400,
+          'INELIGIBLE_PROMOTION_CART',
+        );
+      }
+    }
+
+    const discountAmount = computePromotionDiscount(promo, eligibleSubtotal);
+    const afterDiscount = Math.max(0, subtotal - discountAmount);
+    const taxAmount = Math.round((afterDiscount * taxRate) / 100);
+    const totalAmount = Math.max(0, afterDiscount + taxAmount);
+
+    return {
+      subtotal,
+      eligibleSubtotal,
+      discountAmount,
+      afterDiscount,
+      taxRate,
+      taxAmount,
+      totalAmount,
+      finalTotal: totalAmount,
+    };
+  }
+
+  validatePromotionForSubtotal(codeOrId, subtotal, nowDate = new Date(), options = {}) {
     const key = String(codeOrId || '').trim();
     assertRule(key.length > 0, 'Vui lòng nhập hoặc chọn mã khuyến mãi.', 400);
     const promo = this.repos.promotions.findByCode(key) || this.repos.promotions.findById(key);
     assertRule(Boolean(promo), `Mã khuyến mãi "${key}" không tồn tại trong hệ thống (BR-04).`, 400);
 
-    const safeSubtotal = parseNonNegativeInt(subtotal, 'Tạm tính hóa đơn');
     assertRule(
       promo.status === 'DangDienRa',
       `Mã khuyến mãi "${promo.code}" hiện ở trạng thái "${PROMO_STATUS_LABELS[promo.status] || promo.status}", không thể áp dụng (BR-04).`,
@@ -730,27 +835,35 @@ class SalesService {
       `Mã khuyến mãi "${promo.code}" đã hết lượt sử dụng (${promo.used_count}/${promo.usage_limit}) (BR-04).`,
       400,
     );
-    assertRule(
-      safeSubtotal >= Number(promo.min_order_amount),
-      `Đơn hàng chưa đạt giá trị tối thiểu ${Number(promo.min_order_amount).toLocaleString('vi-VN')} ₫ để áp dụng mã "${promo.code}" (cần thêm ${(Number(promo.min_order_amount) - safeSubtotal).toLocaleString('vi-VN')} ₫) (BR-04).`,
-      400,
-    );
 
-    const discountAmount = computePromotionDiscount(promo, safeSubtotal);
-    const taxRate = this._getTaxRate();
-    const afterDiscount = Math.max(0, safeSubtotal - discountAmount);
-    const taxAmount = Math.round((afterDiscount * taxRate) / 100);
     const pids = this.repos.promotions.getProductIds(promo.id);
+    const taxRate = this._getTaxRate();
+    let resolvedLines = Array.isArray(options?.resolvedLines) ? options.resolvedLines : null;
+    if (!resolvedLines && Array.isArray(options?.items) && options.items.length > 0) {
+      resolvedLines = this._resolvePreviewLinesFromItems(options.items, today);
+    }
+
+    const evaluated = this._evaluatePromotionPricing({
+      promo,
+      productIds: pids,
+      resolvedLines,
+      fallbackSubtotal: subtotal,
+      today,
+      taxRate,
+    });
+
     return {
       promotion: toPromotionDto(promo, pids),
       promoRow: promo,
       productIds: pids,
-      subtotal: safeSubtotal,
-      discountAmount,
-      afterDiscount,
-      taxRate,
-      taxAmount,
-      totalAmount: Math.max(0, afterDiscount + taxAmount),
+      subtotal: evaluated.subtotal,
+      eligibleSubtotal: evaluated.eligibleSubtotal,
+      discountAmount: evaluated.discountAmount,
+      afterDiscount: evaluated.afterDiscount,
+      taxRate: evaluated.taxRate,
+      taxAmount: evaluated.taxAmount,
+      totalAmount: evaluated.totalAmount,
+      finalTotal: evaluated.finalTotal,
     };
   }
 
@@ -1133,7 +1246,7 @@ class SalesService {
       const actualCash = parseNonNegativeInt(input?.actualCash, 'Tiền mặt thực đếm cuối ca');
       const note = String(input?.note || '').trim().slice(0, 300);
       const metrics = this.repos.shifts.computeShiftMetrics(existing.id, existing.cashier_id, existing.opened_at);
-      const expectedCash = Math.max(0, Number(existing.opening_cash) + metrics.cashSales - metrics.cashRefunds);
+      const expectedCash = Number(existing.opening_cash) + metrics.cashSales - metrics.cashRefunds;
       const variance = actualCash - expectedCash;
 
       if (variance !== 0) {
@@ -1348,8 +1461,59 @@ class SalesService {
     const customerId = String(input?.customerId || '').trim() || null;
     const note = String(input?.note || '').trim();
     const paymentRef = String(input?.paymentRef || '').trim();
+    const idempotencyKey = String(input?.idempotencyKey ?? options?.idempotencyKey ?? '').trim().slice(0, 128) || null;
 
-    const createdOrder = withTransaction(this.db, () => {
+    const txResult = withTransaction(this.db, () => {
+      // F-08A: Kiểm tra Idempotency-Key trước khi khấu trừ kho hay tạo hóa đơn mới
+      if (idempotencyKey && typeof this.repos.orders.findByIdempotencyKey === 'function') {
+        const existingOrder = this.repos.orders.findByIdempotencyKey(idempotencyKey);
+        if (existingOrder) {
+          const reqItemsSig = rawItems
+            .map((r) => {
+              const pid = String(r?.productId || r?.product_id || r?.id || '').trim();
+              return `${pid}:${Number(r?.qty)}:${Number(r?.lineDiscount ?? 0)}`;
+            })
+            .sort()
+            .join('|');
+          const existingItemsSig = (existingOrder.items || [])
+            .map((i) => `${i.product_id}:${Number(i.qty)}:${Number(i.line_discount) || 0}`)
+            .sort()
+            .join('|');
+          const promoMatches =
+            (promoInput === '' && !existingOrder.promotion_id) ||
+            (promoInput !== '' &&
+              (promoInput.toUpperCase() === String(existingOrder.promotion_code || '').toUpperCase() ||
+                promoInput === existingOrder.promotion_id));
+          const voucherMatches =
+            (voucherInput === '' && !existingOrder.voucher_id) ||
+            (voucherInput !== '' &&
+              (voucherInput.toUpperCase() === String(existingOrder.voucher_code || '').toUpperCase() ||
+                voucherInput === existingOrder.voucher_id));
+          const refMatches =
+            paymentMethod === 'CASH' ||
+            paymentRef.toLowerCase() === String(existingOrder.payment_ref || '').trim().toLowerCase();
+          const compatible =
+            reqItemsSig === existingItemsSig &&
+            paymentMethod === existingOrder.payment_method &&
+            (customerId || '') === (existingOrder.customer_id || '') &&
+            promoMatches &&
+            voucherMatches &&
+            refMatches;
+          assertRule(
+            compatible,
+            `Khóa chống trùng lặp (Idempotency-Key: "${idempotencyKey}") đã được dùng cho hóa đơn "${existingOrder.id}" với nội dung giỏ hàng hoặc phương thức thanh toán khác (F-08A).`,
+            409,
+            'IDEMPOTENCY_KEY_CONFLICT',
+          );
+          return { order: existingOrder, idempotentReplay: true };
+        }
+      }
+
+      // F-07C: Quét lô hết hạn trước khi kiểm tra tồn khả dụng bán hàng
+      if (this.repos.batches && typeof this.repos.batches.sweepExpiredBatches === 'function') {
+        this.repos.batches.sweepExpiredBatches(todayYmdVn());
+      }
+
       if (customerId) {
         const cust = this.repos.customers.findById(customerId);
         assertRule(Boolean(cust), `Khách hàng mã "${customerId}" không tồn tại.`, 400);
@@ -1473,30 +1637,13 @@ class SalesService {
         discountMode = 'VOUCHER';
         invoiceDiscount = validatedV.discountAmount;
       } else if (promoInput) {
-        const validatedP = this.validatePromotionForSubtotal(promoInput, baseSubtotal);
+        // F-03: Invoke the single shared scoped promotion engine used by both preview and checkout
+        const validatedP = this.validatePromotionForSubtotal(promoInput, baseSubtotal, new Date(), {
+          resolvedLines,
+        });
         appliedPromo = validatedP.promoRow;
         discountMode = 'PROMOTION';
-        const today = todayYmdVn();
-        const eligibleSubtotal = this._computeEligibleSubtotalForPromotion(
-          appliedPromo,
-          validatedP.productIds,
-          resolvedLines,
-          today,
-        );
-        if (appliedPromo.scope === 'NEAR_EXPIRY') {
-          assertRule(
-            eligibleSubtotal > 0,
-            `Giỏ hàng không có sản phẩm/lô hàng cận date (<= ${appliedPromo.near_expiry_days || 14} ngày) hợp lệ cho chương trình "${appliedPromo.code}".`,
-            400,
-          );
-        } else if (appliedPromo.scope !== 'INVOICE') {
-          assertRule(
-            eligibleSubtotal > 0,
-            `Giỏ hàng không có sản phẩm thuộc phạm vi áp dụng của chương trình "${appliedPromo.code}".`,
-            400,
-          );
-        }
-        invoiceDiscount = computePromotionDiscount(appliedPromo, eligibleSubtotal);
+        invoiceDiscount = validatedP.discountAmount;
       }
 
       const taxRate = this._getTaxRate();
@@ -1541,10 +1688,28 @@ class SalesService {
           `Thanh toán ${PAYMENT_METHOD_LABELS[paymentMethod]} bắt buộc nhập Mã tham chiếu giao dịch (tối thiểu 3 ký tự) (BR-05).`,
           400,
         );
+        // F-08A: Chống trùng lặp mã tham chiếu giao dịch không tiền mặt
+        if (typeof this.repos.orders.findByPaymentRef === 'function') {
+          const dupRef = this.repos.orders.findByPaymentRef(paymentRef);
+          assertRule(
+            !dupRef,
+            `Mã tham chiếu giao dịch "${paymentRef}" đã được sử dụng cho hóa đơn "${dupRef?.id}". Nghiêm cấm sử dụng trùng mã giao dịch thanh toán (F-08A).`,
+            409,
+            'DUPLICATE_PAYMENT_REF',
+          );
+        }
       }
 
-      // Gắn ca thu ngân đang mở (nếu có)
+      // F-05C: Bắt buộc có ca thu ngân đang mở khi thanh toán Tiền mặt (CASH)
       const openShift = this.repos.shifts ? this.repos.shifts.findOpenByCashier(actor.id) : null;
+      if (paymentMethod === 'CASH') {
+        assertRule(
+          Boolean(openShift),
+          'Thu ngân phải mở ca làm việc trước khi thực hiện thanh toán tiền mặt (CASH). Vui lòng mở ca tại quầy POS (F-05C).',
+          409,
+          'OPEN_SHIFT_REQUIRED',
+        );
+      }
 
       // Bước 4: Lưu Hóa đơn & Chi tiết hóa đơn (Price Snapshot)
       const order = this.repos.orders.create(
@@ -1564,6 +1729,7 @@ class SalesService {
           cash_received: cashReceived,
           cash_change: cashChange,
           payment_ref: paymentRef,
+          idempotency_key: idempotencyKey,
           status: 'DaThanhToan',
           note,
           created_at: options._createdAtOverride || undefined,
@@ -1578,7 +1744,9 @@ class SalesService {
         })),
       );
 
-      // Bước 5 & 6: Trừ tồn kho theo FEFO (mỗi lô 1 dòng Thẻ kho BAN_HANG kèm mã lô)
+      // Bước 5 & 6: Trừ tồn kho theo FEFO (mỗi lô 1 dòng Thẻ kho BAN_HANG kèm mã lô) + lưu truy xuất lô order_item_batches (F-04)
+      const orderItemIdByProduct = new Map((order.items || []).map((oi) => [oi.product_id, oi.id]));
+      const orderBatchAllocations = [];
       for (const l of resolvedLines) {
         if (l.batchDeductions && l.batchDeductions.length > 0 && this.repos.batches) {
           let runningStock = l.oldStock;
@@ -1598,6 +1766,16 @@ class SalesService {
               actorName: actor.full_name,
               note: `Bán hàng POS (FEFO) · HĐ ${order.id} · Lô ${bd.batchCode}${bd.expiryDate ? ` (HSD ${bd.expiryDate})` : ''} (${PAYMENT_METHOD_LABELS[paymentMethod]})`,
             });
+            orderBatchAllocations.push({
+              orderItemId: orderItemIdByProduct.get(l.product.id) || null,
+              productId: l.product.id,
+              batchId: bd.batchId,
+              batchCode: bd.batchCode,
+              expiryDate: bd.expiryDate || '',
+              qty: bd.takeQty,
+              costPrice: l.unitCostSnapshot,
+              createdAt: order.created_at,
+            });
             runningStock = afterStep;
           }
           this.repos.products.updateStock(l.product.id, l.newStock);
@@ -1615,6 +1793,9 @@ class SalesService {
             note: `Bán hàng POS · Hóa đơn ${order.id} (${PAYMENT_METHOD_LABELS[paymentMethod]})`,
           });
         }
+      }
+      if (orderBatchAllocations.length > 0 && typeof this.repos.orders.recordItemBatches === 'function') {
+        this.repos.orders.recordItemBatches(order.id, orderBatchAllocations);
       }
 
       // Bước 7: Tăng lượt dùng khuyến mãi hoặc ghi nhận sử dụng Voucher
@@ -1657,11 +1838,12 @@ class SalesService {
         },
       });
 
-      return order;
+      return { order, idempotentReplay: false };
     });
 
     const storeConfig = this.systemService ? this.systemService.getPublicStoreConfig() : null;
-    return toOrderDetailDto(createdOrder, { canViewCost: false, storeConfig });
+    const dto = toOrderDetailDto(txResult.order, { canViewCost: false, storeConfig });
+    return txResult.idempotentReplay ? { ...dto, idempotentReplay: true } : dto;
   }
 
   /**
@@ -1755,6 +1937,10 @@ class SalesService {
       this._assertWithinReturnWindow(order, refNow);
 
       const pendingMap = this.repos.returns.getPendingQtyMap(orderId);
+      const allocatedRefundMap =
+        typeof this.repos.returns.getRefundedLineAmountMap === 'function'
+          ? this.repos.returns.getRefundedLineAmountMap(orderId, { includePending: true })
+          : new Map();
       const paidMap = allocateOrderPaidTotals(order);
       const orderItemMap = new Map((order.items || []).map((i) => [i.product_id, i]));
 
@@ -1790,11 +1976,14 @@ class SalesService {
           400,
         );
 
+        // F-08D: Phân bổ phần dư làm tròn chính xác đến 0 ₫ khi trả hết số lượng còn lại của dòng hàng
         const paidLineTotal = paidMap.get(productId) || 0;
-        const effectiveBefore = alreadyReturned + pendingQty;
+        const alreadyAllocatedAmt = allocatedRefundMap.get(productId) || 0;
+        const remainingLineAmt = Math.max(0, paidLineTotal - alreadyAllocatedAmt);
         const refundLineAmount =
-          Math.floor((paidLineTotal * (effectiveBefore + qty)) / purchased) -
-          Math.floor((paidLineTotal * effectiveBefore) / purchased);
+          qty === maxReturnable
+            ? remainingLineAmt
+            : Math.min(remainingLineAmt, Math.floor((remainingLineAmt * qty) / maxReturnable));
 
         totalRefund += refundLineAmount;
         returnLines.push({
@@ -1847,6 +2036,12 @@ class SalesService {
           `Chỉ được duyệt phiếu trả hàng ở trạng thái Chờ duyệt. Phiếu "${id}" hiện ở trạng thái ${existing.status}.`,
         );
       }
+      // F-08B: Separation of duties — creator cannot self-approve their own return request
+      if (existing.created_by && existing.created_by === actor.id) {
+        throw new ForbiddenException(
+          `Người lập phiếu trả hàng "${id}" không được tự duyệt phiếu của chính mình (nguyên tắc tách bạch nhiệm vụ — F-08B). Vui lòng để Quản lý / Admin khác xác nhận.`,
+        );
+      }
 
       const order = this.repos.orders.findById(existing.order_id);
       if (!order) throw new NotFoundException(`Không tìm thấy hóa đơn gốc "${existing.order_id}".`);
@@ -1873,56 +2068,201 @@ class SalesService {
         if (existing.restock) {
           const product = this.repos.products.findById(item.product_id);
           assertRule(Boolean(product), `Sản phẩm "${item.product_id}" không tồn tại.`, 400);
-          const oldStock = Number(product.stock_qty) || 0;
-          const newStock = oldStock + qty;
-          let restockBatchCode = '';
-          if (this.repos.batches) {
-            const today = todayYmdVn();
-            const salable = this.repos.batches.findSalableFefo(product.id, today);
-            if (salable.length > 0) {
-              const targetBatch = salable[salable.length - 1];
-              this.repos.batches.updateQtyAndStatus(
-                targetBatch.id,
-                Number(targetBatch.qty_remaining) + qty,
-                targetBatch.status === 'DaHet' ? 'ConHan' : targetBatch.status,
-              );
-              restockBatchCode = targetBatch.batch_code;
-            } else {
-              const defaultExp = new Date(Date.now() + 180 * 86400000).toISOString().slice(0, 10);
-              const createdBatch = this.repos.batches.create({
-                batchCode: `LO-TH-${id}-${product.sku}`,
-                productId: product.id,
-                mfgDate: today,
-                expiryDate: Number(product.has_expiry) === 1 ? defaultExp : '',
-                initialQty: qty,
-                qtyRemaining: qty,
-                unitCost: Number(product.cost_price) || 0,
-                status: 'ConHan',
-              });
-              restockBatchCode = createdBatch.batch_code;
+          const today = todayYmdVn();
+          const warnDays = Number(this.repos.thamSo?.findByCode?.('SoNgayCanhBaoCanDate')?.gia_tri) || 14;
+          const allocations =
+            typeof this.repos.orders.findItemBatches === 'function'
+              ? this.repos.orders.findItemBatches(order.id, item.product_id)
+              : [];
+
+          if (this.repos.batches && allocations.length > 0) {
+            // F-04: Restore strictly to exact sold FEFO batch allocations; quarantine if already expired
+            const totalAllocAvail = allocations.reduce(
+              (s, a) => s + Math.max(0, (Number(a.qty) || 0) - (Number(a.returned_qty) || 0)),
+              0,
+            );
+            assertRule(
+              totalAllocAvail >= qty,
+              `Số lượng trả (${qty}) của "${item.product_name}" vượt quá số lượng lô đã xuất còn có thể hoàn (${totalAllocAvail}) (F-04).`,
+              409,
+              'BATCH_RETURN_EXCEEDS_SOLD',
+            );
+
+            let remain = qty;
+            let runningStock = Number(product.stock_qty) || 0;
+            for (const alloc of allocations) {
+              if (remain <= 0) break;
+              const avail = Math.max(0, (Number(alloc.qty) || 0) - (Number(alloc.returned_qty) || 0));
+              if (avail <= 0) continue;
+              const restoreQty = Math.min(remain, avail);
+              const changed = this.repos.orders.incrementItemBatchReturnedQty(alloc.id, restoreQty);
+              assertRule(changed === 1, `Xung đột hoàn lô "${alloc.batch_code}" (vượt số lượng đã bán).`, 409);
+
+              const origBatch = this.repos.batches.findById(alloc.batch_id);
+              const effExpiry = String(origBatch ? origBatch.expiry_date : alloc.expiry_date || '').trim();
+              const isExpiredLot = effExpiry !== '' && effExpiry <= today;
+              const lotCode = origBatch ? origBatch.batch_code : alloc.batch_code;
+
+              if (isExpiredLot) {
+                // Food-Safety Guard: Original batch has expired -> quarantine, NEVER inflate salable stock or fabricate expiry
+                if (origBatch) {
+                  this.repos.batches.updateQtyAndStatus(
+                    origBatch.id,
+                    (Number(origBatch.qty_remaining) || 0) + restoreQty,
+                    'HetHan',
+                  );
+                }
+                if (typeof this.repos.products.addDamagedStock === 'function') {
+                  this.repos.products.addDamagedStock(product.id, restoreQty);
+                }
+                const syncedStock = this.repos.batches.syncProductSalableStock(product.id, today);
+                this.repos.stockMovements.append({
+                  productId: product.id,
+                  stockBefore: runningStock,
+                  delta: 0,
+                  stockAfter: syncedStock,
+                  docType: 'TRA_HANG_HET_HAN',
+                  docId: id,
+                  batchCode: lotCode,
+                  actorId: actor.id,
+                  actorName: actor.full_name,
+                  note: `Cách ly hàng trả đã quá hạn (${restoreQty} đv) · HĐ ${order.id} · Lô gốc ${lotCode} (HSD ${effExpiry}) không hoàn tồn bán được: ${existing.reason}`,
+                });
+                restockChanges.push({
+                  productId: product.id,
+                  sku: product.sku,
+                  batchId: alloc.batch_id,
+                  batchCode: lotCode,
+                  expiryDate: effExpiry,
+                  quarantinedQty: restoreQty,
+                  oldStock: runningStock,
+                  delta: 0,
+                  newStock: syncedStock,
+                });
+                runningStock = syncedStock;
+              } else {
+                const daysLeft = effExpiry ? diffDaysYmd(today, effExpiry) : null;
+                const nextStatus = daysLeft !== null && daysLeft <= warnDays ? 'CanDate' : 'ConHan';
+                if (origBatch) {
+                  this.repos.batches.updateQtyAndStatus(
+                    origBatch.id,
+                    (Number(origBatch.qty_remaining) || 0) + restoreQty,
+                    nextStatus,
+                  );
+                } else {
+                  this.repos.batches.create({
+                    batchCode: lotCode || `LO-TH-${id}-${product.sku}`,
+                    productId: product.id,
+                    mfgDate: '',
+                    expiryDate: effExpiry,
+                    initialQty: restoreQty,
+                    qtyRemaining: restoreQty,
+                    unitCost: Number(alloc.cost_price) || Number(product.cost_price) || 0,
+                    status: nextStatus,
+                  });
+                }
+                const syncedStock = this.repos.batches.syncProductSalableStock(product.id, today);
+                this.repos.stockMovements.append({
+                  productId: product.id,
+                  stockBefore: runningStock,
+                  delta: restoreQty,
+                  stockAfter: syncedStock,
+                  docType: 'TRA_HANG',
+                  docId: id,
+                  batchCode: lotCode,
+                  actorId: actor.id,
+                  actorName: actor.full_name,
+                  note: `Xác nhận trả hàng nguyên vẹn ${id} từ hóa đơn ${order.id} · Hoàn đúng lô gốc ${lotCode}${effExpiry ? ` (HSD ${effExpiry})` : ''}: ${existing.reason}`,
+                });
+                restockChanges.push({
+                  productId: product.id,
+                  sku: product.sku,
+                  batchId: alloc.batch_id,
+                  batchCode: lotCode,
+                  expiryDate: effExpiry,
+                  oldStock: runningStock,
+                  delta: restoreQty,
+                  newStock: syncedStock,
+                });
+                runningStock = syncedStock;
+              }
+              remain -= restoreQty;
             }
+          } else {
+            // Safe legacy fallback (orders created prior to order_item_batches): NEVER fabricate +180d expiry
+            const oldStock = Number(product.stock_qty) || 0;
+            let restockBatchCode = '';
+            let quarantinedLegacy = false;
+            if (this.repos.batches) {
+              const salable = this.repos.batches.findSalableFefo(product.id, today);
+              if (Number(product.has_expiry) === 0) {
+                const noExpTarget = salable.find((b) => !b.expiry_date) || salable[0];
+                if (noExpTarget) {
+                  this.repos.batches.updateQtyAndStatus(
+                    noExpTarget.id,
+                    Number(noExpTarget.qty_remaining) + qty,
+                    noExpTarget.status === 'DaHet' ? 'ConHan' : noExpTarget.status,
+                  );
+                  restockBatchCode = noExpTarget.batch_code;
+                } else {
+                  const createdBatch = this.repos.batches.create({
+                    batchCode: `LO-TH-${id}-${product.sku}`,
+                    productId: product.id,
+                    mfgDate: today,
+                    expiryDate: '',
+                    initialQty: qty,
+                    qtyRemaining: qty,
+                    unitCost: Number(product.cost_price) || 0,
+                    status: 'ConHan',
+                  });
+                  restockBatchCode = createdBatch.batch_code;
+                }
+                this.repos.batches.syncProductSalableStock(product.id, today);
+              } else if (salable.length > 0) {
+                // Conservative FEFO: assign to earliest-expiry existing salable lot (never extend to farthest lot)
+                const targetBatch = salable[0];
+                this.repos.batches.updateQtyAndStatus(
+                  targetBatch.id,
+                  Number(targetBatch.qty_remaining) + qty,
+                  targetBatch.status === 'DaHet' ? 'ConHan' : targetBatch.status,
+                );
+                restockBatchCode = targetBatch.batch_code;
+                this.repos.batches.syncProductSalableStock(product.id, today);
+              } else {
+                // No traceable lot and no active salable batch for perishable SKU -> quarantine (never fabricate expiry)
+                quarantinedLegacy = true;
+                if (typeof this.repos.products.addDamagedStock === 'function') {
+                  this.repos.products.addDamagedStock(product.id, qty);
+                }
+                this.repos.batches.syncProductSalableStock(product.id, today);
+              }
+            } else {
+              this.repos.products.updateStock(product.id, oldStock + qty);
+            }
+            const newStock = Number(this.repos.products.findById(product.id)?.stock_qty) || 0;
+            this.repos.stockMovements.append({
+              productId: product.id,
+              stockBefore: oldStock,
+              delta: quarantinedLegacy ? 0 : qty,
+              stockAfter: newStock,
+              docType: quarantinedLegacy ? 'TRA_HANG_KHONG_RO_HSD' : 'TRA_HANG',
+              docId: id,
+              batchCode: restockBatchCode,
+              actorId: actor.id,
+              actorName: actor.full_name,
+              note: quarantinedLegacy
+                ? `Cách ly hàng trả không rõ lô/HSD (${qty} đv) từ HĐ ${order.id}: ${existing.reason}`
+                : `Xác nhận trả hàng nguyên vẹn ${id} từ hóa đơn ${order.id}${restockBatchCode ? ` · Lô ${restockBatchCode}` : ''}: ${existing.reason}`,
+            });
+            restockChanges.push({
+              productId: product.id,
+              sku: product.sku,
+              batchCode: restockBatchCode,
+              oldStock,
+              delta: quarantinedLegacy ? 0 : qty,
+              newStock,
+            });
           }
-          this.repos.products.updateStock(product.id, newStock);
-          this.repos.stockMovements.append({
-            productId: product.id,
-            stockBefore: oldStock,
-            delta: qty,
-            stockAfter: newStock,
-            docType: 'TRA_HANG',
-            docId: id,
-            batchCode: restockBatchCode,
-            actorId: actor.id,
-            actorName: actor.full_name,
-            note: `Xác nhận trả hàng nguyên vẹn ${id} từ hóa đơn ${order.id}${restockBatchCode ? ` · Lô ${restockBatchCode}` : ''}: ${existing.reason}`,
-          });
-          restockChanges.push({
-            productId: product.id,
-            sku: product.sku,
-            batchCode: restockBatchCode,
-            oldStock,
-            delta: qty,
-            newStock,
-          });
         } else {
           // Hàng lỗi/hư hỏng không nhập lại kho bán được -> cộng vào kho hàng lỗi (damaged_stock_qty)
           if (typeof this.repos.products.addDamagedStock === 'function') {
@@ -1941,9 +2281,21 @@ class SalesService {
         options._beforeCommitHook();
       }
 
+      // F-05A: Stamp refund_shift_id to ONE single open shift paying out physical cash (never double-count across shifts)
+      let refundShiftId = null;
+      if (order.payment_method === 'CASH' && this.repos.shifts) {
+        const actorOpenShift = this.repos.shifts.findOpenByCashier(actor.id);
+        const creatorOpenShift =
+          !actorOpenShift && existing.created_by && existing.created_by !== actor.id
+            ? this.repos.shifts.findOpenByCashier(existing.created_by)
+            : null;
+        refundShiftId = actorOpenShift ? actorOpenShift.id : creatorOpenShift ? creatorOpenShift.id : null;
+      }
+
       const finalRet = this.repos.returns.updateStatus(id, 'DaXacNhan', {
         approved_by: actor.id,
         resolved_at: new Date().toISOString(),
+        refund_shift_id: refundShiftId,
       });
 
       this.repos.auditLogs.append({
@@ -1951,12 +2303,13 @@ class SalesService {
         action: 'RETURN_APPROVE',
         entityType: 'Return',
         entityId: id,
-        detail: `Xác nhận trả hàng ${id} (HĐ ${order.id}, hoàn ${Number(existing.refund_amount).toLocaleString('vi-VN')} ₫, ${existing.restock ? 'đã cộng hoàn tồn kho' : 'hàng lỗi không hoàn tồn'})`,
+        detail: `Xác nhận trả hàng ${id} (HĐ ${order.id}, hoàn ${Number(existing.refund_amount).toLocaleString('vi-VN')} ₫${refundShiftId ? ` · Ca ${refundShiftId}` : ''}, ${existing.restock ? 'xử lý hoàn kho theo lô gốc' : 'hàng lỗi không hoàn tồn'})`,
         before: { status: 'ChoDuyet' },
         after: {
           status: 'DaXacNhan',
           orderStatus: allReturned ? 'DaHoanTra' : 'TraMotPhan',
           refundAmount: Number(existing.refund_amount) || 0,
+          refundShiftId,
           restockChanges,
         },
       });

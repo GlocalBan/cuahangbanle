@@ -64,6 +64,7 @@ test('P2-01 (2a): Voucher CRUD, bulk generation, pause/resume, POS XOR (Voucher 
   try {
     const managerToken = await srv.loginAs('quanly');
     const cashierToken = await srv.loginAs('thungan');
+    assert.equal((await srv.reqJson('POST', '/api/shifts/open', { token: cashierToken, body: { openingCash: 500000 } })).status, 201);
 
     // 1. Create single voucher
     const vCreate = await srv.reqJson('POST', '/api/vouchers', {
@@ -186,6 +187,7 @@ test('P2-02 (2b): Near-expiry promotion suggestions & NEAR_EXPIRY promo applies 
   try {
     const managerToken = await srv.loginAs('quanly');
     const cashierToken = await srv.loginAs('thungan');
+    assert.equal((await srv.reqJson('POST', '/api/shifts/open', { token: cashierToken, body: { openingCash: 500000 } })).status, 201);
 
     // 1. Query near-expiry suggestions from product_batches
     const sugRes = await srv.reqJson('GET', '/api/promotions/near-expiry-suggestions?days=30', { token: managerToken });
@@ -659,6 +661,7 @@ test('P2-06 (BƯỚC 3): POS blocks partial/split/debt payments completely; Retu
   try {
     const cashierToken = await srv.loginAs('thungan');
     const managerToken = await srv.loginAs('quanly');
+    assert.equal((await srv.reqJson('POST', '/api/shifts/open', { token: cashierToken, body: { openingCash: 500000 } })).status, 201);
 
     // 1. Block all partial / split / debt checkout attempts with 400
     for (const badPayload of [

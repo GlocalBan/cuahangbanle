@@ -11,18 +11,18 @@ function purchasesView() {
   if (!apiState.purchasesLoaded && !apiState.loading.purchases) {
     loadPurchasesData();
   }
-  if (purchasesTab === 'grns' && !apiState.grnsLoaded && !apiState.loading.grns) {
-    loadGrnsData();
-  }
-  if (purchasesTab === 'payables' && !apiState.payablesLoaded && !apiState.loading.payables) {
-    loadPayablesData();
-  }
-  if (purchasesTab === 'supplier-returns' && !apiState.supplierReturnsLoaded && !apiState.loading.supplierReturns) {
-    loadSupplierReturnsData();
-  }
-
   const canApprove = store.hasPermission('PURCHASE_APPROVE');
   const canPayable = store.hasPermission('PAYABLE_MANAGE');
+  const canPurchaseCreate = store.hasPermission('PURCHASE_CREATE');
+  if (canPurchaseCreate && !apiState.grnsLoaded && !apiState.loading.grns) {
+    loadGrnsData();
+  }
+  if (canPayable && !apiState.payablesLoaded && !apiState.loading.payables) {
+    loadPayablesData();
+  }
+  if (canPurchaseCreate && !apiState.supplierReturnsLoaded && !apiState.loading.supplierReturns) {
+    loadSupplierReturnsData();
+  }
   const tabs = [
     ['pos', 'PO & Thương lượng'],
     ['grns', 'Nhận hàng (GRN)'],
@@ -372,7 +372,7 @@ async function supplierRespondModal(purchaseId, isStoreCounter = false) {
               <td><code>${e(i.sku)}</code></td>
               <td class="name">${e(i.productName)}</td>
               <td><input type="number" min="1" step="1" value="${i.qty}" data-nego-qty="${e(i.productId)}" style="width:88px"></td>
-              <td><input type="number" min="0" step="100" value="${i.unitCost}" data-nego-cost="${e(i.productId)}" style="width:110px"></td>
+              <td><input type="number" min="0" step="1" value="${i.unitCost}" data-nego-cost="${e(i.productId)}" style="width:110px"></td>
             </tr>`,
           ),
         )}
@@ -393,7 +393,7 @@ async function supplierRespondModal(purchaseId, isStoreCounter = false) {
 
 async function createGrnModal(prefillPurchaseId = '') {
   if (!apiState.purchasesLoaded) await loadPurchasesData(true);
-  const eligiblePos = (apiState.purchases || []).filter((p) => ['DaThongNhat', 'DangNhanHang', 'Draft'].includes(p.status));
+  const eligiblePos = (apiState.purchases || []).filter((p) => ['DaThongNhat', 'DangNhanHang'].includes(p.status));
   if (!eligiblePos.length) {
     throw new Error('Không có đơn đặt hàng (PO) nào ở trạng thái Đã thống nhất / Đang nhận hàng để lập GRN.');
   }
@@ -425,7 +425,7 @@ async function createGrnModal(prefillPurchaseId = '') {
               <td class="name"><strong>${e(i.productName)}</strong><div class="sub"><code>${e(i.sku)}</code></div></td>
               <td>${number(i.qty)} / <strong>${number(i.receivedQty || 0)}</strong> (còn ${number(i.remainingQty)})</td>
               <td><input type="number" min="0" max="${i.remainingQty}" step="1" value="${i.remainingQty}" data-grn-qty="${e(i.productId)}" style="width:82px"></td>
-              <td><input type="number" min="0" step="100" value="${i.unitCost}" data-grn-cost="${e(i.productId)}" style="width:105px"></td>
+              <td><input type="number" min="0" step="1" value="${i.unitCost}" data-grn-cost="${e(i.productId)}" style="width:105px"></td>
               <td><input type="date" value="${e(i.expiryDate || defaultExp)}" data-grn-exp="${e(i.productId)}" ${i.hasExpiry !== false ? 'required' : ''}></td>
               <td><input type="text" value="${e(i.batchCode || '')}" data-grn-batch="${e(i.productId)}" placeholder="Tự sinh" style="width:105px"></td>
             </tr>`,
@@ -459,7 +459,7 @@ async function payablePayModal(payableId) {
           <div><small>Tổng nợ / Đã trả</small><strong>${money(ap.totalAmount)} / ${money(ap.paidAmount)}</strong></div>
           <div><small>Dư nợ còn lại</small><strong class="money negative">${money(ap.balanceAmount)}</strong></div>
         </div>
-        ${field('Số tiền thanh toán đợt này (₫) (*)', 'amount', ap.balanceAmount, 'number', `required min="1" max="${ap.balanceAmount}" step="1000"`)}
+        ${field('Số tiền thanh toán đợt này (₫) (*)', 'amount', ap.balanceAmount, 'number', `required min="1" max="${ap.balanceAmount}" step="1"`)}
         ${selectField(
           'Phương thức chi (*)',
           'paymentMethod',
@@ -596,7 +596,7 @@ async function purchaseModal(prefillProductId = '', editPurchaseId = '') {
         <div class="form-grid">
           ${selectField('Sản phẩm thuộc NCC (*)', 'productId', [], '', 'id="purchase-product"', true)}
           ${field('Số lượng nhập (*)', 'qty', 10, 'number', 'id="purchase-qty" min="1" step="1"')}
-          ${field('Đơn giá nhập (₫) (*)', 'unitCost', 0, 'number', 'id="purchase-price" min="0" step="100"')}
+          ${field('Đơn giá nhập (₫) (*)', 'unitCost', 0, 'number', 'id="purchase-price" min="0" step="1"')}
           ${field('Hạn sử dụng (*)', 'expiryDate', defaultExp, 'date', 'id="purchase-expiry"')}
           ${field('Ngày sản xuất', 'mfgDate', new Date().toISOString().slice(0, 10), 'date', 'id="purchase-mfg"')}
           ${field('Mã lô (tự sinh nếu trống)', 'batchCode', '', 'text', 'id="purchase-batch" placeholder="VD: LO-2026-01"')}
@@ -658,7 +658,7 @@ function renderPurchaseLines() {
           <td><code>${e(i.sku)}</code></td>
           <td class="name">${e(i.name)}</td>
           <td><input class="purchase-line-input" type="number" min="1" step="1" required value="${i.qty}" data-purchase-field="qty" data-index="${index}" aria-label="Số lượng nhập ${e(i.name)}"></td>
-          <td><input class="purchase-line-input purchase-line-price" type="number" min="0" step="100" required value="${i.unitCost}" data-purchase-field="unitCost" data-index="${index}" aria-label="Đơn giá nhập ${e(i.name)}"></td>
+          <td><input class="purchase-line-input purchase-line-price" type="number" min="0" step="1" required value="${i.unitCost}" data-purchase-field="unitCost" data-index="${index}" aria-label="Đơn giá nhập ${e(i.name)}"></td>
           <td><input type="date" ${i.hasExpiry !== false ? 'required' : ''} value="${e(i.expiryDate || '')}" data-purchase-field="expiryDate" data-index="${index}" aria-label="Hạn sử dụng ${e(i.name)}"></td>
           <td><input type="text" style="width:110px" value="${e(i.batchCode || '')}" data-purchase-field="batchCode" data-index="${index}" placeholder="Tự sinh" aria-label="Mã lô ${e(i.name)}"></td>
           <td class="money">${money(i.qty * i.unitCost)}</td>

@@ -231,6 +231,42 @@ class ReportRepository {
       )
       .all(limit);
   }
+
+  /**
+   * F-09B: Tổng hợp hao hụt âm (thiếu hàng) từ các phiếu kiểm kê kho đã duyệt (DaDuyet).
+   */
+  sumApprovedAuditShrinkage({ fromDate = '', toDate = '', categoryCode = '' } = {}) {
+    const clauses = ["a.status = 'DaDuyet'", 'ai.diff_qty < 0'];
+    const params = [];
+    if (fromDate) {
+      clauses.push('substr(COALESCE(a.approved_at, a.created_at), 1, 10) >= ?');
+      params.push(fromDate);
+    }
+    if (toDate) {
+      clauses.push('substr(COALESCE(a.approved_at, a.created_at), 1, 10) <= ?');
+      params.push(toDate);
+    }
+    if (categoryCode && String(categoryCode).trim()) {
+      clauses.push('p.category_code = ?');
+      params.push(String(categoryCode).trim());
+    }
+    const row = this.db
+      .prepare(
+        `SELECT COUNT(DISTINCT a.id) AS doc_count,
+                COALESCE(SUM(ABS(ai.diff_qty)), 0) AS total_qty,
+                COALESCE(SUM(ABS(ai.diff_qty) * p.cost_price), 0) AS total_value
+         FROM stock_audit_items ai
+         JOIN stock_audits a ON a.id = ai.audit_id
+         JOIN products p ON p.id = ai.product_id
+         WHERE ${clauses.join(' AND ')}`,
+      )
+      .get(...params);
+    return {
+      docCount: Number(row?.doc_count) || 0,
+      totalQty: Number(row?.total_qty) || 0,
+      totalValue: Number(row?.total_value) || 0,
+    };
+  }
 }
 
 module.exports = { ReportRepository };

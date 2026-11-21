@@ -44,7 +44,7 @@ function checkoutModal(method = 'CASH') {
         ${
           normalizedMethod === 'CASH'
             ? `<div class="stack">
-                ${field('Tiền khách đưa (₫) (*)', 'cashReceived', t.totalAmount, 'number', 'id="cash-input" required min="0" step="1000"')}
+                ${field('Tiền khách đưa (₫) (*)', 'cashReceived', t.totalAmount, 'number', 'id="cash-input" required min="0" step="1"')}
                 <div class="cash-quick">
                   ${action('quick-cash-amount', 'Đúng số tiền', '', 'small primary', `data-amount="${t.totalAmount}"`)}
                   ${[50000, 100000, 200000, 500000, 1000000]

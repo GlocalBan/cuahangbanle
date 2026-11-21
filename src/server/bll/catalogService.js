@@ -239,6 +239,10 @@ class CatalogService {
       );
     }
 
+    if (this.repos.batches && typeof this.repos.batches.sweepExpiredBatches === 'function') {
+      this.repos.batches.sweepExpiredBatches(todayYmdVn());
+    }
+
     const rows = this.repos.products.list(filters);
     const rawSummary = this.repos.products.getSummary();
     const summary = {
@@ -261,6 +265,9 @@ class CatalogService {
   }
 
   getProduct(id, { canViewCost = false, canViewLedger = false } = {}) {
+    if (this.repos.batches && typeof this.repos.batches.sweepExpiredBatches === 'function') {
+      this.repos.batches.sweepExpiredBatches(todayYmdVn(), id);
+    }
     const row = this.repos.products.findById(id);
     if (!row) throw new NotFoundException(`Không tìm thấy sản phẩm mã "${id}".`);
     const result = {

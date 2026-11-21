@@ -42,15 +42,35 @@ function computePosCartPricing() {
     if (subtotal < Number(promo.minOrderAmount || 0)) {
       promoHint = `Chưa đạt đơn tối thiểu ${money(promo.minOrderAmount)} để dùng mã ${promo.code}.`;
     } else {
-      promoValid = true;
-      if (promo.discountType === 'PERCENT') {
-        let raw = Math.round((subtotal * Number(promo.discountValue || 0)) / 100);
-        if (Number(promo.maxDiscount || 0) > 0) raw = Math.min(raw, Number(promo.maxDiscount));
-        invoiceDiscount = Math.min(subtotal, raw);
-      } else {
-        invoiceDiscount = Math.min(subtotal, Math.round(Number(promo.discountValue || 0)));
+      const scope = promo.scope || 'INVOICE';
+      let eligibleSubtotal = subtotal;
+      if (scope === 'CATEGORY' || scope === 'PRODUCT') {
+        const pidSet = new Set(promo.productIds || []);
+        eligibleSubtotal = (posCart.items || []).reduce((sum, item) => {
+          const prod = (apiState.products || []).find((p) => p.id === item.productId);
+          const catCode = item.categoryCode || prod?.categoryCode || '';
+          const match = scope === 'CATEGORY' ? catCode === promo.categoryCode : pidSet.has(item.productId);
+          if (!match) return sum;
+          const gross = Number(item.qty) * Number(item.salePrice);
+          const disc = Math.min(gross, Math.max(0, Math.round(Number(item.lineDiscount || 0))));
+          return sum + Math.max(0, gross - disc);
+        }, 0);
+      } else if (scope === 'NEAR_EXPIRY' && posCart.promoPreview && posCart.promoPreview.code === promo.code) {
+        eligibleSubtotal = Number(posCart.promoPreview.eligibleSubtotal) || 0;
       }
-      discountLabel = `KM ${promo.code}`;
+      if (scope !== 'INVOICE' && scope !== 'ALL' && eligibleSubtotal <= 0) {
+        promoHint = `Giỏ hàng không có sản phẩm thuộc phạm vi áp dụng của mã ${promo.code}.`;
+      } else {
+        promoValid = true;
+        if (promo.discountType === 'PERCENT') {
+          let raw = Math.round((eligibleSubtotal * Number(promo.discountValue || 0)) / 100);
+          if (Number(promo.maxDiscount || 0) > 0) raw = Math.min(raw, Number(promo.maxDiscount));
+          invoiceDiscount = Math.min(eligibleSubtotal, raw);
+        } else {
+          invoiceDiscount = Math.min(eligibleSubtotal, Math.round(Number(promo.discountValue || 0)));
+        }
+        discountLabel = `KM ${promo.code}`;
+      }
     }
   } else if (mode === 'VOUCHER' && posCart.appliedVoucher && subtotal > 0) {
     const vc = posCart.appliedVoucher;
@@ -150,7 +170,7 @@ function posView() {
             <h2>Chọn sản phẩm đang kinh doanh</h2>
             <p class="sub">${number(products.length)} mặt hàng · Quét barcode hoặc nhập SKU rồi nhấn <strong>Enter</strong> để thêm ngay</p>
           </div>
-          ${shift ? badge(`Ca ${e(shift.id)}`, 'green') : badge('Sẵn sàng bán', 'blue')}
+          ${shift ? badge(`Ca đang mở · ${e(shift.id)}`, 'green') : badge('Chưa mở ca (cần mở ca khi thu tiền mặt)', 'yellow')}
         </div>
         <div class="table-tools">
           <div class="pos-search">
@@ -264,7 +284,7 @@ function posView() {
                             )}
                             <label class="row gap4" style="font-size:11.5px;color:#475569;margin-left:auto" title="Giảm giá dòng hàng (₫)${store.user?.role === 'CASHIER' ? ` · Thu ngân tối đa ${t.maxCashierPct}%` : ''}">
                               <span>Giảm:</span>
-                              <input type="number" min="0" max="${lineGross}" step="1000" value="${Number(i.lineDiscount || 0)}" data-input="cart-line-discount" data-id="${e(i.productId)}" aria-label="Giảm giá dòng hàng ${e(i.name)}" style="width:76px;height:28px;padding:0 6px;border:1px solid ${violation ? '#dc2626' : '#cbd5e1'};border-radius:6px;text-align:right;font-size:12px">
+                              <input type="number" min="0" max="${lineGross}" step="1" value="${Number(i.lineDiscount || 0)}" data-input="cart-line-discount" data-id="${e(i.productId)}" aria-label="Giảm giá dòng hàng ${e(i.name)}" style="width:76px;height:28px;padding:0 6px;border:1px solid ${violation ? '#dc2626' : '#cbd5e1'};border-radius:6px;text-align:right;font-size:12px">
                             </label>
                           </div>
                           ${violation ? `<div class="error-text" style="margin-top:4px;font-size:11.5px" role="alert">${e(violation.message)}</div>` : ''}
@@ -460,6 +480,7 @@ function addCart(productId, delta = 1) {
       productId: p.id,
       sku: p.sku,
       barcode: p.barcode,
+      categoryCode: p.categoryCode || '',
       name: p.name,
       unitName: p.unitName,
       salePrice: Number(p.salePrice),
@@ -508,15 +529,27 @@ async function applyPosPromoCode(code) {
     throw new Error('Vui lòng thêm sản phẩm vào giỏ trước khi áp dụng khuyến mãi.');
   }
   try {
-    const res = await api.validatePromotion(cleanCode, t.subtotal);
+    const cartItems = (posCart.items || []).map((i) => ({
+      productId: i.productId,
+      qty: Number(i.qty),
+      lineDiscount: Math.max(0, Math.round(Number(i.lineDiscount || 0))),
+    }));
+    const res = await api.validatePromotion(cleanCode, t.subtotal, cartItems);
     posCart.promotionCode = res.promotion.code;
     posCart.appliedPromotion = res.promotion;
+    posCart.promoPreview = {
+      code: res.promotion.code,
+      eligibleSubtotal: Number(res.eligibleSubtotal ?? res.subtotal) || 0,
+      discountAmount: Number(res.discountAmount) || 0,
+      totalAmount: Number(res.totalAmount) || 0,
+    };
     posCart.promoError = '';
     render();
     notify(`Áp dụng KM ${res.promotion.code} thành công (−${money(res.discountAmount)}).`);
   } catch (err) {
     posCart.promotionCode = cleanCode;
     posCart.appliedPromotion = null;
+    posCart.promoPreview = null;
     posCart.promoError = err.message;
     render();
     notify(err.message, true);
@@ -565,7 +598,7 @@ function openShiftModal() {
         <div class="note">
           Khai báo số tiền mặt đầu ca trong két thu ngân. Hệ thống tự động cộng dồn doanh thu tiền mặt, hoàn tiền mặt và đối soát cuối ca.
         </div>
-        ${field('Tiền mặt đầu ca trong két (₫) (*)', 'openingCash', 1000000, 'number', 'required min="0" step="1000"')}
+        ${field('Tiền mặt đầu ca trong két (₫) (*)', 'openingCash', 1000000, 'number', 'required min="0" step="1"')}
         ${textField('Ghi chú mở ca', 'note', 'Bàn giao tiền lẻ đầu ca')}
         ${formError()}
       </div>
@@ -603,7 +636,7 @@ async function closeShiftModal() {
             <div><small>Thanh toán VietQR / Thẻ</small><strong class="money">${money(s.nonCashSales || 0)}</strong></div>
             <div><small>Tiền mặt dự kiến trong két</small><strong class="money" style="font-size:16px;color:#0f766e">${money(expected)}</strong></div>
           </div>
-          ${field('Tiền mặt thực đếm cuối ca (₫) (*)', 'actualCash', expected, 'number', 'id="shift-actual-cash" required min="0" step="1000"')}
+          ${field('Tiền mặt thực đếm cuối ca (₫) (*)', 'actualCash', expected, 'number', 'id="shift-actual-cash" required min="0" step="1"')}
           <div id="shift-variance-box" class="note green">Chênh lệch két: <strong>0 ₫ (Khớp 100%)</strong></div>
           <label class="field full">
             <span>Ghi chú chốt ca / Giải trình chênh lệch <span id="shift-note-req"></span></span>

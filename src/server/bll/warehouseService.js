@@ -552,12 +552,25 @@ class WarehouseService {
 
     const supplierId = input?.supplierId !== undefined ? input.supplierId : existing.supplier_id;
     const note = input?.note !== undefined ? String(input.note).trim() : existing.note;
+    const hasExpectedDateInput =
+      input?.expectedDeliveryDate !== undefined || input?.expected_delivery_date !== undefined;
+    const expectedDeliveryDate = hasExpectedDateInput
+      ? String(input?.expectedDeliveryDate ?? input?.expected_delivery_date ?? '').trim()
+      : existing.expected_delivery_date || '';
+    if (expectedDeliveryDate) {
+      assertRule(isValidIsoYmd(expectedDeliveryDate), 'Ngày giao dự kiến không đúng định dạng YYYY-MM-DD.', 400);
+    }
     const { supplier, normalizedItems, totalAmount } = this._validatePurchasePayload(supplierId, input?.items);
 
     const updated = withTransaction(this.db, () => {
       const po = this.repos.purchases.updateDraft(
         id,
-        { supplier_id: supplier.id, total_amount: totalAmount, note },
+        {
+          supplier_id: supplier.id,
+          total_amount: totalAmount,
+          expected_delivery_date: expectedDeliveryDate,
+          note,
+        },
         normalizedItems,
       );
       this.repos.auditLogs.append({
@@ -566,13 +579,17 @@ class WarehouseService {
         entityType: 'Purchase',
         entityId: id,
         detail: `Cập nhật phiếu nhập nháp ${id} (${normalizedItems.length} mặt hàng, tổng ${totalAmount.toLocaleString('vi-VN')} ₫)`,
-        before: { totalAmount: existing.total_amount, itemCount: existing.items.length },
-        after: { totalAmount, itemCount: normalizedItems.length },
+        before: {
+          totalAmount: existing.total_amount,
+          itemCount: existing.items.length,
+          expectedDeliveryDate: existing.expected_delivery_date || '',
+        },
+        after: { totalAmount, itemCount: normalizedItems.length, expectedDeliveryDate },
       });
       return po;
     });
 
-    return toPurchaseDetailDto(updated);
+    return this._hydratePurchaseDetail(updated);
   }
 
   /**
@@ -2151,6 +2168,7 @@ class WarehouseService {
       totalAmount: Number(row.total_amount) || 0,
       paidAmount: Number(row.paid_amount) || 0,
       balanceAmount: balance,
+      creditAmount: Number(row.credit_amount) || 0,
       dueDate: row.due_date,
       isOverdue,
       status: row.status,
@@ -2178,13 +2196,26 @@ class WarehouseService {
       status: filters.status || '',
     });
     const items = rows.map((r) => this._toPayableDto(r));
+    const credits = this.repos.supplierOps.listSupplierCredits(filters.supplierId || '');
+    const totalCredit = this.repos.supplierOps.sumSupplierCredits(filters.supplierId || '');
     return {
       items,
+      credits: credits.map((c) => ({
+        id: c.id,
+        supplierId: c.supplier_id,
+        supplierReturnId: c.supplier_return_id || null,
+        payableId: c.payable_id || null,
+        amount: Number(c.amount) || 0,
+        remainingAmount: Number(c.remaining_amount) || 0,
+        note: c.note || '',
+        createdAt: c.created_at,
+      })),
       summary: {
         totalCount: items.length,
         totalAmount: items.reduce((s, i) => s + i.totalAmount, 0),
         totalPaid: items.reduce((s, i) => s + i.paidAmount, 0),
         totalBalance: items.reduce((s, i) => s + i.balanceAmount, 0),
+        totalCredit,
         overdueCount: items.filter((i) => i.isOverdue).length,
       },
     };
@@ -2196,7 +2227,7 @@ class WarehouseService {
     return this._toPayableDto(found);
   }
 
-  recordSupplierPayment(actor, payableId, input = {}) {
+  recordSupplierPayment(actor, payableId, input = {}, options = {}) {
     const updated = withTransaction(this.db, () => {
       const pay = this.repos.supplierOps.findPayableById(payableId);
       if (!pay) throw new NotFoundException(`Không tìm thấy phiếu công nợ NCC mã "${payableId}".`);
@@ -2209,9 +2240,20 @@ class WarehouseService {
         `Số tiền thanh toán (${amount.toLocaleString('vi-VN')} ₫) vượt quá dư nợ hiện tại (${balance.toLocaleString('vi-VN')} ₫).`,
         400,
       );
-      const paymentMethod = String(input?.paymentMethod || 'BANK_TRANSFER').trim().toUpperCase();
-      const paymentRef = String(input?.paymentRef || '').trim();
+      const paymentMethod = String(input?.paymentMethod ?? input?.method ?? 'BANK_TRANSFER').trim().toUpperCase();
+      const paymentRef = String(input?.paymentRef ?? input?.referenceNo ?? '').trim();
       const note = String(input?.note || '').trim();
+
+      // F-06E: Enforce idempotency on non-empty paymentRef (case-insensitive & trimmed)
+      if (paymentRef.length > 0) {
+        const dup = this.repos.supplierOps.findPaymentByRef(paymentRef);
+        assertRule(
+          !dup,
+          `Mã tham chiếu thanh toán "${paymentRef}" đã được sử dụng cho giao dịch "${dup?.id}" (công nợ ${dup?.payable_id}). Nghiêm cấm thanh toán trùng lặp (F-06E).`,
+          409,
+          'DUPLICATE_PAYMENT_REF',
+        );
+      }
 
       const afterPay = this.repos.supplierOps.recordPayment({
         payableId,
@@ -2230,9 +2272,33 @@ class WarehouseService {
         detail: `Thanh toán công nợ NCC ${payableId} (${pay.supplier_name}): ${amount.toLocaleString('vi-VN')} ₫, dư nợ còn ${Number(afterPay.balance_amount).toLocaleString('vi-VN')} ₫`,
         after: { amount, paymentMethod, paymentRef, balanceAfter: afterPay.balance_amount, status: afterPay.status },
       });
+
+      if (typeof options._beforeCommitHook === 'function') {
+        options._beforeCommitHook();
+      }
       return afterPay;
     });
     return this._toPayableDto(updated);
+  }
+
+  _resolveBatchSupplierId(batch, product) {
+    if (batch?.purchase_id) {
+      const po = this.db.prepare('SELECT supplier_id FROM purchases WHERE id = ?').get(batch.purchase_id);
+      if (po?.supplier_id) return po.supplier_id;
+    }
+    if (batch?.batch_code) {
+      const grn = this.db
+        .prepare(
+          `SELECT pr.supplier_id
+           FROM purchase_receipt_items pri
+           JOIN purchase_receipts pr ON pr.id = pri.receipt_id
+           WHERE pri.batch_code = ? AND pri.product_id = ?
+           LIMIT 1`,
+        )
+        .get(batch.batch_code, batch.product_id);
+      if (grn?.supplier_id) return grn.supplier_id;
+    }
+    return product?.supplier_id || null;
   }
 
   // ─── SUPPLIER RETURNS (TRẢ HÀNG NCC — TRA_NCC) ─────────────────────────────
@@ -2307,16 +2373,33 @@ class WarehouseService {
     assertRule(reason.length >= 3 && reason.length <= 300, 'Vui lòng nhập lý do trả hàng NCC (tối thiểu 3 ký tự).', 400);
     assertRule(rawItems.length >= 1, 'Phiếu trả hàng NCC phải có tối thiểu 1 mặt hàng.', 400);
 
+    if (purchaseId) {
+      const po = this.repos.purchases.findById(purchaseId);
+      assertRule(Boolean(po), `Đơn đặt hàng "${purchaseId}" không tồn tại.`, 400);
+      assertRule(
+        po.supplier_id === supplierId,
+        `Đơn đặt hàng "${purchaseId}" thuộc NCC "${po.supplier_id}", không khớp với NCC trả hàng "${supplierId}" (F-06C).`,
+        400,
+        'BATCH_SUPPLIER_MISMATCH',
+      );
+    }
+
     const normalized = [];
+    const seenBatchIds = new Set();
+    const unbatchedQtyByProduct = new Map();
     let totalAmount = 0;
     for (const raw of rawItems) {
       const batchId = String(raw?.batchId || raw?.batch_id || '').trim() || null;
       let productId = String(raw?.productId || raw?.product_id || '').trim();
       let batchCode = '';
       let defaultCost = 0;
+      let batchObj = null;
       if (batchId) {
+        assertRule(!seenBatchIds.has(batchId), `Lô hàng "${batchId}" bị trùng lặp dòng trong cùng phiếu trả NCC.`, 400);
+        seenBatchIds.add(batchId);
         const batch = this.repos.batches.findById(batchId);
         assertRule(Boolean(batch), `Không tìm thấy lô hàng "${batchId}".`, 400);
+        batchObj = batch;
         productId = batch.product_id;
         batchCode = batch.batch_code;
         defaultCost = Number(batch.unit_cost) || 0;
@@ -2329,9 +2412,34 @@ class WarehouseService {
       }
       const product = this.repos.products.findById(productId);
       assertRule(Boolean(product), `Sản phẩm "${productId}" không tồn tại.`, 400);
+
+      // F-06C: Strict batch-to-supplier (and product-to-supplier) ownership verification
+      if (batchObj) {
+        const ownerSupplierId = this._resolveBatchSupplierId(batchObj, product);
+        assertRule(
+          ownerSupplierId === supplierId,
+          `Lô hàng "${batchObj.batch_code}" thuộc Nhà cung cấp "${ownerSupplierId || 'không xác định'}", không thể trả cho Nhà cung cấp "${supplierId}" (F-06C).`,
+          400,
+          'BATCH_SUPPLIER_MISMATCH',
+        );
+      } else {
+        assertRule(
+          product.supplier_id === supplierId,
+          `Sản phẩm "${product.name}" thuộc Nhà cung cấp "${product.supplier_id}", không thể trả cho Nhà cung cấp "${supplierId}" (F-06C).`,
+          400,
+          'BATCH_SUPPLIER_MISMATCH',
+        );
+      }
+
       const qty = parsePositiveInt(raw?.qty, `SL trả của ${product.name}`);
       if (!batchId) {
-        assertRule(qty <= Number(product.stock_qty), `SL trả (${qty}) vượt tồn kho hiện tại (${product.stock_qty}) của ${product.name}.`, 400);
+        const cumQty = (unbatchedQtyByProduct.get(product.id) || 0) + qty;
+        unbatchedQtyByProduct.set(product.id, cumQty);
+        assertRule(
+          cumQty <= Number(product.stock_qty),
+          `Tổng SL trả (${cumQty}) vượt tồn kho hiện tại (${product.stock_qty}) của ${product.name}.`,
+          400,
+        );
       }
       const unitCost = parseNonNegativeInt(
         raw?.unitCost !== undefined ? raw.unitCost : defaultCost || product.cost_price,
@@ -2392,12 +2500,26 @@ class WarehouseService {
         if (item.batch_id) {
           const batch = this.repos.batches.findById(item.batch_id);
           assertRule(Boolean(batch), `Lô hàng "${item.batch_code}" không tồn tại.`, 400);
+          // F-06C: Re-verify batch-to-supplier ownership inside TX
+          const ownerSupplierId = this._resolveBatchSupplierId(batch, product);
+          assertRule(
+            ownerSupplierId === sr.supplier_id,
+            `Lô hàng "${batch.batch_code}" thuộc Nhà cung cấp "${ownerSupplierId || 'không xác định'}", không thể duyệt trả cho Nhà cung cấp "${sr.supplier_id}" (F-06C).`,
+            409,
+            'BATCH_SUPPLIER_MISMATCH',
+          );
           assertRule(Number(batch.qty_remaining) >= qty, `Lô "${batch.batch_code}" chỉ còn ${batch.qty_remaining}, không đủ trả ${qty}.`, 409);
           const afterBatch = Number(batch.qty_remaining) - qty;
           this.repos.batches.updateQtyAndStatus(batch.id, afterBatch, afterBatch === 0 ? 'DaHet' : batch.status);
           usedBatchCode = batch.batch_code;
           this.repos.batches.syncProductSalableStock(product.id, today);
         } else {
+          assertRule(
+            product.supplier_id === sr.supplier_id,
+            `Sản phẩm "${product.name}" thuộc Nhà cung cấp "${product.supplier_id}", không thể duyệt trả cho Nhà cung cấp "${sr.supplier_id}" (F-06C).`,
+            409,
+            'BATCH_SUPPLIER_MISMATCH',
+          );
           assertRule(stockBefore >= qty, `Tồn kho "${product.name}" chỉ còn ${stockBefore}, không đủ trả ${qty}.`, 409);
           let remain = qty;
           const salable = this.repos.batches.findSalableFefo(product.id, today);
@@ -2411,26 +2533,35 @@ class WarehouseService {
               remain -= take;
             }
           }
-          this.repos.products.updateStock(product.id, stockBefore - qty);
+          if (salable.length > 0) {
+            this.repos.batches.syncProductSalableStock(product.id, today);
+          } else {
+            this.repos.products.updateStock(product.id, stockBefore - qty);
+          }
         }
 
         const stockAfter = Number(this.repos.products.findById(product.id)?.stock_qty) || 0;
+        const salableDelta = stockAfter - stockBefore;
         this.repos.stockMovements.append({
           productId: product.id,
           stockBefore,
-          delta: -qty,
+          delta: salableDelta,
           stockAfter,
           docType: 'TRA_NCC',
           docId: id,
           batchCode: usedBatchCode,
           actorId: actor.id,
           actorName: actor.full_name,
-          note: `Duyệt trả hàng NCC ${id} (${sr.supplier_name})${usedBatchCode ? ` · Lô ${usedBatchCode}` : ''}: ${item.reason || sr.reason}`,
+          note: `Duyệt trả hàng NCC ${id} (${sr.supplier_name})${usedBatchCode ? ` · Lô ${usedBatchCode}` : ''}${salableDelta === 0 ? ` [Lô hết hạn -${qty} đv]` : ''}: ${item.reason || sr.reason}`,
         });
       }
 
-      // Giảm trừ công nợ NCC nếu gắn với GRN/PO có công nợ (ưu tiên khớp đúng GRN của lô hàng trả)
-      if (sr.purchase_id) {
+      // F-06A & F-06B: Financial AP offset + explicit supplier credit preservation (never silently lose return value)
+      let remainingReturnAmt = Number(sr.total_amount) || 0;
+      const appliedPayables = [];
+      let createdCreditAmount = 0;
+
+      if (sr.purchase_id && remainingReturnAmt > 0) {
         let matchedReceiptId = null;
         for (const it of sr.items) {
           if (it.batch_code) {
@@ -2446,8 +2577,55 @@ class WarehouseService {
         const linkedPayable =
           (matchedReceiptId ? this.repos.supplierOps.findPayableByReceipt(matchedReceiptId) : null) ||
           this.repos.supplierOps.findPayableByPurchase(sr.purchase_id);
-        if (linkedPayable) {
-          this.repos.supplierOps.reducePayableForReturn(linkedPayable.id, Number(sr.total_amount) || 0);
+        if (linkedPayable && linkedPayable.supplier_id === sr.supplier_id) {
+          const reduced = this.repos.supplierOps.reducePayableForReturn(linkedPayable.id, remainingReturnAmt, {
+            supplierReturnId: id,
+            note: `Tín dụng dư từ trả hàng NCC ${id} (công nợ ${linkedPayable.id})`,
+          });
+          appliedPayables.push({
+            payableId: linkedPayable.id,
+            appliedAmount: remainingReturnAmt,
+            newTotalAmount: Number(reduced.total_amount) || 0,
+            newBalanceAmount: Number(reduced.balance_amount) || 0,
+            creditAmount: Number(reduced.credit_amount) || 0,
+          });
+          createdCreditAmount += Number(reduced.deltaCredit) || 0;
+          remainingReturnAmt = 0;
+        }
+      }
+
+      if (remainingReturnAmt > 0) {
+        // F-06B: Unlinked return (or PO without payable) -> offset oldest open payables for this supplier, record leftover as supplier_credit
+        const openPayables = this.repos.supplierOps.listOpenPayablesBySupplier(sr.supplier_id);
+        for (const p of openPayables) {
+          if (remainingReturnAmt <= 0) break;
+          const applyAmt = Math.min(remainingReturnAmt, Number(p.balance_amount) || 0);
+          if (applyAmt > 0) {
+            const reduced = this.repos.supplierOps.reducePayableForReturn(p.id, applyAmt, {
+              supplierReturnId: id,
+              note: `Bù trừ tự động từ phiếu trả hàng NCC ${id}`,
+            });
+            appliedPayables.push({
+              payableId: p.id,
+              appliedAmount: applyAmt,
+              newTotalAmount: Number(reduced.total_amount) || 0,
+              newBalanceAmount: Number(reduced.balance_amount) || 0,
+              creditAmount: Number(reduced.credit_amount) || 0,
+            });
+            createdCreditAmount += Number(reduced.deltaCredit) || 0;
+            remainingReturnAmt -= applyAmt;
+          }
+        }
+        if (remainingReturnAmt > 0) {
+          this.repos.supplierOps.createSupplierCredit({
+            supplierId: sr.supplier_id,
+            supplierReturnId: id,
+            payableId: null,
+            amount: remainingReturnAmt,
+            note: `Tín dụng NCC từ phiếu trả hàng không gắn công nợ ${id}`,
+          });
+          createdCreditAmount += remainingReturnAmt;
+          remainingReturnAmt = 0;
         }
       }
 
@@ -2465,11 +2643,16 @@ class WarehouseService {
         action: 'SUPPLIER_RETURN_APPROVE',
         entityType: 'SupplierReturn',
         entityId: id,
-        detail: `Duyệt trả hàng NCC ${id} (${sr.supplier_name}, giá trị ${Number(sr.total_amount).toLocaleString('vi-VN')} ₫)`,
+        detail: `Duyệt trả hàng NCC ${id} (${sr.supplier_name}, giá trị ${Number(sr.total_amount).toLocaleString('vi-VN')} ₫${createdCreditAmount > 0 ? `, ghi nhận tín dụng NCC +${createdCreditAmount.toLocaleString('vi-VN')} ₫` : ''})`,
+        after: { appliedPayables, createdCreditAmount },
       });
-      return finalSr;
+      return { finalSr, appliedPayables, createdCreditAmount };
     });
-    return this._toSupplierReturnDto(approved);
+    return {
+      ...this._toSupplierReturnDto(approved.finalSr),
+      appliedPayables: approved.appliedPayables,
+      createdCreditAmount: approved.createdCreditAmount,
+    };
   }
 
   // ─── BATCHES, NEAR-EXPIRY & WRITE-OFFS (CHẶNG 2: FEFO & HỦY HÀNG) ─────────
@@ -2718,8 +2901,19 @@ class WarehouseService {
       if (existing.status !== 'ChoDuyet') {
         throw new ConflictException(`Chỉ được duyệt phiếu hủy hàng ở trạng thái Chờ duyệt. Phiếu "${id}" hiện là ${existing.status}.`);
       }
+      // F-07A: Separation of duties — creator cannot self-approve their own disposal/write-off
+      if (existing.created_by && existing.created_by === actor.id) {
+        throw new ForbiddenException(
+          `Người lập phiếu hủy hàng "${id}" không được tự duyệt phiếu của chính mình (nguyên tắc tách bạch nhiệm vụ — F-07A). Vui lòng để Quản lý / Admin khác xác nhận.`,
+        );
+      }
 
       const today = todayYmdVn();
+      // F-07C: Đảm bảo các lô đã quá hạn được đồng bộ trước khi ghi nhận tồn khả dụng trước hủy
+      if (typeof this.repos.batches.sweepExpiredBatches === 'function') {
+        this.repos.batches.sweepExpiredBatches(today);
+      }
+
       const changes = [];
       for (const item of existing.items) {
         const batch = this.repos.batches.findById(item.batch_id);
@@ -2738,18 +2932,20 @@ class WarehouseService {
 
         this.repos.batches.updateQtyAndStatus(batch.id, batchAfter, nextBatchStatus);
         const productAfter = this.repos.batches.syncProductSalableStock(item.product_id, today);
+        // F-07B: Giữ bất biến stockBefore + delta === stockAfter trên thẻ kho sản phẩm bán được
+        const salableDelta = productAfter - productBefore;
 
         this.repos.stockMovements.append({
           productId: item.product_id,
-          stockBefore: isBatchExpired ? batchBefore : productBefore,
-          delta: -Number(item.qty),
-          stockAfter: isBatchExpired ? batchAfter : productAfter,
+          stockBefore: productBefore,
+          delta: salableDelta,
+          stockAfter: productAfter,
           docType: 'HUY_HANG',
           docId: id,
           batchCode: batch.batch_code,
           actorId: actor.id,
           actorName: actor.full_name,
-          note: `Duyệt hủy hàng ${id} · Lô ${batch.batch_code}${batch.expiry_date ? ` (HSD ${batch.expiry_date})` : ''}${isBatchExpired ? ' [Lô hết hạn]' : ''}: ${item.reason || existing.reason}`,
+          note: `Duyệt hủy hàng ${id} · Lô ${batch.batch_code}${batch.expiry_date ? ` (HSD ${batch.expiry_date})` : ''}${isBatchExpired ? ` [Lô hết hạn -${item.qty} đv]` : ''}: ${item.reason || existing.reason}`,
         });
 
         changes.push({

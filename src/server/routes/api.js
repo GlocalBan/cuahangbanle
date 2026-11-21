@@ -783,15 +783,19 @@ function createApiRouter(db) {
       if (method === 'POST' && pathname === '/api/promotions/validate') {
         authorize(req, 'POS_SELL');
         const body = await readJsonBody(req);
-        const result = salesService.validatePromotionForSubtotal(body.code || body.promotionId, body.subtotal);
+        const result = salesService.validatePromotionForSubtotal(body.code || body.promotionId, body.subtotal, new Date(), {
+          items: Array.isArray(body.items) ? body.items : undefined,
+        });
         return sendJson(res, 200, {
           promotion: result.promotion,
           subtotal: result.subtotal,
+          eligibleSubtotal: result.eligibleSubtotal,
           discountAmount: result.discountAmount,
           afterDiscount: result.afterDiscount,
           taxRate: result.taxRate,
           taxAmount: result.taxAmount,
           totalAmount: result.totalAmount,
+          finalTotal: result.finalTotal,
         });
       }
 
@@ -1018,12 +1022,19 @@ function createApiRouter(db) {
         }
       }
 
-      // ─── M4: POS CHECKOUT & ORDERS (BR-03, BR-04, BR-05) ───────────────────
-      if (method === 'POST' && pathname === '/api/pos/checkout') {
+      // ─── M4: POS CHECKOUT & ORDERS (BR-03, BR-04, BR-05, F-08A) ────────────
+      if (method === 'POST' && (pathname === '/api/pos/checkout' || pathname === '/api/orders')) {
         const auth = authorize(req, 'POS_SELL');
         const body = await readJsonBody(req);
-        const item = salesService.checkout(auth.user, body);
-        return sendJson(res, 201, { item });
+        const headerKey = String(req.headers['idempotency-key'] || '').trim();
+        const result = salesService.checkout(auth.user, body, {
+          idempotencyKey: headerKey || body.idempotencyKey || '',
+        });
+        if (result && result.idempotentReplay) {
+          const { idempotentReplay, ...item } = result;
+          return sendJson(res, 200, { item, idempotentReplay });
+        }
+        return sendJson(res, 201, { item: result });
       }
 
       if (method === 'GET' && pathname === '/api/orders') {

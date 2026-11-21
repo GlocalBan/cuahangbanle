@@ -155,7 +155,13 @@ function receiptHTML(o) {
       <div class="between"><span>1. Tạm tính</span><span class="money">${money(subtotal)}</span></div>
       ${
         invoiceDiscount > 0
-          ? `<div class="between positive"><span>2. Giảm giá hóa đơn ${o.promotionCode ? `(${e(o.promotionCode)})` : ''}</span><span class="money">− ${money(invoiceDiscount)}</span></div>`
+          ? (() => {
+              const discTags = [
+                o.promotionCode ? `KM: ${e(o.promotionCode)}` : '',
+                o.voucherCode ? `Voucher: ${e(o.voucherCode)}` : '',
+              ].filter(Boolean);
+              return `<div class="between positive"><span>2. Giảm giá hóa đơn${discTags.length ? ` (${discTags.join(' · ')})` : ''}</span><span class="money">− ${money(invoiceDiscount)}</span></div>`;
+            })()
           : ''
       }
       <div class="between"><span>3. Tiền sau giảm</span><span class="money">${money(afterDiscount)}</span></div>

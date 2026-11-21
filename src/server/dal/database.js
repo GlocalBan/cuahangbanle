@@ -320,7 +320,8 @@ CREATE TABLE IF NOT EXISTS users (
   last_login_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
-  FOREIGN KEY (role_code) REFERENCES roles(code) ON DELETE RESTRICT ON UPDATE CASCADE
+  FOREIGN KEY (role_code) REFERENCES roles(code) ON DELETE RESTRICT ON UPDATE CASCADE,
+  FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS revoked_tokens (
@@ -358,7 +359,8 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   detail TEXT NOT NULL DEFAULT '',
   before_json TEXT,
   after_json TEXT,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE SET NULL
 );
 
 -- ============================================================================
@@ -460,7 +462,8 @@ CREATE TABLE IF NOT EXISTS product_batches (
   purchase_id TEXT,
   status TEXT NOT NULL DEFAULT 'ConHan' CHECK (status IN ('ConHan', 'CanDate', 'HetHan', 'DaHet', 'DaHuy')),
   created_at TEXT NOT NULL,
-  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT,
+  FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS batch_writeoffs (
@@ -544,7 +547,9 @@ CREATE TABLE IF NOT EXISTS voucher_redemptions (
   customer_id TEXT,
   discount_amount INTEGER NOT NULL DEFAULT 0 CHECK (discount_amount >= 0),
   redeemed_at TEXT NOT NULL,
-  FOREIGN KEY (voucher_id) REFERENCES vouchers(id) ON DELETE RESTRICT
+  FOREIGN KEY (voucher_id) REFERENCES vouchers(id) ON DELETE RESTRICT,
+  FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE RESTRICT,
+  FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS cashier_shifts (
@@ -606,7 +611,8 @@ CREATE TABLE IF NOT EXISTS purchase_negotiations (
   expected_delivery_date TEXT NOT NULL DEFAULT '',
   note TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
-  FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE CASCADE
+  FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE CASCADE,
+  FOREIGN KEY (actor_id) REFERENCES users(id) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS purchase_receipts (
@@ -650,13 +656,29 @@ CREATE TABLE IF NOT EXISTS supplier_payables (
   total_amount INTEGER NOT NULL DEFAULT 0 CHECK (total_amount >= 0),
   paid_amount INTEGER NOT NULL DEFAULT 0 CHECK (paid_amount >= 0),
   balance_amount INTEGER NOT NULL DEFAULT 0 CHECK (balance_amount >= 0),
+  credit_amount INTEGER NOT NULL DEFAULT 0 CHECK (credit_amount >= 0),
   due_date TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'ChuaThanhToan' CHECK (status IN ('ChuaThanhToan', 'ThanhToanMotPhan', 'DaThanhToanNCC')),
   note TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE RESTRICT,
-  FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE RESTRICT
+  FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE RESTRICT,
+  FOREIGN KEY (receipt_id) REFERENCES purchase_receipts(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS supplier_credits (
+  id TEXT PRIMARY KEY,
+  supplier_id TEXT NOT NULL,
+  supplier_return_id TEXT,
+  payable_id TEXT,
+  amount INTEGER NOT NULL CHECK (amount >= 0),
+  remaining_amount INTEGER NOT NULL CHECK (remaining_amount >= 0),
+  note TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE RESTRICT,
+  FOREIGN KEY (supplier_return_id) REFERENCES supplier_returns(id) ON DELETE SET NULL,
+  FOREIGN KEY (payable_id) REFERENCES supplier_payables(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS supplier_payments (
@@ -684,6 +706,7 @@ CREATE TABLE IF NOT EXISTS supplier_returns (
   created_at TEXT NOT NULL,
   approved_at TEXT,
   FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE RESTRICT,
+  FOREIGN KEY (purchase_id) REFERENCES purchases(id) ON DELETE SET NULL,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
   FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE RESTRICT
 );
@@ -699,7 +722,8 @@ CREATE TABLE IF NOT EXISTS supplier_return_items (
   line_total INTEGER NOT NULL DEFAULT 0 CHECK (line_total >= 0),
   reason TEXT NOT NULL DEFAULT '',
   FOREIGN KEY (return_id) REFERENCES supplier_returns(id) ON DELETE CASCADE,
-  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT,
+  FOREIGN KEY (batch_id) REFERENCES product_batches(id) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS orders (
@@ -719,12 +743,15 @@ CREATE TABLE IF NOT EXISTS orders (
   cash_received INTEGER NOT NULL DEFAULT 0 CHECK (cash_received >= 0),
   cash_change INTEGER NOT NULL DEFAULT 0 CHECK (cash_change >= 0),
   payment_ref TEXT NOT NULL DEFAULT '',
+  idempotency_key TEXT,
   status TEXT NOT NULL DEFAULT 'DaThanhToan' CHECK (status IN ('DaThanhToan', 'TraMotPhan', 'DaHoanTra', 'DaHuy')),
   note TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
   FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE RESTRICT,
   FOREIGN KEY (cashier_id) REFERENCES users(id) ON DELETE RESTRICT,
-  FOREIGN KEY (promotion_id) REFERENCES promotions(id) ON DELETE RESTRICT
+  FOREIGN KEY (shift_id) REFERENCES cashier_shifts(id) ON DELETE SET NULL,
+  FOREIGN KEY (promotion_id) REFERENCES promotions(id) ON DELETE RESTRICT,
+  FOREIGN KEY (voucher_id) REFERENCES vouchers(id) ON DELETE RESTRICT
 );
 
 CREATE TABLE IF NOT EXISTS order_items (
@@ -741,11 +768,30 @@ CREATE TABLE IF NOT EXISTS order_items (
   FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
 );
 
+CREATE TABLE IF NOT EXISTS order_item_batches (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id TEXT NOT NULL,
+  order_item_id INTEGER,
+  product_id TEXT NOT NULL,
+  batch_id TEXT NOT NULL,
+  batch_code TEXT NOT NULL DEFAULT '',
+  expiry_date TEXT NOT NULL DEFAULT '',
+  qty INTEGER NOT NULL CHECK (qty > 0),
+  returned_qty INTEGER NOT NULL DEFAULT 0 CHECK (returned_qty >= 0),
+  cost_price INTEGER NOT NULL DEFAULT 0 CHECK (cost_price >= 0),
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+  FOREIGN KEY (order_item_id) REFERENCES order_items(id) ON DELETE CASCADE,
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT,
+  FOREIGN KEY (batch_id) REFERENCES product_batches(id) ON DELETE RESTRICT
+);
+
 CREATE TABLE IF NOT EXISTS returns (
   id TEXT PRIMARY KEY,
   order_id TEXT NOT NULL,
   created_by TEXT NOT NULL,
   approved_by TEXT,
+  refund_shift_id TEXT,
   reason TEXT NOT NULL,
   restock INTEGER NOT NULL DEFAULT 1,
   refund_amount INTEGER NOT NULL DEFAULT 0 CHECK (refund_amount >= 0),
@@ -754,7 +800,8 @@ CREATE TABLE IF NOT EXISTS returns (
   resolved_at TEXT,
   FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE RESTRICT,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
-  FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE RESTRICT
+  FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE RESTRICT,
+  FOREIGN KEY (refund_shift_id) REFERENCES cashier_shifts(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS return_items (
@@ -800,6 +847,8 @@ CREATE TABLE IF NOT EXISTS stock_audits (
   created_at TEXT NOT NULL,
   approved_at TEXT,
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE RESTRICT,
+  FOREIGN KEY (assigned_to) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (recount_by) REFERENCES users(id) ON DELETE SET NULL,
   FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE RESTRICT
 );
 
@@ -820,7 +869,8 @@ CREATE TABLE IF NOT EXISTS stock_audit_items (
   reason_code TEXT NOT NULL DEFAULT '',
   reason TEXT NOT NULL DEFAULT '',
   FOREIGN KEY (audit_id) REFERENCES stock_audits(id) ON DELETE CASCADE,
-  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+  FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT,
+  FOREIGN KEY (batch_id) REFERENCES product_batches(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS stock_audit_rounds (
@@ -832,7 +882,8 @@ CREATE TABLE IF NOT EXISTS stock_audit_rounds (
   items_json TEXT NOT NULL DEFAULT '[]',
   note TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
-  FOREIGN KEY (audit_id) REFERENCES stock_audits(id) ON DELETE CASCADE
+  FOREIGN KEY (audit_id) REFERENCES stock_audits(id) ON DELETE CASCADE,
+  FOREIGN KEY (counted_by) REFERENCES users(id) ON DELETE RESTRICT
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
@@ -860,6 +911,8 @@ CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id);
 CREATE INDEX IF NOT EXISTS idx_returns_order ON returns(order_id);
 CREATE INDEX IF NOT EXISTS idx_returns_status_created ON returns(status, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_order_item_batches_order_product ON order_item_batches(order_id, product_id);
+CREATE INDEX IF NOT EXISTS idx_supplier_credits_supplier ON supplier_credits(supplier_id);
 
 -- ============================================================================
 -- TRIGGERS BẤT BIẾN (APPEND-ONLY) TẠI TẦNG CSDL CHO AUDIT_LOGS & STOCK_MOVEMENTS
@@ -930,6 +983,13 @@ function runSafeMigrations(db) {
   ensureColumn('stock_audit_items', 'movements_since_snapshot', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn('stock_audit_items', 'effective_system_qty', 'INTEGER');
   ensureColumn('stock_audit_items', 'reason_code', "TEXT NOT NULL DEFAULT ''");
+  ensureColumn('orders', 'idempotency_key', 'TEXT');
+  ensureColumn('returns', 'refund_shift_id', 'TEXT');
+  ensureColumn('supplier_payables', 'credit_amount', 'INTEGER NOT NULL DEFAULT 0');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_returns_refund_shift ON returns(refund_shift_id)');
+  db.exec(
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_idempotency_key ON orders(idempotency_key) WHERE idempotency_key IS NOT NULL',
+  );
 }
 
 function openDatabase(dbPath) {
@@ -1005,30 +1065,6 @@ function seedCoreData(db) {
       }
     }
 
-    const userCount = db.prepare('SELECT COUNT(*) AS cnt FROM users').get().cnt;
-    if (userCount === 0) {
-      const insertUser = db.prepare(`
-        INSERT INTO users (id, username, password_hash, full_name, email, phone, role_code, supplier_id, status, must_change_password, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', 0, ?, ?)
-      `);
-      const seedUsers = [
-        ['NV001', 'admin', 'Lê Hoàng Nam', 'admin@retailflow.vn', '0901000001', 'ADMIN', null],
-        ['NV002', 'quanly', 'Phạm Minh Quân', 'quanly@retailflow.vn', '0901000002', 'MANAGER', null],
-        ['NV003', 'thungan', 'Nguyễn Hà Linh', 'thungan@retailflow.vn', '0901000003', 'CASHIER', null],
-        ['NV004', 'kho', 'Trần Quốc Bảo', 'kho@retailflow.vn', '0901000004', 'WAREHOUSE', null],
-        ['NV005', 'ncc01', 'Đại diện NCC Trung Nguyên', 'ncc01@trungnguyen.vn', '02838231111', 'SUPPLIER', 'NCC003'],
-      ];
-      for (const [uid, username, fullName, email, phone, roleCode, supplierId] of seedUsers) {
-        insertUser.run(uid, username, hashPassword('123456'), fullName, email, phone, roleCode, supplierId, nowIso, nowIso);
-      }
-    } else {
-      // Đảm bảo tài khoản cổng NCC (ncc01) tồn tại trên CSDL đã nâng cấp
-      db.prepare(`
-        INSERT OR IGNORE INTO users (id, username, password_hash, full_name, email, phone, role_code, supplier_id, status, must_change_password, created_at, updated_at)
-        VALUES ('NV005', 'ncc01', ?, 'Đại diện NCC Trung Nguyên', 'ncc01@trungnguyen.vn', '02838231111', 'SUPPLIER', 'NCC003', 'ACTIVE', 0, ?, ?)
-      `).run(hashPassword('123456'), nowIso, nowIso);
-    }
-
     const insertThamSo = db.prepare(`
       INSERT OR IGNORE INTO tham_so (ma_tham_so, ten_tham_so, kieu_du_lieu, gia_tri, nhom_tham_so, mo_ta, tinh_trang, updated_at, updated_by)
       VALUES (?, ?, ?, ?, ?, ?, 'ACTIVE', ?, 'Hệ thống')
@@ -1059,12 +1095,13 @@ function seedCoreData(db) {
     `);
     insertBranch.run(nowIso);
 
-    // Seed suppliers, products (93 real SKU with 1-1 images in assets/images/products/), and opening stock_movements
+    // Seed suppliers BEFORE users so NV005.supplier_id ('NCC003') satisfies users.supplier_id FK
     const supplierCount = db.prepare('SELECT COUNT(*) AS cnt FROM suppliers').get().cnt;
     const productCount = db.prepare('SELECT COUNT(*) AS cnt FROM products').get().cnt;
+    let seeded = null;
     if (supplierCount === 0 || productCount === 0) {
       const { seed } = require('../../domain/seed.js');
-      const seeded = seed();
+      seeded = seed();
 
       if (supplierCount === 0) {
         const insertSupplier = db.prepare(`
@@ -1088,8 +1125,33 @@ function seedCoreData(db) {
           insertBranchSupplier.run(sup.id);
         }
       }
+    }
 
-      if (productCount === 0) {
+    const userCount = db.prepare('SELECT COUNT(*) AS cnt FROM users').get().cnt;
+    if (userCount === 0) {
+      const insertUser = db.prepare(`
+        INSERT INTO users (id, username, password_hash, full_name, email, phone, role_code, supplier_id, status, must_change_password, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'ACTIVE', 0, ?, ?)
+      `);
+      const seedUsers = [
+        ['NV001', 'admin', 'Lê Hoàng Nam', 'admin@retailflow.vn', '0901000001', 'ADMIN', null],
+        ['NV002', 'quanly', 'Phạm Minh Quân', 'quanly@retailflow.vn', '0901000002', 'MANAGER', null],
+        ['NV003', 'thungan', 'Nguyễn Hà Linh', 'thungan@retailflow.vn', '0901000003', 'CASHIER', null],
+        ['NV004', 'kho', 'Trần Quốc Bảo', 'kho@retailflow.vn', '0901000004', 'WAREHOUSE', null],
+        ['NV005', 'ncc01', 'Đại diện NCC Trung Nguyên', 'ncc01@trungnguyen.vn', '02838231111', 'SUPPLIER', 'NCC003'],
+      ];
+      for (const [uid, username, fullName, email, phone, roleCode, supplierId] of seedUsers) {
+        insertUser.run(uid, username, hashPassword('123456'), fullName, email, phone, roleCode, supplierId, nowIso, nowIso);
+      }
+    } else {
+      // Đảm bảo tài khoản cổng NCC (ncc01) tồn tại trên CSDL đã nâng cấp
+      db.prepare(`
+        INSERT OR IGNORE INTO users (id, username, password_hash, full_name, email, phone, role_code, supplier_id, status, must_change_password, created_at, updated_at)
+        VALUES ('NV005', 'ncc01', ?, 'Đại diện NCC Trung Nguyên', 'ncc01@trungnguyen.vn', '02838231111', 'SUPPLIER', 'NCC003', 'ACTIVE', 0, ?, ?)
+      `).run(hashPassword('123456'), nowIso, nowIso);
+    }
+
+    if (seeded && productCount === 0) {
         const catCodeSet = new Set(db.prepare('SELECT code FROM categories').all().map((r) => r.code));
         const catMap = new Map(
           db.prepare('SELECT code, name FROM categories').all().map((r) => [r.name.toLowerCase(), r.code]),
@@ -1260,7 +1322,6 @@ function seedCoreData(db) {
           }
         }
       }
-    }
 
     // Seed default customers & promotions for M4 POS (does not create orders or extra stock_movements)
     const customerCount = db.prepare('SELECT COUNT(*) AS cnt FROM customers').get().cnt;

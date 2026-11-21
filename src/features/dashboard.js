@@ -50,7 +50,7 @@ function dashboardView() {
       [
         `Lợi nhuận gộp (${days} ngày)`,
         money(summary.grossProfit || 0),
-        `Biên LN ${summary.grossMarginPct ?? 0}% · Giá vốn ${money(summary.netCogs || 0)}${summary.nonRestockedReturnCogs > 0 ? ` · Hao hụt ${money(summary.nonRestockedReturnCogs)}` : ''}`,
+        `Biên LN ${summary.grossMarginPct ?? 0}% · Giá vốn ${money(summary.netCogs || 0)}${summary.totalShrinkageLoss > 0 ? ` · Hao hụt kho ${money(summary.totalShrinkageLoss)}` : summary.nonRestockedReturnCogs > 0 ? ` · Hao hụt ${money(summary.nonRestockedReturnCogs)}` : ''}`,
         'chart',
       ],
       [
@@ -155,6 +155,32 @@ function dashboardView() {
                 </div>`
               : ''
           }
+          ${
+            queues.expiredBatchCount > 0
+              ? `<div class="alert-item">
+                  <div class="stat-icon">${icon('bell')}</div>
+                  <div>
+                    <strong>${number(queues.expiredBatchCount)} lô hàng đã hết hạn sử dụng</strong>
+                    <small>Đã tự động loại khỏi tồn bán POS · Cần lập phiếu xuất hủy (HUY_HANG)</small>
+                  </div>
+                  ${badge('Hết hạn', 'red')}
+                  ${store.can('inventory') ? ib('navigate', 'arrow', 'Mở Kho & Hủy hàng', 'data-page="inventory"') : ''}
+                </div>`
+              : ''
+          }
+          ${
+            queues.nearExpiryBatchCount > 0
+              ? `<div class="alert-item">
+                  <div class="stat-icon">${icon('clock')}</div>
+                  <div>
+                    <strong>${number(queues.nearExpiryBatchCount)} lô hàng cận date (trong ${number(d.nearExpirySummary?.warnDays || 14)} ngày)</strong>
+                    <small>Giá trị vốn rủi ro: ${money(d.nearExpirySummary?.atRiskCostValue || 0)} · Nên ưu tiên xả hàng / KM cận date</small>
+                  </div>
+                  ${badge('Cận date', 'yellow')}
+                  ${store.can('inventory') ? ib('navigate', 'arrow', 'Xem lô cận date', 'data-page="inventory"') : ''}
+                </div>`
+              : ''
+          }
           ${lowList
             .slice(0, 4)
             .map(
@@ -169,8 +195,8 @@ function dashboardView() {
             )
             .join('')}
           ${
-            !queues.totalAttentionCount
-              ? empty('Vận hành ổn định', 'Không có chứng từ chờ duyệt hay sản phẩm dưới ngưỡng tồn tối thiểu.', 'check')
+            !queues.totalAttentionCount && !queues.nearExpiryBatchCount
+              ? empty('Vận hành ổn định', 'Không có chứng từ chờ duyệt, lô hết hạn hay sản phẩm dưới ngưỡng tồn tối thiểu.', 'check')
               : ''
           }
         </div>

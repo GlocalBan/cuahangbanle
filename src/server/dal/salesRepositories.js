@@ -331,6 +331,28 @@ class OrderRepository {
     return { ...header, items, returns };
   }
 
+  findByIdempotencyKey(key) {
+    const clean = String(key || '').trim();
+    if (!clean) return null;
+    const row = this.db.prepare('SELECT id FROM orders WHERE idempotency_key = ? LIMIT 1').get(clean);
+    return row ? this.findById(row.id) : null;
+  }
+
+  findByPaymentRef(paymentRef) {
+    const clean = String(paymentRef || '').trim();
+    if (!clean) return null;
+    return (
+      this.db
+        .prepare(
+          `SELECT id, payment_ref, payment_method, status
+           FROM orders
+           WHERE lower(trim(payment_ref)) = lower(?) AND payment_ref != '' AND status != 'DaHuy'
+           LIMIT 1`,
+        )
+        .get(clean) || null
+    );
+  }
+
   create(header, items) {
     const nowIso = header.created_at || new Date().toISOString();
     const id = header.id || this.nextId();
@@ -339,9 +361,9 @@ class OrderRepository {
         `INSERT INTO orders (
            id, customer_id, cashier_id, shift_id, discount_mode, promotion_id, voucher_id,
            subtotal, invoice_discount, tax_rate, tax_amount, total_amount,
-           payment_method, cash_received, cash_change, payment_ref,
+           payment_method, cash_received, cash_change, payment_ref, idempotency_key,
            status, note, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -360,6 +382,7 @@ class OrderRepository {
         header.cash_received || 0,
         header.cash_change || 0,
         header.payment_ref || '',
+        header.idempotency_key || null,
         header.status || 'DaThanhToan',
         header.note || '',
         nowIso,
@@ -399,6 +422,52 @@ class OrderRepository {
          WHERE order_id = ? AND product_id = ?`,
       )
       .run(addQty, orderId, productId);
+  }
+
+  recordItemBatches(orderId, allocations) {
+    if (!Array.isArray(allocations) || allocations.length === 0) return;
+    const nowIso = new Date().toISOString();
+    const stmt = this.db.prepare(`
+      INSERT INTO order_item_batches (
+        order_id, order_item_id, product_id, batch_id, batch_code,
+        expiry_date, qty, returned_qty, cost_price, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+    `);
+    for (const a of allocations) {
+      stmt.run(
+        orderId,
+        a.orderItemId || null,
+        a.productId,
+        a.batchId,
+        a.batchCode || '',
+        a.expiryDate || '',
+        Number(a.qty),
+        Math.max(0, Math.round(Number(a.costPrice) || 0)),
+        a.createdAt || nowIso,
+      );
+    }
+  }
+
+  findItemBatches(orderId, productId) {
+    return this.db
+      .prepare(
+        `SELECT *
+         FROM order_item_batches
+         WHERE order_id = ? AND product_id = ?
+         ORDER BY id ASC`,
+      )
+      .all(orderId, productId);
+  }
+
+  incrementItemBatchReturnedQty(allocationId, addQty) {
+    const res = this.db
+      .prepare(
+        `UPDATE order_item_batches
+         SET returned_qty = returned_qty + ?
+         WHERE id = ? AND returned_qty + ? <= qty`,
+      )
+      .run(addQty, allocationId, addQty);
+    return Number(res?.changes || 0);
   }
 }
 
@@ -520,6 +589,24 @@ class ReturnRepository {
     return map;
   }
 
+  getRefundedLineAmountMap(orderId, { includePending = true, excludeReturnId = '' } = {}) {
+    const statusClause = includePending ? "r.status IN ('DaXacNhan', 'ChoDuyet')" : "r.status = 'DaXacNhan'";
+    const rows = this.db
+      .prepare(
+        `SELECT ri.product_id, COALESCE(SUM(ri.refund_line_amount), 0) AS refunded_amt
+         FROM return_items ri
+         JOIN returns r ON r.id = ri.return_id
+         WHERE r.order_id = ? AND ${statusClause} AND r.id != ?
+         GROUP BY ri.product_id`,
+      )
+      .all(orderId, excludeReturnId || '');
+    const map = new Map();
+    for (const row of rows) {
+      map.set(row.product_id, Number(row.refunded_amt) || 0);
+    }
+    return map;
+  }
+
   create(header, items) {
     const nowIso = header.created_at || new Date().toISOString();
     const id = header.id || this.nextId();
@@ -563,6 +650,10 @@ class ReturnRepository {
     if (extra.reason !== undefined) {
       sets.push('reason = ?');
       params.push(extra.reason);
+    }
+    if (extra.refund_shift_id !== undefined) {
+      sets.push('refund_shift_id = ?');
+      params.push(extra.refund_shift_id);
     }
     params.push(id);
     this.db.prepare(`UPDATE returns SET ${sets.join(', ')} WHERE id = ?`).run(...params);

@@ -18,13 +18,13 @@ function inventoryView() {
   if (!apiState.categoriesLoaded && !apiState.loading.catalogMeta) {
     loadCatalogMeta();
   }
-  if (inventoryTab === 'near-expiry' && !apiState.nearExpiryLoaded && !apiState.loading.nearExpiry) {
+  if (!apiState.nearExpiryLoaded && !apiState.loading.nearExpiry) {
     loadNearExpiryData();
   }
   if (inventoryTab === 'movements' && !apiState.stockMovementsLoaded && !apiState.loading.stockMovements) {
     loadStockMovementsData();
   }
-  if (inventoryTab === 'audits' && !apiState.stockAuditsLoaded && !apiState.loading.stockAudits) {
+  if (!apiState.stockAuditsLoaded && !apiState.loading.stockAudits) {
     loadStockAuditsData();
   }
 

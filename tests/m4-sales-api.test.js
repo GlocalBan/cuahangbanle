@@ -42,10 +42,17 @@ async function startTestServer() {
     return res.data.token;
   }
 
+  async function openShift(token, openingCash = 500000) {
+    const res = await reqJson('POST', '/api/shifts/open', { token, body: { openingCash } });
+    assert.equal(res.status, 201, `openShift failed: ${JSON.stringify(res.data)}`);
+    return res.data.item;
+  }
+
   return {
     db,
     reqJson,
     loginAs,
+    openShift,
     close: () =>
       new Promise((resolve) => {
         server.close(() => {
@@ -145,7 +152,8 @@ test('M4-02: 401/403/200 RBAC matrix across Promotions, Customers, POS Checkout,
     assert.equal((await srv.reqJson('GET', '/api/orders', { token: cashierToken })).status, 200);
     assert.equal((await srv.reqJson('GET', '/api/returns', { token: cashierToken })).status, 200);
 
-    // Cashier creates a real order + return so we can check cost masking & approval 403
+    // Cashier opens shift (F-05C) and creates a real order + return so we can check cost masking & approval 403
+    await srv.openShift(cashierToken);
     const prodRes = await srv.reqJson('GET', '/api/products?status=DangKinhDoanh', { token: cashierToken });
     const prod = prodRes.data.items.find((x) => x.stockQty >= 5);
     const ck = await srv.reqJson('POST', '/api/pos/checkout', {
@@ -212,6 +220,7 @@ test('M4-03: Promotions CRUD & BR-04 validation rules (status, dates, usage limi
   try {
     const managerToken = await srv.loginAs('quanly');
     const cashierToken = await srv.loginAs('thungan');
+    await srv.openShift(cashierToken);
 
     const today = new Date().toISOString().slice(0, 10);
     const past1 = new Date(Date.now() - 10 * 86400000).toISOString().slice(0, 10);
@@ -349,6 +358,7 @@ test('M4-04: POS Checkout (BR-03, BR-04, BR-05) — Price Snapshot, no negative 
     const cashierToken = await srv.loginAs('thungan');
     const managerToken = await srv.loginAs('quanly');
     const adminToken = await srv.loginAs('admin');
+    await srv.openShift(cashierToken);
 
     const products = (await srv.reqJson('GET', '/api/products?status=DangKinhDoanh', { token: cashierToken })).data
       .items;
@@ -489,6 +499,7 @@ test('M4-05: Customer Returns (BR-05, BR-06, BR-08) — return window, partial/f
   try {
     const cashierToken = await srv.loginAs('thungan');
     const managerToken = await srv.loginAs('quanly');
+    await srv.openShift(cashierToken);
 
     const prod = (await srv.reqJson('GET', '/api/products?status=DangKinhDoanh', { token: cashierToken })).data.items
       .find((p) => p.stockQty >= 10);
@@ -637,6 +648,7 @@ test('M4-06: Atomic DAL transaction rollback on mid-flight error in checkout() a
     const salesSvc = new SalesService(db, repos, sysSvc);
     const cashier = repos.users.findByUsername('thungan');
     const manager = repos.users.findByUsername('quanly');
+    salesSvc.openShift(cashier, { openingCash: 500000 });
 
     const prod = repos.products.list({ status: 'DangKinhDoanh' }).find((p) => p.sale_price >= 25000 && p.stock_qty >= 10);
     const stock0 = Number(prod.stock_qty);
@@ -718,6 +730,8 @@ test('M4-07: M4 Patch — lineDiscount RBAC/THAM_SO limit, return approval windo
   try {
     const cashierToken = await srv.loginAs('thungan');
     const managerToken = await srv.loginAs('quanly');
+    await srv.openShift(cashierToken);
+    await srv.openShift(managerToken);
 
     const prod = (await srv.reqJson('GET', '/api/products?status=DangKinhDoanh', { token: cashierToken })).data.items
       .find((p) => p.salePrice >= 20000 && p.stockQty >= 15);

@@ -1,100 +1,89 @@
-# Cửa hàng bán lẻ — RetailFlow
+# RetailFlow — Hệ thống Quản lý Cửa hàng Bán lẻ (841111)
 
-Ứng dụng quản lý cửa hàng bằng HTML, CSS và JavaScript, tổng hợp chức năng từ hai bản `pt`, `pttk` và giao diện tham khảo. Mã nguồn được chia theo từng chủ đề để dễ bổ sung.
+Ứng dụng quản lý cửa hàng bán lẻ theo kiến trúc **3 tầng tách biệt (Presentation / BLL / DAL)** chạy trên **Node.js + SQLite** (`node:sqlite`), áp dụng **RBAC 3 lớp**, giao dịch nguyên tử 1-Transaction, quản lý tồn kho theo lô FEFO, thương lượng đơn đặt hàng hai chiều (PO/GRN/AP) và kiểm kê mù 2 vòng.
 
-## Chạy ứng dụng
+## Khởi chạy ứng dụng
 
-Nhấp đúp `start.cmd`, sau đó truy cập **http://127.0.0.1:4173**. Hoặc mở terminal trong thư mục dự án và chạy:
+Yêu cầu **Node.js >= 22** (sử dụng sẵn module `node:sqlite`, không cần biên dịch native addon).
 
 ```sh
+npm start
+# hoặc
 node server.js
 ```
 
-Cần Node.js. Chạy ứng dụng không cần cài thư viện. `npm install` chỉ cần thiết khi muốn dùng công cụ định dạng mã Prettier. Có thể mở `index.html` trực tiếp để xem nhanh; nên chạy qua server cục bộ để dữ liệu được lưu ổn định.
+Mặc định máy chủ lắng nghe tại **http://127.0.0.1:3000** (có thể cấu hình qua biến môi trường `PORT`, `HOST`, `RETAILFLOW_DB_PATH`).
 
-| Tài khoản dùng thử | Mật khẩu | Quyền                                                   |
-| ------------------ | -------- | ------------------------------------------------------- |
-| admin              | 123456   | Quản trị toàn bộ                                        |
-| nhanvien           | 123456   | Bán hàng, hóa đơn, khách hàng, yêu cầu trả hàng         |
-| kho                | 123456   | Xem sản phẩm, tồn kho, kiểm kê, nhập hàng, nhà cung cấp |
+- Kiểm tra sức khỏe dịch vụ: `GET http://127.0.0.1:3000/api/health`
+- Cơ sở dữ liệu SQLite lưu bền vững tại: `data/cuahangbanle.sqlite` (tự động chạy schema & migration an toàn, không phá dữ liệu cũ).
 
-## Chức năng
+## Tài khoản khởi tạo (Seed Accounts)
 
-- Tổng quan: thống kê thực từ dữ liệu, biểu đồ doanh thu 7/30 ngày, thanh toán, đơn mới và cảnh báo tồn thấp.
-- POS: tìm sản phẩm không dấu, lọc danh mục, nhập/quét mã vạch USB, tăng giảm số lượng, giảm giá, thuế, chọn khách, ghi chú.
-- Tìm khách theo số điện thoại tại POS: gợi ý cập nhật theo từng chữ số, tự ẩn khi không còn số khớp, chọn bằng chuột hoặc phím mũi tên/Enter; sửa số sẽ bỏ khách đã chọn để tránh gắn nhầm hóa đơn.
-- Đơn tạm: lưu tối đa 5 đơn; mở lại, xóa và lưu qua lần tải lại trang.
-- Ba phương thức thanh toán: **tiền mặt, chuyển khoản, thẻ ngân hàng**. Tiền mặt có tính tiền thừa và bàn phím số; chuyển khoản/thẻ lưu mã tham chiếu và xác nhận thủ công.
-- Hóa đơn: tự động lưu sau thanh toán; tìm kiếm, lọc trạng thái/phương thức/ngày, phân trang, tải HTML, in/lưu PDF qua trình duyệt, xuất CSV.
-- Trả hàng: tra hóa đơn gốc, chọn số lượng từng sản phẩm, lý do, quản trị phê duyệt/từ chối, hoàn tiền theo giá trị đã trả sau giảm giá/thuế; ngăn trả vượt hoặc hoàn trùng.
-- Kho: cập nhật sau bán hàng, nhận hàng và trả hàng; kiểm kê thực đếm có lý do, xem lịch sử biến động.
-- Nhập hàng: phiếu nhiều sản phẩm theo nhà cung cấp; nháp, chờ nhận, xác nhận nhập kho, hủy phiếu; chỉ cộng kho một lần khi xác nhận.
-- Gợi ý nhập hàng: liệt kê mặt hàng bằng hoặc dưới ngưỡng tồn tối thiểu, chọn để mở phiếu với đúng nhà cung cấp và thêm sẵn mặt hàng; gợi ý bổ sung lên 2 lần ngưỡng tối thiểu sau khi trừ hàng chờ nhận. Có thể chỉnh số lượng và đơn giá ngay trên phiếu, thêm nhanh các mặt hàng sắp hết cùng đối tác.
-- Danh mục: thêm/sửa sản phẩm, khách hàng, nhà cung cấp; trạng thái hoạt động; mã vạch, điện thoại và tên đăng nhập không trùng.
-- Nhân viên: tài khoản, mật khẩu, khóa tài khoản, phân quyền quản trị/thu ngân/kho.
-- Báo cáo: doanh thu gộp, tiền hoàn, doanh thu thuần, phương thức thanh toán, danh mục bán chạy, kỳ 1/7/30/90 ngày và CSV.
-- Chi nhánh: xem chi nhánh chính, lưu đề xuất địa chỉ có kiểm tra vùng cung ứng của đối tác.
-- Cấu hình: thông tin cửa hàng, thuế, tài khoản chuyển khoản, lời nhắn hóa đơn, sao lưu/khôi phục JSON và nhật ký thao tác.
-- Giao diện tiếng Việt cho máy tính/điện thoại, menu di động, tìm kiếm toàn hệ thống và thông báo.
+> **Lưu ý bảo mật triển khai thực tế:** Các tài khoản dưới đây chỉ phục vụ môi trường học tập / kiểm thử nội bộ. Khi triển khai thật (production), **bắt buộc đổi toàn bộ mật khẩu mặc định** và khóa các tài khoản demo không sử dụng.
 
-## Cấu trúc mã nguồn
+| Tài khoản | Mật khẩu mặc định | Vai trò (`role_code`) | Phạm vi quyền chính |
+| --------- | ----------------- | --------------------- | ------------------- |
+| `admin` | `123456` | `ADMIN` (Quản trị) | Toàn quyền hệ thống, nhân sự, tham số `THAM_SO`, Audit Log, sao lưu/phục hồi |
+| `quanly` | `123456` | `MANAGER` (Quản lý) | Hàng hóa, khuyến mãi, voucher, duyệt PO/GRN/kiểm kê/trả hàng/hủy hàng, công nợ NCC, báo cáo |
+| `thungan` | `123456` | `CASHIER` (Thu ngân) | Mở/chốt ca POS, bán hàng, thanh toán tiền mặt/VietQR, hóa đơn, lập yêu cầu trả hàng |
+| `kho` | `123456` | `WAREHOUSE` (Nhân viên kho) | Lập PO, nhận hàng GRN, quản lý lô HSD, lập phiếu hủy hàng/trả NCC, thẻ kho, kiểm kê mù |
+| `ncc01` | `123456` | `SUPPLIER` (Cổng NCC · `NCC003`) | Cổng NCC: xem PO được gửi và phản hồi/thương lượng đơn đặt hàng |
+
+## Kiến trúc 3 tầng & Tính năng chính
+
+1. **Presentation Layer (`index.html`, `src/core/`, `src/features/`, `src/events/`, `src/shared/`, `assets/css/`):**
+   - Giao diện Vanilla JS + CSS theo mô-đun, phân nhóm menu theo vai trò, hỗ trợ phím tắt (`Ctrl/Cmd+K`, `F2`, `F4`, `F8`, `Esc`).
+   - Toàn bộ nghiệp vụ vận hành gọi REST API `/api/*` qua `src/core/api.js`.
+2. **Business Logic Layer (`src/server/bll/`):**
+   - `authService.js`, `systemService.js`: xác thực Bearer Token, RBAC Guard, quản trị nhân sự, `THAM_SO`, Audit Log bất biến.
+   - `catalogService.js`: sản phẩm (SKU/Barcode duy nhất, soft-delete, tự động quét lô hết hạn khỏi tồn khả dụng), danh mục, ĐVT, NCC, khách hàng.
+   - `warehouseService.js`: đặt hàng hai chiều PO (`Draft → GuiNCC → NCCPhanHoi / ThuongLuong → DaThongNhat → DangNhanHang → Confirmed`), nhận hàng nhiều đợt GRN kèm HSD & bình quân gia quyền giá vốn, công nợ NCC (AP) & phiếu ghi có (`supplier_credits`), trả hàng NCC (`TRA_NCC`), xuất hủy hàng (`HUY_HANG`) có tách bạch người lập/người duyệt (SoD), kiểm kê mù 2 vòng phân cấp duyệt.
+   - `salesService.js`: ca thu ngân (bắt buộc mở ca khi thu tiền mặt), POS xuất kho FEFO 1-Transaction, idempotency key chống lập đơn trùng, đóng băng giá bán, khuyến mãi & voucher (ngăn áp dụng chồng chéo), trả hàng trong hạn có phân bổ hoàn tiền không lệch làm tròn và kiểm soát SoD.
+   - `reportService.js`: Dashboard & báo cáo doanh thu thuần trước VAT, thuế VAT ròng, giá vốn ròng, hao hụt hủy hàng & kiểm kê âm, múi giờ chuẩn `Asia/Ho_Chi_Minh` (UTC+7).
+3. **Data Access Layer (`src/server/dal/`):**
+   - `database.js`: lược đồ SQLite có ràng buộc khóa ngoại (`PRAGMA foreign_keys = ON`), trigger bất biến cho `stock_movements` và `audit_logs`, cơ chế migration cộng thêm an toàn (`runSafeMigrations`).
+   - `repositories.js`, `catalogRepositories.js`, `warehouseRepositories.js`, `salesRepositories.js`, `retailOpsRepositories.js`, `reportRepository.js`.
+
+## Cấu trúc thư mục chính
 
 ```text
-index.html                 Trang vào, khai báo thứ tự tải script
-app.js                     Khởi động ứng dụng và phục hồi phiên
-store.js                   Điểm vào tương thích cho kiểm thử Node
-styles.css                 Danh sách import CSS theo chủ đề
+server.js                  Khởi chạy HTTP server (mặc định port 3000) + static & API
+index.html                 Trang vào ứng dụng web
+data/cuahangbanle.sqlite   CSDL SQLite cục bộ (tự khởi tạo khi chạy lần đầu)
 src/
-  core/context.js          Trạng thái chung, biểu tượng và helper HTML
-  domain/                  Xử lý dữ liệu và quy tắc nghiệp vụ
-    config.js              Vai trò, quyền, phương thức và tiện ích
-    calculations.js        Tính giảm giá, thuế và tổng tiền
-    seed.js                Dữ liệu mẫu
-    backup.js              Kiểm tra dữ liệu sao lưu
-    store.js               Kho dữ liệu, giao dịch và lưu trữ
-    auth.js                Đăng nhập và quyền truy cập
-    sales.js               Giỏ hàng, đơn tạm và thanh toán
-    returns.js             Số lượng khả dụng và hoàn trả
-    inventory.js           Biến động kho và kiểm kê
-    purchases.js           Phiếu nhập hàng
-    catalog.js             Sản phẩm, khách hàng, đối tác, nhân viên
-    settings.js            Cấu hình, chi nhánh và khôi phục
-  features/                Giao diện riêng theo chức năng
-    auth.js, dashboard.js, pos.js, payments.js, orders.js
-    products.js, catalog.js, inventory.js, purchases.js
-    returns.js, reports.js, branches.js, settings.js
-  layout/shell.js          Khung ứng dụng, điều hướng và tìm kiếm
-  shared/                  Hộp thoại, bảng, biểu đồ và xuất file
-  events/
-    actions/               Xử lý nút bấm theo từng nhóm nghiệp vụ
-    clicks.js              Điều phối sự kiện nút bấm
-    forms.js               Biểu mẫu
-    inputs.js              Ô nhập và bộ lọc
-    keyboard.js            Phím tắt và đồng bộ tab
-assets/css/                CSS: nền tảng, bố cục, thành phần, POS,
-                           dashboard, form, hộp thoại, responsive, in
-tests/                     Kiểm thử nghiệp vụ và trình duyệt
-server.js                  Máy chủ cục bộ chỉ nghe 127.0.0.1
-start.cmd                  Chạy trên Windows
+  core/                    API client (api.js), state & helper UI (context.js)
+  features/                Màn hình nghiệp vụ (dashboard, pos, orders, returns, products, inventory, purchases, promotions, reports, settings, supplierPortal)
+  events/                  Điều phối sự kiện click, form, input, keyboard
+  layout/                  Khung điều hướng & sidebar phân quyền (shell.js)
+  shared/                  Modal, bảng, biểu đồ, xuất CSV/PDF
+  domain/                  Module nghiệp vụ tương thích kiểm thử nền tảng
+  server/
+    bll/                   Tầng nghiệp vụ & quy tắc BR-01..BR-08
+    dal/                   Tầng truy cập SQLite, schema, trigger & migration
+    routes/                REST API router (api.js)
+    security/              Mật khẩu scrypt, phiên đăng nhập, phân quyền RBAC
+scripts/
+  check-syntax.js          Kiểm tra cú pháp toàn bộ file JS (npm run lint)
+  verify-product-images.js Xác thực ảnh sản phẩm nội bộ
+tests/                     Bộ kiểm thử tự động (unit + API tích hợp trên SQLite :memory:)
 ```
 
-Script phía trình duyệt dùng `defer` theo thứ tự trong `index.html`, chia sẻ context khai báo tại `src/core/context.js`. Nghiệp vụ được chia thành các module gắn vào Store; cùng mã được dùng trong trình duyệt và kiểm thử Node. Khi thêm module mới, khai báo trong `index.html` trước phần khởi động.
-
-## Dữ liệu và phạm vi hiện tại
-
-Bản đầu có 29 sản phẩm, 28 hóa đơn mẫu, 4 khách hàng, 3 đối tác và 3 tài khoản. Dữ liệu được lưu tại **localStorage của trình duyệt**, khóa `retailflow.v1`. Tải lại trang vẫn giữ giỏ hàng, đơn tạm, hóa đơn và tồn kho. Dùng cùng trình duyệt, địa chỉ và cổng; `localhost` và `127.0.0.1` là hai nguồn lưu trữ khác nhau.
-
-Vào **Cấu hình → Tải bản sao lưu JSON** để sao lưu. Khôi phục thay thế dữ liệu sau khi kiểm tra định dạng và xác nhận. Đăng xuất không xóa dữ liệu; xóa bộ nhớ trình duyệt thì cần bản sao lưu để phục hồi. Tab cũ bị ngăn ghi đè nếu tab khác đã cập nhật dữ liệu.
-
-Đây là bản frontend dùng thử: tài khoản/phân quyền và mật khẩu mẫu chạy trên trình duyệt, chưa có bảo mật backend hoặc database dùng chung nhiều thiết bị. Chuyển khoản/thẻ và hoàn tiền được xác nhận thủ công, chưa tích hợp ngân hàng. Hóa đơn là phiếu bán hàng nội bộ, chưa kết nối hóa đơn điện tử. Chi nhánh ở mức đề xuất, chưa vận hành kho độc lập. Đổi sản phẩm bằng cách trả hóa đơn cũ rồi lập đơn bán mới.
-
-## Kiểm thử
+## Kiểm thử & Kiểm tra chất lượng
 
 ```sh
-npm test
-npm run test:browser
+npm run lint     # Kiểm tra cú pháp toàn bộ mã nguồn JS
+npm run build    # Xác thực lint & sẵn sàng đóng gói
+npm test         # Chạy toàn bộ bộ kiểm thử tự động (isolated SQLite :memory:)
 ```
 
-Có 16 kiểm thử nghiệp vụ: thanh toán, tồn kho, trả hàng nhiều lần/làm tròn, đơn tạm, nhập hàng, phân quyền, kiểm kê, lỗi lưu trữ, xung đột tab và sao lưu. Kiểm thử trình duyệt dùng Microsoft Edge được cài sẵn trên Windows qua DevTools, không cần Playwright; sử dụng hồ sơ kiểm thử riêng. Ảnh kiểm thử sinh ra trong `preview/`, không đưa lên Git.
-
-Phím tắt: **Ctrl/Cmd + K** tìm toàn hệ thống; **F2** mở POS; **F4** lưu đơn tạm; **F8** thanh toán; **Esc** đóng hộp thoại.
+Bộ kiểm thử (`npm test`) bao gồm:
+- `tests/store.test.js` — Kiểm thử nền tảng domain & tính toán
+- `tests/m1-rbac-api.test.js` — M1: Xác thực, RBAC 3 lớp, nhân sự, `THAM_SO`, Audit Log
+- `tests/m2-catalog-api.test.js` — M2: Hàng hóa, danh mục, NCC, thẻ kho
+- `tests/m3-warehouse-api.test.js` — M3: Phiếu nhập hàng, kiểm kê kho
+- `tests/m4-sales-api.test.js` — M4: POS, khuyến mãi, hóa đơn, trả hàng
+- `tests/m5-reports-rbac.test.js` — M5: Báo cáo BR-08 & ma trận phân quyền
+- `tests/phase2-retail-ops.test.js` — Nghiệp vụ bán lẻ nâng cao (lô FEFO, ca thu ngân, PO/GRN/AP, kiểm kê 2 vòng)
+- `tests/rf-fix-01-p0.test.js` — Kiểm thử hồi quy P0 (toàn vẹn nhập kho, GRN, tồn kho lô, đồng bộ kho)
+- `tests/rf-fix-02-p1.test.js` — Kiểm thử hồi quy P1 (khuyến mãi/voucher, hoàn hàng FEFO, ca thu ngân, công nợ NCC)
+- `tests/rf-fix-03-p2p3.test.js` — Kiểm thử hồi quy P2/P3 (bắt buộc mở ca tiền mặt, SoD hủy/trả hàng, quét lô hết hạn, idempotency checkout, báo cáo hao hụt & UTC+7, FK & migration DB cũ)
