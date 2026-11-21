@@ -9,7 +9,7 @@ function loginScreen(initialError = '') {
       badge: 'Admin',
       ico: 'shield',
       accent: 'indigo',
-      scope: 'Toàn quyền hệ thống, nhân sự, THAM_SO, Audit Log & sao lưu',
+      scope: 'Toàn quyền hệ thống, nhân sự, Tham số hệ thống, Audit Log & sao lưu',
     },
     {
       username: 'quanly',
@@ -82,13 +82,13 @@ function loginScreen(initialError = '') {
         </form>
         <div class="login-hint">
           <div class="login-hint-head">
-            <strong>5 tài khoản trải nghiệm theo vai trò</strong>
+            <strong>Tài khoản trải nghiệm (5 vai trò)</strong>
             <span class="badge gray">Mật khẩu chung: <code>123456</code></span>
           </div>
           <div class="role-cards">
             ${demoRoles
               .map(
-                (r) => `<button type="button" class="role-card role-${r.accent}" data-action="fill-login" data-username="${r.username}">
+                (r, idx) => `<button type="button" class="role-card role-${r.accent}${idx === 0 ? ' active' : ''}" data-action="fill-login" data-username="${r.username}" aria-pressed="${idx === 0 ? 'true' : 'false'}">
                   <div class="role-card-icon">${icon(r.ico)}</div>
                   <div class="role-card-body">
                     <div class="role-card-top">
@@ -106,6 +106,18 @@ function loginScreen(initialError = '') {
       </div>
     </section>
   </main>`;
+  const roleCardsEl = $('.role-cards');
+  if (roleCardsEl) {
+    roleCardsEl.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('.role-card[data-action="fill-login"]');
+      if (!btn) return;
+      roleCardsEl.querySelectorAll('.role-card').forEach((card) => {
+        const isCurrent = card === btn;
+        card.classList.toggle('active', isCurrent);
+        card.setAttribute('aria-pressed', isCurrent ? 'true' : 'false');
+      });
+    });
+  }
   if (typeof hydrateIcons === 'function') hydrateIcons();
 }
 
