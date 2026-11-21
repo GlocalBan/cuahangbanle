@@ -410,12 +410,14 @@ class WriteOffRepository {
     const cleanCat = String(categoryCode || '').trim();
     const clauses = ["w.status = 'DaDuyet'"];
     const params = [];
+    const dateExpr =
+      "CASE WHEN length(COALESCE(w.approved_at, w.created_at)) <= 10 THEN substr(COALESCE(w.approved_at, w.created_at), 1, 10) ELSE date(COALESCE(w.approved_at, w.created_at), '+7 hours') END";
     if (fromDate) {
-      clauses.push('substr(COALESCE(w.approved_at, w.created_at), 1, 10) >= ?');
+      clauses.push(`${dateExpr} >= ?`);
       params.push(fromDate);
     }
     if (toDate) {
-      clauses.push('substr(COALESCE(w.approved_at, w.created_at), 1, 10) <= ?');
+      clauses.push(`${dateExpr} <= ?`);
       params.push(toDate);
     }
     if (cleanCat) {

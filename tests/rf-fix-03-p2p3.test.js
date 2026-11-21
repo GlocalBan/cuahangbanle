@@ -1016,4 +1016,103 @@ test('P2-F06D-02: Invalid paymentTermsDays (-5, 500, 12.5) rejected with 400; le
   }
 });
 
+// ============================================================================
+// F-09C (MIDNIGHT BOUNDARY): UTC vs ASIA/HO_CHI_MINH (+07:00) REPORT ROLLOVER
+// ============================================================================
+
+test('P2-F09C-02: Midnight UTC timestamp 2026-11-21T17:30:00.000Z (= 2026-11-22 00:30 +07:00) is included in 2026-11-22 VN report and excluded from 2026-11-21', async () => {
+  const srv = await startTestServer();
+  try {
+    const managerToken = await srv.loginAs('quanly');
+    const cashierToken = await srv.loginAs('thungan');
+    const warehouseToken = await srv.loginAs('kho');
+
+    // Use an isolated product in DM05 and capture exact baselines for both VN calendar days
+    const baseNov21 = (
+      await srv.reqJson('GET', '/api/reports/sales?fromDate=2026-11-21&toDate=2026-11-21&categoryCode=DM05', {
+        token: managerToken,
+      })
+    ).data.summary;
+    const baseNov22 = (
+      await srv.reqJson('GET', '/api/reports/sales?fromDate=2026-11-22&toDate=2026-11-22&categoryCode=DM05', {
+        token: managerToken,
+      })
+    ).data.summary;
+
+    const prod = await createIsolatedProduct(srv, managerToken, {
+      categoryCode: 'DM05',
+      stockQty: 10,
+      costPrice: 15000,
+      salePrice: 40000,
+    });
+    const batch = srv.db.prepare('SELECT id FROM product_batches WHERE product_id = ?').get(prod.id);
+
+    // 1) POS checkout (2 units = 80,000 pre-tax)
+    const ck = await srv.reqJson('POST', '/api/pos/checkout', {
+      token: cashierToken,
+      body: { items: [{ productId: prod.id, qty: 2 }], paymentMethod: 'VIETQR', paymentRef: 'QR-MIDNIGHT-VN-01' },
+    });
+    assert.equal(ck.status, 201, JSON.stringify(ck.data));
+    const orderId = ck.data.item.id;
+
+    // 2) Approved batch write-off (1 unit = 15,000 loss)
+    const wo = await srv.reqJson('POST', '/api/writeoffs', {
+      token: warehouseToken,
+      body: { reason: 'Hủy kiểm chứng ranh giới 00:30 +07', items: [{ batchId: batch.id, qty: 1 }] },
+    });
+    assert.equal(wo.status, 201, JSON.stringify(wo.data));
+    assert.equal((await srv.reqJson('POST', `/api/writeoffs/${wo.data.item.id}/approve`, { token: managerToken })).status, 200);
+
+    // 3) Approved negative stock audit (-1 unit -> actualQty 6 vs systemQty 7 = 15,000 shrinkage)
+    const audit = await srv.reqJson('POST', '/api/stock-audits', {
+      token: warehouseToken,
+      body: {
+        note: 'Kiểm kê kiểm chứng ranh giới 00:30 +07',
+        items: [{ productId: prod.id, actualQty: 6, reasonCode: 'MAT_HANG', reason: 'Thiếu 1 đơn vị lúc 00:30 VN' }],
+      },
+    });
+    assert.equal(audit.status, 201, JSON.stringify(audit.data));
+    assert.equal((await srv.reqJson('POST', `/api/stock-audits/${audit.data.item.id}/approve`, { token: managerToken })).status, 200);
+
+    // Pin all three UTC timestamps to 2026-11-21T17:30:00.000Z (= 2026-11-22 00:30:00 Asia/Ho_Chi_Minh)
+    const midnightUtcIso = '2026-11-21T17:30:00.000Z';
+    srv.db.prepare('UPDATE orders SET created_at = ? WHERE id = ?').run(midnightUtcIso, orderId);
+    srv.db.prepare('UPDATE batch_writeoffs SET created_at = ?, approved_at = ? WHERE id = ?').run(
+      midnightUtcIso,
+      midnightUtcIso,
+      wo.data.item.id,
+    );
+    srv.db.prepare('UPDATE stock_audits SET created_at = ?, approved_at = ? WHERE id = ?').run(
+      midnightUtcIso,
+      midnightUtcIso,
+      audit.data.item.id,
+    );
+
+    // Query VN day 2026-11-22 -> MUST INCLUDE the midnight order, write-off, and audit shrinkage
+    const repNov22 = await srv.reqJson('GET', '/api/reports/sales?fromDate=2026-11-22&toDate=2026-11-22&categoryCode=DM05', {
+      token: managerToken,
+    });
+    assert.equal(repNov22.status, 200);
+    assert.equal(repNov22.data.summary.orderCount - baseNov22.orderCount, 1);
+    assert.equal(repNov22.data.summary.netRevenuePreTax - baseNov22.netRevenuePreTax, 80000);
+    assert.equal(repNov22.data.summary.writeoffLoss - baseNov22.writeoffLoss, 15000);
+    assert.equal(repNov22.data.summary.auditShrinkageLoss - baseNov22.auditShrinkageLoss, 15000);
+    const nov22Bucket = repNov22.data.series.find((b) => b.key === '2026-11-22');
+    assert.ok(nov22Bucket, 'Time series must bucket 2026-11-21T17:30:00.000Z under VN day 2026-11-22');
+    assert.ok(nov22Bucket.netRevenuePreTax >= 80000);
+
+    // Query VN day 2026-11-21 -> MUST STRICTLY EXCLUDE all three midnight records
+    const repNov21 = await srv.reqJson('GET', '/api/reports/sales?fromDate=2026-11-21&toDate=2026-11-21&categoryCode=DM05', {
+      token: managerToken,
+    });
+    assert.equal(repNov21.status, 200);
+    assert.equal(repNov21.data.summary.orderCount, baseNov21.orderCount);
+    assert.equal(repNov21.data.summary.netRevenuePreTax, baseNov21.netRevenuePreTax);
+    assert.equal(repNov21.data.summary.writeoffLoss, baseNov21.writeoffLoss);
+    assert.equal(repNov21.data.summary.auditShrinkageLoss, baseNov21.auditShrinkageLoss);
+  } finally {
+    await srv.close();
+  }
+});
+
 

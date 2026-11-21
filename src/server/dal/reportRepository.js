@@ -2,6 +2,10 @@
 
 const PAID_ORDER_STATUSES_SQL = "('DaThanhToan', 'TraMotPhan', 'DaHoanTra')";
 
+function vnDateExpr(colExpr) {
+  return `CASE WHEN length(${colExpr}) <= 10 THEN substr(${colExpr}, 1, 10) ELSE date(${colExpr}, '+7 hours') END`;
+}
+
 class ReportRepository {
   constructor(db) {
     this.db = db;
@@ -10,12 +14,13 @@ class ReportRepository {
   getPaidOrdersInRange({ fromDate = '', toDate = '' } = {}) {
     const clauses = [`o.status IN ${PAID_ORDER_STATUSES_SQL}`];
     const params = [];
+    const dateExpr = vnDateExpr('o.created_at');
     if (fromDate) {
-      clauses.push('substr(o.created_at, 1, 10) >= ?');
+      clauses.push(`${dateExpr} >= ?`);
       params.push(fromDate);
     }
     if (toDate) {
-      clauses.push('substr(o.created_at, 1, 10) <= ?');
+      clauses.push(`${dateExpr} <= ?`);
       params.push(toDate);
     }
     const where = `WHERE ${clauses.join(' AND ')}`;
@@ -41,12 +46,13 @@ class ReportRepository {
   getPaidOrderItemsInRange({ fromDate = '', toDate = '' } = {}) {
     const clauses = [`o.status IN ${PAID_ORDER_STATUSES_SQL}`];
     const params = [];
+    const dateExpr = vnDateExpr('o.created_at');
     if (fromDate) {
-      clauses.push('substr(o.created_at, 1, 10) >= ?');
+      clauses.push(`${dateExpr} >= ?`);
       params.push(fromDate);
     }
     if (toDate) {
-      clauses.push('substr(o.created_at, 1, 10) <= ?');
+      clauses.push(`${dateExpr} <= ?`);
       params.push(toDate);
     }
     const where = `WHERE ${clauses.join(' AND ')}`;
@@ -78,12 +84,13 @@ class ReportRepository {
   getApprovedReturnsInRange({ fromDate = '', toDate = '' } = {}) {
     const clauses = ["r.status = 'DaXacNhan'"];
     const params = [];
+    const dateExpr = vnDateExpr('COALESCE(r.resolved_at, r.created_at)');
     if (fromDate) {
-      clauses.push('substr(COALESCE(r.resolved_at, r.created_at), 1, 10) >= ?');
+      clauses.push(`${dateExpr} >= ?`);
       params.push(fromDate);
     }
     if (toDate) {
-      clauses.push('substr(COALESCE(r.resolved_at, r.created_at), 1, 10) <= ?');
+      clauses.push(`${dateExpr} <= ?`);
       params.push(toDate);
     }
     const where = `WHERE ${clauses.join(' AND ')}`;
@@ -109,12 +116,13 @@ class ReportRepository {
   getApprovedReturnItemsInRange({ fromDate = '', toDate = '' } = {}) {
     const clauses = ["r.status = 'DaXacNhan'"];
     const params = [];
+    const dateExpr = vnDateExpr('COALESCE(r.resolved_at, r.created_at)');
     if (fromDate) {
-      clauses.push('substr(COALESCE(r.resolved_at, r.created_at), 1, 10) >= ?');
+      clauses.push(`${dateExpr} >= ?`);
       params.push(fromDate);
     }
     if (toDate) {
-      clauses.push('substr(COALESCE(r.resolved_at, r.created_at), 1, 10) <= ?');
+      clauses.push(`${dateExpr} <= ?`);
       params.push(toDate);
     }
     const where = `WHERE ${clauses.join(' AND ')}`;
@@ -238,12 +246,13 @@ class ReportRepository {
   sumApprovedAuditShrinkage({ fromDate = '', toDate = '', categoryCode = '' } = {}) {
     const clauses = ["a.status = 'DaDuyet'", 'ai.diff_qty < 0'];
     const params = [];
+    const dateExpr = vnDateExpr('COALESCE(a.approved_at, a.created_at)');
     if (fromDate) {
-      clauses.push('substr(COALESCE(a.approved_at, a.created_at), 1, 10) >= ?');
+      clauses.push(`${dateExpr} >= ?`);
       params.push(fromDate);
     }
     if (toDate) {
-      clauses.push('substr(COALESCE(a.approved_at, a.created_at), 1, 10) <= ?');
+      clauses.push(`${dateExpr} <= ?`);
       params.push(toDate);
     }
     if (categoryCode && String(categoryCode).trim()) {
@@ -269,4 +278,4 @@ class ReportRepository {
   }
 }
 
-module.exports = { ReportRepository };
+module.exports = { ReportRepository, vnDateExpr };

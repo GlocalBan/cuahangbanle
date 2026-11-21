@@ -22,6 +22,19 @@ function todayYmdVn(nowDate = new Date()) {
   }).format(nowDate);
 }
 
+function toVnYmd(ts) {
+  const s = String(ts || '').trim();
+  if (!s) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const normalized =
+    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(s) && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)
+      ? `${s.replace(' ', 'T')}Z`
+      : s;
+  const dt = new Date(normalized);
+  if (Number.isNaN(dt.getTime())) return s.slice(0, 10);
+  return todayYmdVn(dt);
+}
+
 function isValidCalendarYmd(ymd) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return false;
   const [y, m, d] = ymd.split('-').map(Number);
@@ -419,7 +432,10 @@ function computeFinancialMetrics({
     }
   }
 
-  const bucketKeyOf = (iso) => (safeGroupBy === 'month' ? String(iso || '').slice(0, 7) : String(iso || '').slice(0, 10));
+  const bucketKeyOf = (iso) => {
+    const ymd = toVnYmd(iso);
+    return safeGroupBy === 'month' ? ymd.slice(0, 7) : ymd;
+  };
 
   if (!cleanCat) {
     for (const o of paidOrders) {
@@ -813,10 +829,10 @@ class ReportService {
       groupBy: 'day',
     });
 
-    const todayOrders = periodOrders.filter((o) => String(o.created_at).slice(0, 10) === today);
+    const todayOrders = periodOrders.filter((o) => toVnYmd(o.created_at) === today);
     const todayOrderIds = new Set(todayOrders.map((o) => o.id));
     const todayOrderItems = periodOrderItems.filter((oi) => todayOrderIds.has(oi.order_id));
-    const todayReturns = periodReturns.filter((r) => String(r.effective_at).slice(0, 10) === today);
+    const todayReturns = periodReturns.filter((r) => toVnYmd(r.effective_at) === today);
     const todayReturnIds = new Set(todayReturns.map((r) => r.id));
     const todayReturnItems = periodReturnItems.filter((ri) => todayReturnIds.has(ri.return_id));
 
@@ -1103,4 +1119,5 @@ module.exports = {
   allocateOrderItemFinancials,
   isoDateKey,
   todayYmdVn,
+  toVnYmd,
 };

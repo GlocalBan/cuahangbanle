@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const { openDatabase } = require('../src/server/dal/database.js');
-const { computeFinancialMetrics, splitRefundPreTaxAndTax } = require('../src/server/bll/reportService.js');
+const { computeFinancialMetrics, splitRefundPreTaxAndTax, todayYmdVn } = require('../src/server/bll/reportService.js');
 const { createApiRouter } = require('../src/server/routes/api.js');
 
 async function startTestServer() {
@@ -336,7 +336,7 @@ test('M5-02: End-to-end SQLite reports reconciliation across DaThanhToan, TraMot
     const cashierToken = await srv.loginAs('thungan');
     const managerToken = await srv.loginAs('quanly');
     assert.equal((await srv.reqJson('POST', '/api/shifts/open', { token: cashierToken, body: { openingCash: 500000 } })).status, 201);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayYmdVn();
 
     const baseSales = await srv.reqJson('GET', `/api/reports/sales?fromDate=${today}&toDate=${today}`, {
       token: managerToken,
@@ -522,7 +522,7 @@ test('M5-05: Accounting Patch Lock — Case A (8% VAT separation) & Case B (full
     const cashierToken = await srv.loginAs('thungan');
     const managerToken = await srv.loginAs('quanly');
     assert.equal((await srv.reqJson('POST', '/api/shifts/open', { token: cashierToken, body: { openingCash: 500000 } })).status, 201);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayYmdVn();
 
     const prods = (await srv.reqJson('GET', '/api/products?status=DangKinhDoanh', { token: managerToken })).data.items;
     const prod = prods.find((p) => p.stockQty >= 15 && p.salePrice >= 20000 && p.costPrice > 0);
