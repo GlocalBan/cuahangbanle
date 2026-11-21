@@ -8,7 +8,7 @@
     "dev": "node server.js",
     "lint": "node scripts/check-syntax.js",
     "build": "node scripts/check-syntax.js",
-    "test": "node --test tests/store.test.js tests/m1-rbac-api.test.js tests/m2-catalog-api.test.js tests/m3-warehouse-api.test.js tests/m4-sales-api.test.js tests/m5-reports-rbac.test.js tests/phase2-retail-ops.test.js",
+    "test": "node --test tests/store.test.js tests/m1-rbac-api.test.js tests/m2-catalog-api.test.js tests/m3-warehouse-api.test.js tests/m4-sales-api.test.js tests/m5-reports-rbac.test.js tests/phase2-retail-ops.test.js tests/rf-fix-01-p0.test.js",
     "test:store": "node --test tests/store.test.js",
     "test:m1": "node --test tests/m1-rbac-api.test.js",
     "test:m2": "node --test tests/m2-catalog-api.test.js",
@@ -16,6 +16,7 @@
     "test:m4": "node --test tests/m4-sales-api.test.js",
     "test:m5": "node --test tests/m5-reports-rbac.test.js",
     "test:phase2": "node --test tests/phase2-retail-ops.test.js",
+    "test:p0": "node --test tests/rf-fix-01-p0.test.js",
     "test:browser": "node tests/browser.cjs"
   },
   "devDependencies": {

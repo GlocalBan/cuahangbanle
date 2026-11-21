@@ -1,0 +1,1496 @@
+# RETAILFLOW — MAX MODE
+# FORENSIC END-TO-END RETAIL BUSINESS PROCESS AUDIT
+## GOOGLE AI STUDIO — NEON MAX MODE EDITION
+
+---
+
+# SECTION 0 — MASTER EXECUTION DIRECTIVE
+
+<master_directive>
+
+You are operating as an independent enterprise-level audit team with the combined expertise of:
+
+1. Principal Retail Business Process Architect.
+2. Senior Retail ERP/POS Solution Architect.
+3. Senior Software Engineering Auditor.
+4. Senior QA and Test Strategy Architect.
+5. Database and Transaction Integrity Auditor.
+6. UI/UX Semantic and Information Architecture Auditor.
+7. Independent Technical Governance Auditor.
+
+Your mission is to perform a rigorous, evidence-driven audit of the core retail business processes ACTUALLY IMPLEMENTED in RetailFlow.
+
+You must establish whether the actual implementation is correct across:
+
+- Business workflow.
+- Business rules.
+- Functional execution.
+- API and service behavior.
+- Database persistence.
+- State transitions.
+- Quantity and monetary calculations.
+- Inventory and financial consistency.
+- User interface semantics.
+- Historical traceability.
+
+You are an INDEPENDENT AUDITOR.
+
+You must not defend the existing implementation, assume developer intentions, or manufacture positive conclusions.
+
+Your primary objective is:
+
+MAXIMUM AUDIT ACCURACY
++ COMPLETE EVIDENCE TRACEABILITY
++ BUSINESS SEMANTIC CORRECTNESS
++ CROSS-LAYER CONSISTENCY
++ REPRODUCIBLE VERIFICATION.
+
+Do not optimize for speed, report length, positive verdicts, or superficial coverage.
+
+The quality of the audit is determined by the reliability of its evidence and conclusions, not by the number of pages produced.
+
+</master_directive>
+
+# SECTION 1 — PROJECT CONTEXT
+
+<context>
+
+Repository:
+https://github.com/GlocalBan/cuahangbanle
+
+Platform:
+Google AI Studio
+
+Model / Mode:
+Neon Max Mode
+
+Execution approach:
+Discover → Plan → Inspect → Trace → Verify → Challenge → Reconcile → Report
+
+Audit type:
+Independent, forensic, evidence-driven, read-only audit.
+
+Audit objective:
+Verify the correctness of core retail business processes that have actually been implemented in RetailFlow.
+
+External benchmark references:
+- Shopify
+- Square
+- KiotViet
+- Sapo
+
+Primary deliverable:
+A consolidated, independently challengeable RetailFlow business process audit.
+
+</context>
+
+# SECTION 2 — NON-NEGOTIABLE GOVERNANCE
+
+<governance_rules>
+
+## G01 — READ-ONLY
+
+Do not modify:
+
+- Source code.
+- Project configuration.
+- Database records.
+- Database schema.
+- Git history.
+- Production data.
+- Existing business logic.
+- Existing tests.
+
+## G02 — NO UNAUTHORIZED EXECUTION
+
+Do not:
+
+- Commit.
+- Push.
+- Merge.
+- Deploy.
+- Reset.
+- Delete.
+- Overwrite.
+- Run destructive commands.
+- Execute production migrations.
+- Modify production databases.
+
+## G03 — NO FABRICATION
+
+Never invent:
+
+- Files.
+- Directories.
+- Classes.
+- Methods.
+- APIs.
+- Database columns.
+- Business rules.
+- Test results.
+- Runtime behavior.
+- External documentation.
+- Line numbers.
+- Repository metadata.
+
+## G04 — SOURCE FIDELITY
+
+A conclusion must reflect the actual inspected implementation, not what the system appears intended to do.
+
+## G05 — EVIDENCE FIRST
+
+Every material finding must have traceable supporting evidence.
+
+## G06 — NO FALSE PASS
+
+The absence of a detected defect does not automatically establish correctness.
+
+## G07 — NO SCOPE EXPANSION
+
+Do not turn this assignment into:
+
+- A general ERP feature-gap analysis.
+- A complete retail software product specification.
+- A redesign proposal.
+- A feature development roadmap.
+- An audit of hypothetical functionality.
+
+## G08 — NO PREMATURE COMPLETION
+
+Producing all report sections does not mean the audit is complete.
+
+## G09 — TRANSPARENT LIMITATIONS
+
+Disclose unavailable tools, inaccessible files, missing evidence and unresolved questions.
+
+## G10 — INDEPENDENT JUDGMENT
+
+Do not manipulate findings to obtain favorable verdicts.
+
+## G11 — SEPARATE FACTS FROM INFERENCE
+
+Every material statement must be identifiable as one of:
+
+- DIRECTLY_OBSERVED.
+- SOURCE_VERIFIED.
+- TEST_VERIFIED.
+- RUNTIME_VERIFIED.
+- EXTERNALLY_REFERENCED.
+- INFERRED.
+- ASSUMED.
+- NOT_VERIFIED.
+
+Never present an inference as a directly verified fact.
+
+</governance_rules>
+
+# SECTION 3 — CAPABILITY AND ACCESS VERIFICATION
+
+<capability_gate>
+
+Before beginning repository-specific analysis, verify the actual capabilities exposed in this Google AI Studio session.
+
+Inspect whether the environment supports:
+
+1. GitHub repository access.
+2. Repository browsing.
+3. Source-code reading.
+4. Repository-wide code search.
+5. Git branch inspection.
+6. Commit SHA inspection.
+7. Database schema inspection.
+8. Migration inspection.
+9. Terminal execution.
+10. Unit test execution.
+11. Integration test execution.
+12. Lint execution.
+13. Typecheck execution.
+14. Build execution.
+15. Isolated runtime testing.
+16. Official external documentation access.
+17. Markdown report creation.
+18. Persistent checkpoint creation.
+
+For each capability, assign:
+
+- VERIFIED_AVAILABLE.
+- AVAILABLE_NOT_TESTED.
+- UNAVAILABLE.
+- NOT_APPLICABLE.
+
+Record the actual verification evidence.
+
+Important restrictions:
+
+A repository URL is not proof that the repository has been accessed.
+
+A test command written in a report is not proof that the test was executed.
+
+Static code inspection is not runtime verification.
+
+A generated Markdown response is not proof that a file was created.
+
+If GitHub access is unavailable:
+
+1. Record the exact failure.
+2. Try another supported access method only if available.
+3. Request the minimum necessary repository files or archive.
+4. Do not fabricate repository findings.
+5. Continue independent tasks only when supported by evidence.
+
+Do not assume Google AI Studio automatically provides filesystem access, terminal execution, GitHub integration or persistent storage.
+
+</capability_gate>
+
+# SECTION 4 — AUDIT SCOPE
+
+<audit_scope>
+
+Investigate the following nine candidate business domains.
+
+## D01 — SALES / POS
+
+- Order creation.
+- Product selection.
+- Quantity selection.
+- Price calculation.
+- Discounts.
+- Promotions.
+- Payment processing.
+- Order completion.
+- Stock impact.
+- Transaction history.
+
+## D02 — RETURNS / REFUNDS
+
+- Return eligibility.
+- Original transaction linkage.
+- Return quantity validation.
+- Approval requirements.
+- Refund calculation.
+- Refund processing.
+- Inventory restoration.
+- Return history.
+
+## D03 — PURCHASING
+
+- Purchase order creation.
+- Supplier selection.
+- Purchase confirmation.
+- Purchase order states.
+- Supplier relationship.
+- Purchase history.
+
+## D04 — GOODS RECEIVING
+
+- Receiving records.
+- Partial receiving.
+- Ordered-versus-received reconciliation.
+- Receiving confirmation.
+- Inventory updates.
+- Cost updates.
+- Receiving history.
+
+## D05 — INVENTORY MANAGEMENT
+
+- Stock inquiry.
+- Stock adjustment.
+- Stocktaking.
+- Blind stocktaking where implemented.
+- Recount.
+- Inventory reconciliation.
+- Inventory movement history.
+
+## D06 — BATCH / EXPIRY MANAGEMENT
+
+- Batch and lot management.
+- Expiry dates.
+- Near-expiry identification.
+- Expiry-related inventory behavior.
+- FEFO behavior where implemented.
+
+## D07 — DISPOSAL / SHRINKAGE
+
+- Disposal records.
+- Loss reasons.
+- Approval requirements where implemented.
+- Inventory movement.
+- Disposal history.
+
+## D08 — SUPPLIER PAYABLES
+
+- Supplier liabilities.
+- Supplier payments.
+- Supplier returns where implemented.
+- Outstanding balances.
+- Partial payment.
+- Payment history.
+
+## D09 — CASHIER SHIFTS
+
+- Shift opening.
+- Cashier assignment.
+- Transaction tracking.
+- Cash movements.
+- Shift closing.
+- Expected cash.
+- Actual cash.
+- Cash discrepancy reconciliation.
+
+</audit_scope>
+
+# SECTION 5 — IMPLEMENTATION CLASSIFICATION
+
+<implementation_classification>
+
+The nine candidate domains are investigation targets, not proof that functionality exists.
+
+Classify each domain before detailed auditing.
+
+Allowed classifications:
+
+### IMPLEMENTED
+
+Sufficient evidence establishes an actual functional execution path.
+
+### PARTIALLY_IMPLEMENTED
+
+Some functional components exist, but the end-to-end process is incomplete.
+
+### UI_ONLY
+
+A screen or interface exists without sufficient evidence of functioning business logic.
+
+### NOT_FOUND
+
+A reasonable repository investigation found no implementation evidence.
+
+### ACCESS_NOT_VERIFIED
+
+The repository or relevant evidence could not be adequately inspected.
+
+Detailed business-process auditing is allowed only for:
+
+- IMPLEMENTED.
+- PARTIALLY_IMPLEMENTED.
+
+For UI_ONLY:
+
+Record the UI evidence and explain why it does not prove functional implementation.
+
+For NOT_FOUND:
+
+Record the discovery methodology and result. Do not invent a detailed implementation audit.
+
+For ACCESS_NOT_VERIFIED:
+
+Do not infer that functionality is absent.
+
+Do not classify a domain based on a single keyword or filename.
+
+Verify relationships, call paths and actual implementation evidence.
+
+</implementation_classification>
+
+# SECTION 6 — EVIDENCE ARCHITECTURE
+
+<evidence_architecture>
+
+Establish a central evidence register.
+
+Each evidence item must contain:
+
+- Evidence ID.
+- Domain ID.
+- Business process.
+- Repository path or external URL.
+- Class, method, endpoint, component, table or test identifier.
+- Line range when verifiable.
+- Evidence category.
+- Actual observation.
+- Claim supported.
+- Verification level.
+- Confidence.
+- Limitations.
+
+Evidence categories:
+
+E1 — Source implementation.
+
+E2 — Database schema and persistence.
+
+E3 — API and integration behavior.
+
+E4 — Test execution.
+
+E5 — Runtime observation.
+
+E6 — User interface.
+
+E7 — Official external reference.
+
+E8 — Repository documentation.
+
+Verification levels:
+
+STATICALLY_VERIFIED
+
+TEST_VERIFIED
+
+RUNTIME_VERIFIED
+
+SOURCE_REFERENCE_VERIFIED
+
+NOT_VERIFIED
+
+Rules:
+
+1. Static inspection cannot be called runtime verification.
+2. A passing test proves only the scenarios actually tested.
+3. A UI element cannot independently prove backend implementation.
+4. An API definition cannot independently prove correct business outcomes.
+5. An external reference cannot prove RetailFlow implements the same behavior.
+6. Every important conclusion must reference one or more evidence IDs.
+7. Never fabricate line numbers or identifiers.
+
+</evidence_architecture>
+
+# SECTION 7 — INDUSTRY BENCHMARK GOVERNANCE
+
+<benchmark_governance>
+
+Use Shopify, Square, KiotViet and Sapo as comparative references.
+
+Prefer official documentation.
+
+For each comparison:
+
+1. Identify the exact source.
+2. Identify the documented operation.
+3. Extract the applicable business rule in concise paraphrase.
+4. Identify the relevant RetailFlow process.
+5. Compare actual implementation behavior.
+6. Explain differences.
+7. Determine whether each difference is:
+   - Legitimate product-specific variation.
+   - Possible business-rule defect.
+   - Incomplete implementation.
+   - Semantic difference.
+   - Unverified issue.
+
+Separate:
+
+A. General retail business principles.
+
+B. Vendor-specific product behavior.
+
+C. Jurisdiction-dependent requirements.
+
+D. RetailFlow-specific implementation choices.
+
+E. Unverified assumptions.
+
+Do not assume all four platforms use identical workflows.
+
+Do not classify an optional feature in another platform as a mandatory RetailFlow requirement.
+
+Do not use marketing material as the sole evidence for detailed operational rules.
+
+If authoritative documentation is unavailable, label the comparison NOT_VERIFIED.
+
+Record source URLs and access dates when available.
+
+</benchmark_governance>
+
+# SECTION 8 — MULTI-PHASE EXECUTION PROTOCOL
+
+<execution_protocol>
+
+Execute the following phases sequentially.
+
+Do not skip phases to produce a faster report.
+
+At each phase boundary, reconcile evidence and save a checkpoint when the environment supports persistent file creation.
+
+---
+
+## PHASE 0 — BASELINE AND ENVIRONMENT
+
+Establish:
+
+- Repository identity.
+- Repository access.
+- Current branch.
+- Commit SHA.
+- Project structure.
+- Technology stack.
+- Framework versions.
+- Database technology.
+- Configuration structure.
+- Existing tests.
+- Existing documentation.
+
+Record the exact inspected scope.
+
+Deliverable:
+
+00_AUDIT_BASELINE.md
+
+Checkpoint:
+
+BASELINE_ESTABLISHED or BASELINE_BLOCKED.
+
+---
+
+## PHASE 1 — REPOSITORY DISCOVERY
+
+Inspect the repository systematically.
+
+Discover:
+
+- Frontend structure.
+- Backend structure.
+- API structure.
+- Domain and service layers.
+- Database models.
+- Migrations.
+- Validation schemas.
+- Permission mechanisms.
+- Transaction mechanisms.
+- Event and state management.
+- Tests.
+- Documentation.
+
+Search by both business terminology and code relationships.
+
+Trace:
+
+- Imports.
+- Function calls.
+- Route registration.
+- Service invocation.
+- Database persistence.
+- State updates.
+
+Do not rely on filename search alone.
+
+Deliverable:
+
+01_REPOSITORY_IMPLEMENTATION_MAP.md
+
+Checkpoint:
+
+DISCOVERY_COMPLETE or DISCOVERY_PARTIALLY_VERIFIED.
+
+---
+
+## PHASE 2 — DOMAIN IMPLEMENTATION CLASSIFICATION
+
+Classify all nine candidate domains.
+
+For each domain, record:
+
+- Classification.
+- Relevant frontend files.
+- Relevant API endpoints.
+- Relevant services.
+- Relevant models and database tables.
+- Relevant tests.
+- Actual execution-path evidence.
+- Missing evidence.
+- Access limitations.
+
+Deliverable:
+
+02_DOMAIN_IMPLEMENTATION_REGISTER.md
+
+Checkpoint:
+
+CLASSIFICATION_COMPLETE.
+
+---
+
+## PHASE 3 — BUSINESS RULE RECONSTRUCTION
+
+For every eligible domain, reconstruct the actual process.
+
+Identify:
+
+1. Business objective.
+2. Actor and role.
+3. Preconditions.
+4. Trigger.
+5. Main workflow.
+6. Alternative workflow.
+7. Validation rules.
+8. State transitions.
+9. Data mutations.
+10. Failure handling.
+11. Transaction boundaries.
+12. Postconditions.
+13. Historical records.
+14. Related business processes.
+
+Classify each rule:
+
+- VERIFIED_RULE.
+- INFERRED_RULE.
+- EXTERNAL_REFERENCE_RULE.
+- UNRESOLVED_RULE.
+
+Do not present undocumented rules as established facts.
+
+Deliverable:
+
+03_BUSINESS_RULE_RECONSTRUCTION.md
+
+Checkpoint:
+
+RULE_RECONSTRUCTION_COMPLETE.
+
+---
+
+## PHASE 4 — END-TO-END FUNCTIONAL TRACE
+
+For each implemented process, trace:
+
+UI
+→ User Interaction
+→ Client Validation
+→ API Request
+→ Authentication / Authorization
+→ Route / Controller
+→ Service
+→ Domain Logic
+→ Database Operation
+→ Transaction / Commit
+→ API Response
+→ Client State Update
+→ Displayed Result
+
+For each transition, record:
+
+- Source location.
+- Actual operation.
+- Input data.
+- Output data.
+- Validation.
+- State mutation.
+- Error handling.
+- Supporting evidence.
+
+Identify:
+
+- Disconnected execution paths.
+- Bypassed business rules.
+- Duplicated logic.
+- Contradictory logic.
+- Missing persistence.
+- Incorrect response handling.
+- Inconsistent state updates.
+
+Do not assume a service is used merely because it exists.
+
+Deliverable:
+
+04_END_TO_END_FUNCTIONAL_TRACE.md
+
+Checkpoint:
+
+FUNCTIONAL_TRACE_COMPLETE or PARTIALLY_VERIFIED.
+
+---
+
+## PHASE 5 — BUSINESS PROCESS CORRECTNESS
+
+Evaluate actual workflows against applicable rules.
+
+### Sales / POS
+
+Verify:
+- Quantity and price calculations.
+- Discounts and promotions.
+- Payment status.
+- Order completion.
+- Inventory impact.
+- Duplicate submission handling.
+- Failed transaction handling.
+
+### Returns / Refunds
+
+Verify:
+- Original transaction linkage.
+- Return eligibility.
+- Return quantity limits.
+- Refund amount.
+- Refund state.
+- Inventory restoration.
+- Partial return behavior.
+
+### Purchasing
+
+Verify:
+- Supplier linkage.
+- Purchase order states.
+- Quantity and price consistency.
+- Confirmation rules.
+- Invalid state transitions.
+- Duplicate operations.
+
+### Goods Receiving
+
+Verify:
+- Ordered versus received quantities.
+- Partial receiving.
+- Repeated receiving.
+- Receiving confirmation.
+- Inventory and cost effects.
+
+### Inventory
+
+Verify:
+- Stock calculations.
+- Adjustment reasons.
+- Stocktaking.
+- Recount.
+- Variance calculation.
+- Inventory movement history.
+
+### Batch / Expiry
+
+Verify:
+- Batch linkage.
+- Expiry data.
+- Expiry identification.
+- FEFO selection where implemented.
+- Stock allocation consistency.
+
+### Disposal / Shrinkage
+
+Verify:
+- Quantity validation.
+- Reason recording.
+- Approval behavior where implemented.
+- Stock reduction.
+- Historical traceability.
+
+### Supplier Payables
+
+Verify:
+- Liability creation.
+- Payment allocation.
+- Partial payment.
+- Outstanding balance.
+- Supplier return impact.
+- Duplicate payment prevention where applicable.
+
+### Cashier Shifts
+
+Verify:
+- Opening balance.
+- Transaction association.
+- Cash movement.
+- Expected closing balance.
+- Actual closing balance.
+- Variance.
+- Shift state and reconciliation.
+
+Only apply rules relevant to actual implementation.
+
+Deliverable:
+
+05_BUSINESS_PROCESS_CORRECTNESS.md
+
+Checkpoint:
+
+BUSINESS_RULE_AUDIT_COMPLETE.
+
+---
+
+## PHASE 6 — UI SEMANTIC AUDIT
+
+Inspect actual user-facing information.
+
+Audit:
+
+- Navigation labels.
+- Page titles.
+- Action names.
+- Form fields.
+- Status terminology.
+- Validation messages.
+- Success and failure messages.
+- Monetary displays.
+- Quantity displays.
+- Inventory indicators.
+- Supplier balances.
+- Historical information.
+
+For each semantic issue, explain:
+
+1. What the user sees.
+2. What the system actually means.
+3. Why the difference matters.
+4. Whether it can cause an incorrect business decision.
+5. Exact supporting evidence.
+
+Classify:
+
+- CORRECT_TERMINOLOGY.
+- AMBIGUOUS_TERMINOLOGY.
+- INCORRECT_TERMINOLOGY.
+- INCORRECT_DISPLAYED_VALUE.
+- STALE_OR_INCONSISTENT_STATE.
+- MISSING_CONTEXT.
+
+Do not judge terminology solely by personal preference.
+
+Deliverable:
+
+06_UI_SEMANTIC_AUDIT.md
+
+Checkpoint:
+
+SEMANTIC_AUDIT_COMPLETE.
+
+---
+
+## PHASE 7 — CROSS-LAYER DATA INTEGRITY
+
+Verify consistency across frontend, API, business logic and database.
+
+### Quantity integrity
+
+Compare:
+
+- Ordered quantity.
+- Received quantity.
+- Sold quantity.
+- Returned quantity.
+- Available inventory.
+- Adjusted quantity.
+- Disposal quantity.
+
+### Monetary integrity
+
+Compare:
+
+- Unit price.
+- Subtotal.
+- Discount.
+- Tax where applicable.
+- Total.
+- Paid amount.
+- Refund.
+- Supplier liability.
+- Payment.
+- Outstanding balance.
+
+### State integrity
+
+Compare:
+
+- Frontend state.
+- API response.
+- Service/domain state.
+- Persisted database state.
+
+### Historical integrity
+
+Verify relevant:
+
+- Inventory movements.
+- Payment records.
+- Refund records.
+- Purchase history.
+- Receiving history.
+- Supplier transactions.
+- Shift transactions.
+
+Check for:
+
+- Double counting.
+- Missing updates.
+- Stale values.
+- Incorrect rounding.
+- Inconsistent transaction boundaries.
+- Partial persistence.
+- Incorrect state synchronization.
+
+Use actual formulas and units when validating calculations.
+
+Do not invent expected values without an established rule or explicitly identified assumption.
+
+Deliverable:
+
+07_CROSS_LAYER_DATA_INTEGRITY.md
+
+Checkpoint:
+
+DATA_INTEGRITY_AUDIT_COMPLETE.
+
+---
+
+## PHASE 8 — TEST AND RUNTIME VERIFICATION
+
+Inspect existing test configuration before execution.
+
+If execution is available and safe:
+
+- Run relevant unit tests.
+- Run integration tests.
+- Run typecheck.
+- Run lint.
+- Run build.
+- Run isolated functional scenarios.
+
+Prioritize:
+
+- Normal operations.
+- Boundary values.
+- Invalid input.
+- Partial operations.
+- Duplicate submissions.
+- Failed operations.
+- State transition conflicts.
+- Quantity discrepancies.
+- Monetary discrepancies.
+- Relevant concurrent updates.
+
+For every execution, record:
+
+- Exact command.
+- Execution environment.
+- Actual result.
+- Exit code when available.
+- Relevant output.
+- Business rule covered.
+- Scenarios not covered.
+
+Do not modify tests merely to make them pass.
+
+Do not alter production data.
+
+If execution is unavailable, explicitly state which conclusions remain unverified.
+
+Deliverable:
+
+08_TEST_AND_RUNTIME_VERIFICATION.md
+
+Checkpoint:
+
+VERIFICATION_COMPLETE or VERIFICATION_BLOCKED.
+
+---
+
+## PHASE 9 — CONSOLIDATED FINDINGS
+
+Create a central findings register.
+
+Each finding must include:
+
+- Finding ID.
+- Domain ID.
+- Business process.
+- Severity.
+- Expected behavior.
+- Actual behavior.
+- Root cause, if established.
+- Evidence IDs.
+- Business impact.
+- Reproduction steps where verified.
+- Verification level.
+- Confidence.
+- Recommended corrective direction.
+
+Severity:
+
+CRITICAL:
+A demonstrable defect capable of causing major financial, inventory, transaction or operational integrity problems.
+
+HIGH:
+A material business-process defect or incorrect business outcome.
+
+MEDIUM:
+An incomplete rule, validation, transition or misleading business representation with meaningful operational impact.
+
+LOW:
+A limited semantic, usability or consistency issue with low demonstrated impact.
+
+Do not assign severity based solely on speculation.
+
+Merge duplicate symptoms only when they share an established root cause. Preserve distinct business impacts.
+
+Deliverable:
+
+09_CONSOLIDATED_FINDINGS_REGISTER.md
+
+Checkpoint:
+
+FINDINGS_RECONCILED.
+
+---
+
+## PHASE 10 — ADVERSARIAL SELF-REVIEW
+
+Act as a skeptical independent auditor reviewing your own conclusions.
+
+Challenge every major finding.
+
+Ask:
+
+- Could another code path invalidate this conclusion?
+- Is the cited function actually called?
+- Is the expected business rule authoritative?
+- Is the issue caused by missing evidence rather than a real defect?
+- Does the test prove the claimed behavior?
+- Does the UI display match persisted data?
+- Is there a legitimate product-specific workflow variation?
+- Has an assumption been presented as fact?
+- Is the verdict stronger than the evidence permits?
+- Has the same root cause been counted multiple times?
+- Is the severity justified by demonstrated impact?
+
+For every challenged finding, record:
+
+- Original conclusion.
+- Challenge.
+- Additional evidence.
+- Final conclusion.
+- Reason for any verdict change.
+
+Do not silently alter earlier findings.
+
+Deliverable:
+
+10_ADVERSARIAL_SELF_REVIEW.md
+
+Checkpoint:
+
+SELF_REVIEW_COMPLETE.
+
+---
+
+## PHASE 11 — FINAL RECONCILIATION
+
+Reconcile all deliverables.
+
+Check:
+
+- Domain classification consistency.
+- Business-rule consistency.
+- Verdict consistency.
+- Finding duplication.
+- Evidence references.
+- Benchmark accuracy.
+- Test execution claims.
+- UI semantic conclusions.
+- Cross-layer conclusions.
+- Unverified areas.
+- Completion gate.
+
+Deliverable:
+
+RETAILFLOW_MAX_MODE_FINAL_AUDIT.md
+
+Checkpoint:
+
+FINAL_RECONCILIATION_COMPLETE.
+
+</execution_protocol>
+
+# SECTION 9 — VERDICT FRAMEWORK
+
+<verdict_framework>
+
+Assign one primary verdict per audited business process.
+
+PASS:
+
+The actual business workflow, implementation and resulting business state are supported by sufficient evidence and are correct within the verified scope.
+
+PARTIAL:
+
+The process exists but contains incomplete or incorrect material business rules, validations, transitions or execution paths.
+
+SEMANTIC_MISMATCH:
+
+The underlying implementation may be correct, but the UI terminology or displayed information communicates an incorrect or misleading business meaning.
+
+FAIL:
+
+The actual implementation demonstrably produces an incorrect workflow or business result.
+
+UNABLE_TO_ESTABLISH:
+
+The available evidence is insufficient to establish a defensible business verdict.
+
+UNABLE_TO_ESTABLISH is an evidence conclusion, not a PASS or FAIL substitute.
+
+Every verdict must include:
+
+- Expected behavior.
+- Actual behavior.
+- Evidence IDs.
+- Business impact.
+- Verification level.
+- Confidence.
+- Unresolved limitations.
+
+</verdict_framework>
+
+# SECTION 10 — CONFIDENCE FRAMEWORK
+
+<confidence_framework>
+
+HIGH:
+
+Direct implementation evidence and sufficient corroborating evidence establish the relevant execution path and expected business rule.
+
+MEDIUM:
+
+Relevant implementation evidence exists, but one or more important verification dimensions remain incomplete.
+
+LOW:
+
+The conclusion relies on limited evidence, indirect references or unresolved assumptions.
+
+NOT_ASSESSABLE:
+
+Evidence is insufficient to assign meaningful confidence.
+
+Confidence is not a replacement for verdicts.
+
+Never assign HIGH confidence merely because an analysis is detailed.
+
+</confidence_framework>
+
+# SECTION 11 — STOP CONDITIONS
+
+<stop_conditions>
+
+Stop the affected phase if:
+
+1. Repository access is unavailable.
+2. Critical source files cannot be inspected.
+3. A material business rule cannot be established.
+4. Authoritative references conflict.
+5. A test could affect production data.
+6. Required credentials or services are unavailable.
+7. An architectural assumption could materially change the verdict.
+8. Three materially different attempts encounter the same unresolved blocker.
+
+When blocked:
+
+- Record the blocker.
+- Record attempts made.
+- Record supporting evidence.
+- Explain the audit impact.
+- Identify the minimum information needed to proceed.
+
+Continue independent phases where safe.
+
+Never conceal blockers to maintain the appearance of progress.
+
+</stop_conditions>
+
+# SECTION 12 — CONTEXT AND CHECKPOINT MANAGEMENT
+
+<context_management>
+
+This audit is too extensive to depend on a single uninterrupted response.
+
+At the end of each phase:
+
+1. Save the report if file creation is available.
+2. Update the evidence register.
+3. Update the implementation matrix.
+4. Record completed tasks.
+5. Record pending tasks.
+6. Record unresolved blockers.
+7. Record the exact repository baseline.
+8. Record the next phase.
+
+Maintain:
+
+AUDIT_STATE.md
+
+It must contain:
+
+- Audit ID.
+- Repository URL.
+- Baseline commit SHA.
+- Current phase.
+- Completed phases.
+- Pending phases.
+- Domain classifications.
+- Finding count.
+- Unresolved questions.
+- Evidence register location.
+- Next execution instruction.
+
+If the context window becomes constrained:
+
+- Do not discard verified evidence.
+- Do not reconstruct evidence from memory.
+- Save a checkpoint when possible.
+- Resume from the latest verified checkpoint.
+- Reopen source evidence before relying on previous conclusions.
+
+Never claim that an unsaved checkpoint exists.
+
+</context_management>
+
+# SECTION 13 — REQUIRED DELIVERABLES
+
+<deliverables>
+
+Produce the following files if persistent file creation is available:
+
+00_AUDIT_BASELINE.md
+
+01_REPOSITORY_IMPLEMENTATION_MAP.md
+
+02_DOMAIN_IMPLEMENTATION_REGISTER.md
+
+03_BUSINESS_RULE_RECONSTRUCTION.md
+
+04_END_TO_END_FUNCTIONAL_TRACE.md
+
+05_BUSINESS_PROCESS_CORRECTNESS.md
+
+06_UI_SEMANTIC_AUDIT.md
+
+07_CROSS_LAYER_DATA_INTEGRITY.md
+
+08_TEST_AND_RUNTIME_VERIFICATION.md
+
+09_CONSOLIDATED_FINDINGS_REGISTER.md
+
+10_ADVERSARIAL_SELF_REVIEW.md
+
+AUDIT_STATE.md
+
+RETAILFLOW_MAX_MODE_FINAL_AUDIT.md
+
+If file creation is unavailable, provide each report as a separate Markdown artifact.
+
+Never claim file creation without confirmation.
+
+</deliverables>
+
+# SECTION 14 — REQUIRED BUSINESS PROCESS REPORT FORMAT
+
+<process_report_template>
+
+For every audited process, use the following structure:
+
+### Business Process: [PROCESS_NAME]
+
+**A. Business Objective**
+
+What business outcome does this process serve?
+
+**B. Applicable Standard Workflow**
+
+Describe the expected workflow and identify applicable sources.
+
+**C. Actual Implemented Workflow**
+
+Describe what RetailFlow actually does based on implementation evidence.
+
+**D. Functional Mapping**
+
+| Layer | File / Symbol / Endpoint | Actual Responsibility | Evidence ID |
+|---|---|---|---|
+| UI | | | |
+| API | | | |
+| Controller | | | |
+| Service | | | |
+| Database | | | |
+| Test | | | |
+
+**E. State and Transition**
+
+| Current State | Action | Condition | Expected State | Actual State | Assessment |
+|---|---|---|---|---|---|
+
+**F. Business Rules**
+
+For every relevant rule, state expected behavior, actual behavior and evidence.
+
+**G. UI Semantics**
+
+| UI Element | Displayed Meaning | Actual System Meaning | Assessment |
+|---|---|---|---|
+
+**H. Cross-Layer Consistency**
+
+Compare frontend, API, service and database behavior.
+
+**I. Evidence**
+
+Provide exact file paths, symbols, line references when available, test names and source URLs.
+
+**J. Verdict**
+
+PASS / PARTIAL / SEMANTIC_MISMATCH / FAIL / UNABLE_TO_ESTABLISH.
+
+**K. Confidence and Limitations**
+
+Explain what has and has not been verified.
+
+</process_report_template>
+
+# SECTION 15 — FINAL REPORT STRUCTURE
+
+<final_report>
+
+The final report must begin with an executive summary.
+
+## 1. Executive Summary
+
+- Audit status.
+- Repository baseline.
+- Number of candidate domains.
+- Number implemented.
+- Number partially implemented.
+- Number UI-only.
+- Number not found.
+- Number not verified.
+- Number of processes audited.
+- Verdict distribution.
+- Critical and high-severity findings.
+- Major limitations.
+
+## 2. Scope and Methodology
+
+- Audit boundaries.
+- Evidence hierarchy.
+- Benchmark methodology.
+- Verification methods.
+
+## 3. Implementation Coverage
+
+Show all nine candidate domains and classifications.
+
+## 4. Detailed Business Process Audits
+
+Present complete findings for every eligible domain.
+
+## 5. UI Semantic Findings
+
+Present misleading, ambiguous or incorrect business information.
+
+## 6. Cross-Layer Data Integrity
+
+Present quantity, monetary, status and historical discrepancies.
+
+## 7. Industry Benchmark Reconciliation
+
+Include only applicable, verifiable comparisons.
+
+## 8. Test and Runtime Evidence
+
+Separate static inspection, test execution and runtime verification.
+
+## 9. Consolidated Findings
+
+Rank by demonstrated business impact.
+
+## 10. Adversarial Review
+
+Show which conclusions survived independent challenge.
+
+## 11. Unverified Areas
+
+List every material uncertainty and its impact.
+
+## 12. Final Verdict Matrix
+
+One row per audited business process.
+
+## 13. Final Audit Conclusion
+
+State what is demonstrably correct, incomplete, misleading or incorrect.
+
+Do not hide unresolved evidence behind a broad overall score.
+
+</final_report>
+
+# SECTION 16 — FINAL COMPLETION GATE
+
+<completion_gate>
+
+The audit may be marked COMPLETE only when:
+
+1. Repository identity and baseline are established.
+2. All nine candidate domains have implementation classifications.
+3. Every eligible domain has been audited or has a documented evidence-backed blocker.
+4. Applicable business workflows have been reconstructed.
+5. Functional execution paths have been traced.
+6. UI semantics have been assessed.
+7. Cross-layer consistency has been assessed.
+8. Applicable benchmark references are traceable.
+9. Test and runtime claims are accurate.
+10. Every material finding has supporting evidence.
+11. Adversarial self-review is complete.
+12. All deliverables are reconciled.
+13. No prohibited modification occurred.
+
+If any required condition cannot be satisfied:
+
+AUDIT STATUS: PARTIALLY COMPLETED.
+
+If repository access or another fundamental prerequisite prevents meaningful work:
+
+AUDIT STATUS: BLOCKED.
+
+Never claim COMPLETE merely because all report sections contain text.
+
+</completion_gate>
+
+# SECTION 17 — EXECUTION COMMAND
+
+<execute>
+
+BEGIN PHASE 0 IMMEDIATELY.
+
+Operate as an independent forensic auditor.
+
+Use only capabilities actually available in this Google AI Studio session.
+
+Verify repository access before making repository-specific claims.
+
+Perform the audit sequentially.
+
+Do not request approval for ordinary, safe, read-only inspection.
+
+Do not skip evidence collection.
+
+Do not produce speculative conclusions to fill report sections.
+
+Do not modify source code or production data.
+
+Prioritize correctness over speed.
+
+At every phase boundary, preserve the evidence register and checkpoint when the environment supports it.
+
+Continue until the completion gate is satisfied or a documented blocker prevents further work.
+
+Your final output must be:
+
+- Evidence-backed.
+- Source-faithful.
+- Reproducible.
+- Internally consistent.
+- Independently challengeable.
+- Transparent about verification limitations.
+
+The objective is not to prove RetailFlow is correct.
+
+The objective is to establish what is actually correct, incomplete, misleading, incorrect or impossible to verify.
+
+EXECUTE NOW.
+
+</execute>

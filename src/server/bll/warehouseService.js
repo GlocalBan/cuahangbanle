@@ -590,6 +590,22 @@ class WarehouseService {
         );
       }
 
+      // F-01A: Mutual exclusion — block direct PO receiving if any active GRN or AP payable already exists
+      const activeGrns = this.repos.supplierOps
+        ? this.repos.supplierOps.listGrns({ purchaseId: id }).filter((g) => g.status !== 'DaHuy')
+        : [];
+      if (activeGrns.length > 0) {
+        throw new ConflictException(
+          `Phiếu nhập "${id}" đã có ${activeGrns.length} phiếu nhận hàng (GRN), không thể duyệt nhập kho trực tiếp theo PO để tránh ghi nhận tồn kho và công nợ hai lần (F-01A).`,
+        );
+      }
+      const existingPayable = this.repos.supplierOps ? this.repos.supplierOps.findPayableByPurchase(id) : null;
+      if (existingPayable) {
+        throw new ConflictException(
+          `Phiếu nhập "${id}" đã phát sinh công nợ NCC (${existingPayable.id}), không thể xác nhận nhập kho lặp lại (F-01A).`,
+        );
+      }
+
       const supplier = this.repos.suppliers.findById(existing.supplier_id);
       assertRule(
         supplier && supplier.status === 'HoatDong',
@@ -727,6 +743,27 @@ class WarehouseService {
         throw new ConflictException(`Phiếu nhập "${id}" đã bị hủy trước đó.`);
       }
 
+      // F-01B: Block cancellation once partial/full receipt or AP payable exists
+      const approvedReceivedMap = this.repos.purchases.getCumulativeReceivedMap(id, { approvedOnly: true });
+      let totalApprovedReceivedQty = 0;
+      for (const qty of approvedReceivedMap.values()) totalApprovedReceivedQty += Number(qty) || 0;
+      const existingGrns = this.repos.supplierOps ? this.repos.supplierOps.listGrns({ purchaseId: id }) : [];
+      const hasApprovedGrn = existingGrns.some((g) => g.status === 'DaDuyet');
+      const existingPayable = this.repos.supplierOps ? this.repos.supplierOps.findPayableByPurchase(id) : null;
+      if (existing.status === 'DangNhanHang' || totalApprovedReceivedQty > 0 || hasApprovedGrn || existingPayable) {
+        throw new ConflictException(
+          `Phiếu nhập "${id}" đã phát sinh nhận hàng (SL đã nhận: ${totalApprovedReceivedQty}) hoặc công nợ NCC${existingPayable ? ` (${existingPayable.id})` : ''}, không thể hủy sang trạng thái Cancelled để tránh mồ côi tồn kho và công nợ (F-01B).`,
+        );
+      }
+
+      // Cancel any remaining unapproved (ChoDuyet) GRNs atomically so none linger on a Cancelled PO
+      for (const pendingGrn of existingGrns.filter((g) => g.status === 'ChoDuyet')) {
+        this.repos.supplierOps.updateGrnStatus(pendingGrn.id, 'DaHuy', {
+          approved_by: actor.id,
+          confirmed_at: new Date().toISOString(),
+        });
+      }
+
       const cleanReason = String(reason || '').trim();
       const nextNote = cleanReason
         ? `${existing.note ? `${existing.note} · ` : ''}Lý do hủy: ${cleanReason}`
@@ -743,8 +780,8 @@ class WarehouseService {
         action: 'PURCHASE_CANCEL',
         entityType: 'Purchase',
         entityId: id,
-        detail: `Hủy phiếu nhập nháp ${id}${cleanReason ? ` (Lý do: ${cleanReason})` : ''}`,
-        before: { status: 'Draft' },
+        detail: `Hủy phiếu nhập ${id} (từ ${existing.status})${cleanReason ? ` (Lý do: ${cleanReason})` : ''}`,
+        before: { status: existing.status },
         after: { status: 'Cancelled', reason: cleanReason },
       });
 
@@ -1734,11 +1771,17 @@ class WarehouseService {
     const updated = withTransaction(this.db, () => {
       const existing = this.repos.purchases.findById(id);
       if (!existing) throw new NotFoundException(`Không tìm thấy đơn đặt hàng mã "${id}".`);
-      if (!['GuiNCC', 'NCCPhanHoi', 'ThuongLuong'].includes(existing.status)) {
-        throw new ConflictException(`PO "${id}" ở trạng thái ${existing.status}, không thể chốt thống nhất.`);
+      const prevRounds = this.repos.supplierOps.listNegotiations(id);
+      const hasSupplierResponse = prevRounds.some((r) =>
+        ['SUPPLIER_COUNTER', 'SUPPLIER_ACCEPT'].includes(r.action),
+      );
+      // F-01C: Require recorded supplier response before store can finalize DaThongNhat
+      if (existing.status !== 'NCCPhanHoi' || !hasSupplierResponse) {
+        throw new ConflictException(
+          `PO "${id}" đang ở trạng thái ${existing.status} và chưa có phản hồi xác nhận từ Nhà cung cấp. Chỉ được chốt thống nhất khi NCC đã phản hồi (NCCPhanHoi) hoặc NCC tự xác nhận ACCEPT (F-01C).`,
+        );
       }
       const note = String(input?.note || '').trim();
-      const prevRounds = this.repos.supplierOps.listNegotiations(id);
       const roundNo = prevRounds.length + 1;
       const po = this.repos.purchases.updateNegotiationTerms(id, { status: 'DaThongNhat' });
       this.repos.supplierOps.addNegotiation({
@@ -1832,80 +1875,90 @@ class WarehouseService {
   createGoodsReceipt(actor, input = {}) {
     const purchaseId = String(input?.purchaseId || input?.purchase_id || '').trim();
     assertRule(purchaseId.length > 0, 'Vui lòng chọn mã Đơn đặt hàng (PO) cần nhận hàng.', 400);
-    const po = this.repos.purchases.findById(purchaseId);
-    if (!po) throw new NotFoundException(`Không tìm thấy đơn đặt hàng mã "${purchaseId}".`);
-    assertRule(
-      ['DaThongNhat', 'DangNhanHang', 'Draft'].includes(po.status),
-      `PO "${purchaseId}" đang ở trạng thái ${po.status}, không thể lập phiếu nhận hàng (GRN).`,
-      400,
-    );
-
     const rawItems = Array.isArray(input?.items) ? input.items : [];
     assertRule(rawItems.length >= 1, 'Phiếu nhận hàng (GRN) phải có tối thiểu 1 mặt hàng.', 400);
 
-    const poItemMap = new Map(po.items.map((i) => [i.product_id, i]));
-    const alreadyMap = this.repos.purchases.getCumulativeReceivedMap(purchaseId, { approvedOnly: false });
-    const warnPct = this._getPriceDeviationWarnPct();
-    const today = todayYmdVn();
     const warnings = [];
-    const normalized = [];
-    let totalReceivedAmount = 0;
-
-    for (const raw of rawItems) {
-      const productId = String(raw?.productId || raw?.product_id || '').trim();
-      const poItem = poItemMap.get(productId);
-      assertRule(Boolean(poItem), `Sản phẩm "${productId}" không thuộc đơn đặt hàng "${purchaseId}".`, 400);
-      const product = this.repos.products.findById(productId);
-
-      const receivedQty = parseNonNegativeInt(raw?.receivedQty ?? raw?.received_qty, `SL nhận của ${poItem.product_name}`);
-      const rejectedQty = parseNonNegativeInt(raw?.rejectedQty ?? raw?.rejected_qty ?? 0, `SL từ chối QC của ${poItem.product_name}`);
-      assertRule(receivedQty + rejectedQty > 0, `Dòng "${poItem.product_name}" phải có SL nhận hoặc SL từ chối > 0.`, 400);
-
-      const alreadyReceived = alreadyMap.get(productId) || 0;
-      const maxCanReceive = Math.max(0, Number(poItem.qty) - alreadyReceived);
-      assertRule(
-        receivedQty <= maxCanReceive,
-        `Sản phẩm "${poItem.product_name}" chỉ còn chờ nhận ${maxCanReceive} (đặt ${poItem.qty}, đã lập GRN ${alreadyReceived}), không thể nhận ${receivedQty}.`,
-        400,
-      );
-
-      const unitCost = parseNonNegativeInt(
-        raw?.unitCost !== undefined ? raw.unitCost : poItem.unit_cost,
-        `Đơn giá nhận của ${poItem.product_name}`,
-      );
-      const expiryDate = String(raw?.expiryDate ?? raw?.expiry_date ?? poItem.expiry_date ?? '').trim();
-      const mfgDate = String(raw?.mfgDate ?? raw?.mfg_date ?? poItem.mfg_date ?? '').trim();
-      const batchCode = String(raw?.batchCode ?? raw?.batch_code ?? poItem.batch_code ?? '').trim();
-
-      if (receivedQty > 0 && Number(product?.has_expiry ?? 1) === 1) {
-        assertRule(isValidIsoYmd(expiryDate), `Sản phẩm "${poItem.product_name}" bắt buộc nhập Hạn sử dụng (YYYY-MM-DD).`, 400);
-        assertRule(expiryDate > today, `Hạn sử dụng (${expiryDate}) của "${poItem.product_name}" phải lớn hơn hôm nay (${today}).`, 400);
-      }
-
-      if (unitCost === 0) {
-        warnings.push(`${poItem.sku}: Đơn giá nhập 0 ₫ (hàng tặng / khuyến mãi).`);
-      } else if (Number(product?.cost_price) > 0) {
-        const pct = Math.abs(unitCost - Number(product.cost_price)) / Number(product.cost_price) * 100;
-        if (pct > warnPct) {
-          warnings.push(`${poItem.sku}: Đơn giá nhận lệch ${pct.toFixed(1)}% so với giá vốn hiện tại.`);
-        }
-      }
-
-      totalReceivedAmount += receivedQty * unitCost;
-      normalized.push({
-        product_id: productId,
-        ordered_qty: Number(poItem.qty),
-        received_qty: receivedQty,
-        rejected_qty: rejectedQty,
-        unit_cost: unitCost,
-        batch_code: batchCode,
-        mfg_date: mfgDate,
-        expiry_date: expiryDate,
-        qc_note: String(raw?.qcNote || raw?.qc_note || '').trim(),
-      });
-    }
-
     const created = withTransaction(this.db, () => {
+      const po = this.repos.purchases.findById(purchaseId);
+      if (!po) throw new NotFoundException(`Không tìm thấy đơn đặt hàng mã "${purchaseId}".`);
+      // F-01A: Disallow creating GRN against Draft, Cancelled, Confirmed, or unagreed POs
+      if (!['DaThongNhat', 'DangNhanHang'].includes(po.status)) {
+        throw new ConflictException(
+          `PO "${purchaseId}" đang ở trạng thái ${po.status}. Chỉ được lập phiếu nhận hàng (GRN) cho PO đã thống nhất (DaThongNhat) hoặc đang nhận hàng (DangNhanHang) (F-01A).`,
+        );
+      }
+      const directPoPayable = this.db
+        .prepare('SELECT id FROM supplier_payables WHERE purchase_id = ? AND receipt_id IS NULL LIMIT 1')
+        .get(purchaseId);
+      if (directPoPayable) {
+        throw new ConflictException(
+          `PO "${purchaseId}" đã được xác nhận nhập kho trực tiếp (${directPoPayable.id}), không thể lập thêm GRN (F-01A).`,
+        );
+      }
+
+      const poItemMap = new Map(po.items.map((i) => [i.product_id, i]));
+      const alreadyMap = this.repos.purchases.getCumulativeReceivedMap(purchaseId, { approvedOnly: false });
+      const warnPct = this._getPriceDeviationWarnPct();
+      const today = todayYmdVn();
+      const normalized = [];
+      let totalReceivedAmount = 0;
+
+      for (const raw of rawItems) {
+        const productId = String(raw?.productId || raw?.product_id || '').trim();
+        const poItem = poItemMap.get(productId);
+        assertRule(Boolean(poItem), `Sản phẩm "${productId}" không thuộc đơn đặt hàng "${purchaseId}".`, 400);
+        const product = this.repos.products.findById(productId);
+
+        const receivedQty = parseNonNegativeInt(raw?.receivedQty ?? raw?.received_qty, `SL nhận của ${poItem.product_name}`);
+        const rejectedQty = parseNonNegativeInt(raw?.rejectedQty ?? raw?.rejected_qty ?? 0, `SL từ chối QC của ${poItem.product_name}`);
+        assertRule(receivedQty + rejectedQty > 0, `Dòng "${poItem.product_name}" phải có SL nhận hoặc SL từ chối > 0.`, 400);
+
+        const alreadyReceived = alreadyMap.get(productId) || 0;
+        const maxCanReceive = Math.max(0, Number(poItem.qty) - alreadyReceived);
+        assertRule(
+          receivedQty <= maxCanReceive,
+          `Sản phẩm "${poItem.product_name}" chỉ còn chờ nhận ${maxCanReceive} (đặt ${poItem.qty}, đã lập GRN ${alreadyReceived}), không thể nhận ${receivedQty}.`,
+          400,
+        );
+        alreadyMap.set(productId, alreadyReceived + receivedQty);
+
+        const unitCost = parseNonNegativeInt(
+          raw?.unitCost !== undefined ? raw.unitCost : poItem.unit_cost,
+          `Đơn giá nhận của ${poItem.product_name}`,
+        );
+        const expiryDate = String(raw?.expiryDate ?? raw?.expiry_date ?? poItem.expiry_date ?? '').trim();
+        const mfgDate = String(raw?.mfgDate ?? raw?.mfg_date ?? poItem.mfg_date ?? '').trim();
+        const batchCode = String(raw?.batchCode ?? raw?.batch_code ?? poItem.batch_code ?? '').trim();
+
+        if (receivedQty > 0 && Number(product?.has_expiry ?? 1) === 1) {
+          assertRule(isValidIsoYmd(expiryDate), `Sản phẩm "${poItem.product_name}" bắt buộc nhập Hạn sử dụng (YYYY-MM-DD).`, 400);
+          assertRule(expiryDate > today, `Hạn sử dụng (${expiryDate}) của "${poItem.product_name}" phải lớn hơn hôm nay (${today}).`, 400);
+        }
+
+        if (unitCost === 0) {
+          warnings.push(`${poItem.sku}: Đơn giá nhập 0 ₫ (hàng tặng / khuyến mãi).`);
+        } else if (Number(product?.cost_price) > 0) {
+          const pct = (Math.abs(unitCost - Number(product.cost_price)) / Number(product.cost_price)) * 100;
+          if (pct > warnPct) {
+            warnings.push(`${poItem.sku}: Đơn giá nhận lệch ${pct.toFixed(1)}% so với giá vốn hiện tại.`);
+          }
+        }
+
+        totalReceivedAmount += receivedQty * unitCost;
+        normalized.push({
+          product_id: productId,
+          ordered_qty: Number(poItem.qty),
+          received_qty: receivedQty,
+          rejected_qty: rejectedQty,
+          unit_cost: unitCost,
+          batch_code: batchCode,
+          mfg_date: mfgDate,
+          expiry_date: expiryDate,
+          qc_note: String(raw?.qcNote || raw?.qc_note || '').trim(),
+        });
+      }
+
       const grn = this.repos.supplierOps.createGrn(
         {
           purchase_id: purchaseId,
@@ -1936,8 +1989,51 @@ class WarehouseService {
       if (grn.status !== 'ChoDuyet') {
         throw new ConflictException(`Chỉ được duyệt GRN ở trạng thái Chờ duyệt. Phiếu "${id}" đang là ${grn.status}.`);
       }
+      // F-01D: Enforce separation of duties (creator cannot approve their own GRN)
+      if (grn.received_by && grn.received_by === actor.id) {
+        throw new ForbiddenException(
+          `Người lập phiếu nhận hàng "${id}" không được tự duyệt phiếu của chính mình (nguyên tắc tách bạch nhiệm vụ — F-01D). Vui lòng để Quản lý / Admin khác xác nhận.`,
+        );
+      }
       const po = this.repos.purchases.findById(grn.purchase_id);
       if (!po) throw new NotFoundException(`Không tìm thấy PO "${grn.purchase_id}".`);
+      // F-01A: Re-validate PO status, mutual exclusion with direct PO AP, and cumulative received qty inside TX
+      if (!['DaThongNhat', 'DangNhanHang'].includes(po.status)) {
+        throw new ConflictException(
+          `Không thể duyệt GRN "${id}" vì PO "${po.id}" đang ở trạng thái ${po.status} (yêu cầu DaThongNhat hoặc DangNhanHang) (F-01A).`,
+        );
+      }
+      const directPoPayable = this.db
+        .prepare('SELECT id FROM supplier_payables WHERE purchase_id = ? AND receipt_id IS NULL LIMIT 1')
+        .get(po.id);
+      if (directPoPayable) {
+        throw new ConflictException(
+          `PO "${po.id}" đã phát sinh công nợ từ duyệt trực tiếp (${directPoPayable.id}), không thể duyệt thêm GRN "${id}" (F-01A).`,
+        );
+      }
+      const existingGrnPayable = this.repos.supplierOps.findPayableByReceipt(id);
+      if (existingGrnPayable) {
+        throw new ConflictException(
+          `GRN "${id}" đã phát sinh công nợ (${existingGrnPayable.id}), không thể duyệt lặp lại (F-01A).`,
+        );
+      }
+      const poItemMap = new Map(po.items.map((pi) => [pi.product_id, pi]));
+      const approvedBeforeMap = this.repos.purchases.getCumulativeReceivedMap(po.id, { approvedOnly: true });
+      for (const item of grn.items) {
+        const receivedQty = Number(item.received_qty) || 0;
+        if (receivedQty <= 0) continue;
+        const poItem = poItemMap.get(item.product_id);
+        if (!poItem) {
+          throw new ConflictException(`Sản phẩm "${item.product_id}" không tồn tại trong PO "${po.id}".`);
+        }
+        const approvedBefore = approvedBeforeMap.get(item.product_id) || 0;
+        if (approvedBefore + receivedQty > Number(poItem.qty)) {
+          throw new ConflictException(
+            `Không thể duyệt GRN "${id}": tổng SL nhận (${approvedBefore + receivedQty}) vượt quá SL đặt (${poItem.qty}) của "${poItem.product_name}" (F-01A).`,
+          );
+        }
+        approvedBeforeMap.set(item.product_id, approvedBefore + receivedQty);
+      }
 
       const nowIso = new Date().toISOString();
       const today = todayYmdVn();

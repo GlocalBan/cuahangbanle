@@ -1382,27 +1382,23 @@ class SalesService {
         const expiredBatches = this.repos.batches ? this.repos.batches.findExpiredByProduct(product.id, today) : [];
         const salableBatchQty = fefoBatches.reduce((s, b) => s + (Number(b.qty_remaining) || 0), 0);
         const expiredQty = expiredBatches.reduce((s, b) => s + (Number(b.qty_remaining) || 0), 0);
+        const hasBatchRows = fefoBatches.length > 0 || expiredBatches.length > 0;
+        const effectiveAvailable = hasBatchRows ? Math.min(availableStock, salableBatchQty) : availableStock;
 
-        if (fefoBatches.length > 0 || expiredBatches.length > 0) {
-          if (qty > salableBatchQty) {
-            if (expiredQty > 0) {
-              assertRule(
-                false,
-                `Sản phẩm "${product.name}" (${product.sku}) chỉ còn ${salableBatchQty} đv còn hạn sử dụng (đã khóa bán ${expiredQty} đv hết hạn — cần xuất hủy lô hết hạn). Không thể bán ${qty} đv.`,
-                400,
-              );
-            }
+        if (qty > effectiveAvailable) {
+          if (hasBatchRows && qty > salableBatchQty && expiredQty > 0) {
             assertRule(
               false,
-              `Không đủ tồn kho khả dụng cho "${product.name}" (${product.sku}): yêu cầu ${qty}, tồn còn hạn ${salableBatchQty}. Nghiêm cấm xuất âm kho (BR-03).`,
+              `Sản phẩm "${product.name}" (${product.sku}) chỉ còn ${salableBatchQty} đv còn hạn sử dụng (đã khóa bán ${expiredQty} đv hết hạn — cần xuất hủy lô hết hạn). Không thể bán ${qty} đv.`,
               400,
+              'INSUFFICIENT_STOCK',
             );
           }
-        } else {
           assertRule(
-            qty <= availableStock,
-            `Không đủ tồn kho cho "${product.name}" (${product.sku}): yêu cầu ${qty}, tồn khả dụng ${availableStock}. Nghiêm cấm xuất âm kho (BR-03).`,
+            false,
+            `Không đủ tồn kho khả dụng cho "${product.name}" (${product.sku}): yêu cầu ${qty}, tồn khả dụng ${effectiveAvailable}${hasBatchRows ? ` (tồn sổ ${availableStock}, tồn lô còn hạn ${salableBatchQty})` : ''}. Nghiêm cấm xuất âm kho (BR-03).`,
             400,
+            'INSUFFICIENT_STOCK',
           );
         }
 

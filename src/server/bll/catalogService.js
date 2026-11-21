@@ -33,6 +33,14 @@ function parseNonNegativeInt(value, label) {
   return n;
 }
 
+function todayYmdVn() {
+  return new Date(Date.now() + 7 * 3600000).toISOString().slice(0, 10);
+}
+
+function isValidIsoYmd(v) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(v || '').trim());
+}
+
 function getAvailableProductImages() {
   try {
     return fs
@@ -318,6 +326,16 @@ class CatalogService {
       throw new ConflictException(`Mã vạch "${barcode}" đã thuộc về sản phẩm khác (BR-01).`);
     }
 
+    const hasExpiry =
+      input?.hasExpiry === false ||
+      input?.hasExpiry === 0 ||
+      input?.hasExpiry === '0' ||
+      input?.has_expiry === false ||
+      input?.has_expiry === 0 ||
+      input?.has_expiry === '0'
+        ? 0
+        : 1;
+
     const created = withTransaction(this.db, () => {
       const prod = this.repos.products.create({
         id: finalId,
@@ -334,18 +352,21 @@ class CatalogService {
         stock_qty: stockQty,
         min_stock: minStock,
         image_url: imageUrl,
+        has_expiry: hasExpiry,
         status,
       });
 
       if (stockQty > 0) {
         let initialBatchCode = '';
         if (this.repos.batches) {
+          const today = todayYmdVn();
           const defaultExp = new Date(Date.now() + 365 * 86400000).toISOString().slice(0, 10);
+          const batchExpiry = hasExpiry === 1 ? String(input?.expiryDate || defaultExp).trim() : '';
           const batch = this.repos.batches.create({
             batchCode: `LO-DK-${prod.sku}`,
             productId: prod.id,
-            mfgDate: new Date().toISOString().slice(0, 10),
-            expiryDate: String(input?.expiryDate || defaultExp).trim(),
+            mfgDate: today,
+            expiryDate: batchExpiry,
             initialQty: stockQty,
             qtyRemaining: stockQty,
             unitCost: costPrice,
@@ -522,10 +543,7 @@ class CatalogService {
     );
   }
 
-  adjustProductStock(actor, id, input) {
-    const existing = this.repos.products.findById(id);
-    if (!existing) throw new NotFoundException(`Không tìm thấy sản phẩm mã "${id}".`);
-
+  adjustProductStock(actor, id, input, options = {}) {
     const note = String(input?.note || '').trim();
     assertRule(
       note.length >= 3 && note.length <= 250,
@@ -533,55 +551,165 @@ class CatalogService {
       400,
     );
 
-    let stockAfter;
-    let delta;
-    if (input?.newStock !== undefined && input?.newStock !== '') {
-      stockAfter = parseNonNegativeInt(input.newStock, 'Tồn kho mới');
-      delta = stockAfter - existing.stock_qty;
-    } else {
-      const parsedDelta = Number(input?.delta);
-      assertRule(
-        Number.isSafeInteger(parsedDelta) && parsedDelta !== 0,
-        'Số lượng biến động (delta) phải là số nguyên khác 0.',
-        400,
-      );
-      delta = parsedDelta;
-      stockAfter = existing.stock_qty + delta;
+    const requestedBatchId = String(input?.batchId || input?.batch_id || '').trim();
+    const requestedExpiry = String(input?.expiryDate || input?.expiry_date || '').trim();
+    const today = todayYmdVn();
+    if (requestedExpiry) {
+      assertRule(isValidIsoYmd(requestedExpiry), 'Hạn sử dụng lô điều chỉnh phải theo định dạng YYYY-MM-DD.', 400);
+      assertRule(requestedExpiry > today, `Hạn sử dụng (${requestedExpiry}) phải lớn hơn hôm nay (${today}).`, 400);
     }
 
-    assertRule(delta !== 0, 'Số lượng tồn kho mới trùng với tồn hiện tại, không phát sinh biến động.', 400);
-    assertRule(
-      stockAfter >= 0,
-      `Không thể xuất âm kho (BR-06): tồn hiện tại ${existing.stock_qty}, điều chỉnh ${delta} sẽ dẫn tới tồn âm (${stockAfter}).`,
-      400,
-      'NEGATIVE_STOCK_FORBIDDEN',
-    );
-
-    const docId = String(input?.docId || '').trim() || `ADJ-${existing.sku}-${Date.now().toString(36).toUpperCase().slice(-4)}`;
-
     const result = withTransaction(this.db, () => {
-      const updatedProd = this.repos.products.updateStock(id, stockAfter);
+      const existing = this.repos.products.findById(id);
+      if (!existing) throw new NotFoundException(`Không tìm thấy sản phẩm mã "${id}".`);
+
+      const stockBefore = Number(existing.stock_qty) || 0;
+      let stockAfter;
+      let delta;
+      if (input?.newStock !== undefined && input?.newStock !== '') {
+        stockAfter = parseNonNegativeInt(input.newStock, 'Tồn kho mới');
+        delta = stockAfter - stockBefore;
+      } else {
+        const parsedDelta = Number(input?.delta);
+        assertRule(
+          Number.isSafeInteger(parsedDelta) && parsedDelta !== 0,
+          'Số lượng biến động (delta) phải là số nguyên khác 0.',
+          400,
+        );
+        delta = parsedDelta;
+        stockAfter = stockBefore + delta;
+      }
+
+      assertRule(delta !== 0, 'Số lượng tồn kho mới trùng với tồn hiện tại, không phát sinh biến động.', 400);
+      assertRule(
+        stockAfter >= 0,
+        `Không thể xuất âm kho (BR-06): tồn hiện tại ${stockBefore}, điều chỉnh ${delta} sẽ dẫn tới tồn âm (${stockAfter}).`,
+        400,
+        'NEGATIVE_STOCK_FORBIDDEN',
+      );
+
+      const docId =
+        String(input?.docId || '').trim() ||
+        `ADJ-${existing.sku}-${Date.now().toString(36).toUpperCase().slice(-4)}`;
+
+      // F-02: product_batches is the canonical ledger; mutate batches & sync products.stock_qty atomically
+      const affectedBatchCodes = [];
+      let currentBatchSum = stockBefore;
+      if (this.repos.batches) {
+        const salableBatches = this.repos.batches.findSalableFefo(id, today);
+        currentBatchSum = salableBatches.reduce((s, b) => s + (Number(b.qty_remaining) || 0), 0);
+        const batchDelta = stockAfter - currentBatchSum;
+
+        if (batchDelta < 0) {
+          let remain = Math.abs(batchDelta);
+          if (requestedBatchId) {
+            const target = this.repos.batches.findById(requestedBatchId);
+            assertRule(Boolean(target) && target.product_id === id, `Lô hàng "${requestedBatchId}" không thuộc sản phẩm "${existing.sku}".`, 400);
+            assertRule(
+              !['HetHan', 'DaHuy', 'DaHet'].includes(target.status) && (!target.expiry_date || target.expiry_date > today),
+              `Lô hàng "${target.batch_code}" không ở trạng thái khả dụng để điều chỉnh giảm.`,
+              400,
+            );
+            const targetQty = Number(target.qty_remaining) || 0;
+            assertRule(
+              targetQty >= remain,
+              `Lô "${target.batch_code}" chỉ còn ${targetQty}, không thể điều chỉnh giảm ${remain}.`,
+              400,
+              'NEGATIVE_STOCK_FORBIDDEN',
+            );
+            const afterQty = targetQty - remain;
+            this.repos.batches.updateQtyAndStatus(target.id, afterQty, afterQty === 0 ? 'DaHet' : target.status);
+            affectedBatchCodes.push(target.batch_code);
+          } else {
+            assertRule(
+              currentBatchSum >= remain,
+              `Tổng tồn các lô khả dụng (${currentBatchSum}) không đủ để giảm ${remain} (BR-06).`,
+              400,
+              'NEGATIVE_STOCK_FORBIDDEN',
+            );
+            for (const b of salableBatches) {
+              if (remain <= 0) break;
+              const bQty = Number(b.qty_remaining) || 0;
+              const take = Math.min(remain, bQty);
+              if (take > 0) {
+                const afterQty = bQty - take;
+                this.repos.batches.updateQtyAndStatus(b.id, afterQty, afterQty === 0 ? 'DaHet' : b.status);
+                affectedBatchCodes.push(b.batch_code);
+                remain -= take;
+              }
+            }
+          }
+        } else if (batchDelta > 0) {
+          if (requestedBatchId) {
+            const target = this.repos.batches.findById(requestedBatchId);
+            assertRule(Boolean(target) && target.product_id === id, `Lô hàng "${requestedBatchId}" không thuộc sản phẩm "${existing.sku}".`, 400);
+            assertRule(
+              !['HetHan', 'DaHuy'].includes(target.status) && (!target.expiry_date || target.expiry_date > today),
+              `Lô hàng "${target.batch_code}" đã hết hạn hoặc bị hủy, không thể điều chỉnh tăng.`,
+              400,
+            );
+            const nextQty = (Number(target.qty_remaining) || 0) + batchDelta;
+            this.repos.batches.updateQtyAndStatus(target.id, nextQty, target.status === 'DaHet' ? 'ConHan' : target.status);
+            affectedBatchCodes.push(target.batch_code);
+          } else if (Number(existing.has_expiry) === 0 && salableBatches.length > 0) {
+            const target = salableBatches.find((b) => !b.expiry_date) || salableBatches[salableBatches.length - 1];
+            const nextQty = (Number(target.qty_remaining) || 0) + batchDelta;
+            this.repos.batches.updateQtyAndStatus(target.id, nextQty, target.status === 'DaHet' ? 'ConHan' : target.status);
+            affectedBatchCodes.push(target.batch_code);
+          } else {
+            const adjBatch = this.repos.batches.create({
+              batchCode: docId,
+              productId: id,
+              mfgDate: today,
+              expiryDate: Number(existing.has_expiry) === 1 && requestedExpiry ? requestedExpiry : '',
+              initialQty: batchDelta,
+              qtyRemaining: batchDelta,
+              unitCost: Number(existing.cost_price) || 0,
+              status: 'ConHan',
+            });
+            affectedBatchCodes.push(adjBatch.batch_code);
+          }
+        }
+
+        const syncedStock = this.repos.batches.syncProductSalableStock(id, today);
+        assertRule(
+          syncedStock === stockAfter,
+          `Lỗi đồng bộ tồn kho giữa products (${stockAfter}) và product_batches (${syncedStock}).`,
+          500,
+        );
+      } else {
+        this.repos.products.updateStock(id, stockAfter);
+      }
+
+      const batchCodeRef = affectedBatchCodes.join(', ');
       const movement = this.repos.stockMovements.append({
         productId: id,
-        stockBefore: existing.stock_qty,
+        stockBefore,
         delta,
         stockAfter,
         docType: 'DIEU_CHINH_TON',
         docId,
+        batchCode: batchCodeRef,
         actorId: actor.id,
         actorName: actor.full_name,
-        note,
+        note: batchCodeRef ? `${note} (Lô: ${batchCodeRef})` : note,
       });
+
       this.repos.auditLogs.append({
         actor,
         action: 'STOCK_ADJUST',
         entityType: 'Product',
         entityId: id,
-        detail: `Điều chỉnh tồn ${existing.sku}: ${existing.stock_qty} → ${stockAfter} (${delta > 0 ? '+' : ''}${delta}). Lý do: ${note}`,
-        before: { stockQty: existing.stock_qty },
-        after: { stockQty: stockAfter, movementId: movement.id },
+        detail: `Điều chỉnh tồn ${existing.sku}: ${stockBefore} → ${stockAfter} (${delta > 0 ? '+' : ''}${delta})${batchCodeRef ? ` · Lô ${batchCodeRef}` : ''}. Lý do: ${note}`,
+        before: { stockQty: stockBefore, batchQty: currentBatchSum },
+        after: { stockQty: stockAfter, batchQty: stockAfter, batchCodes: affectedBatchCodes, movementId: movement.id },
       });
-      return { product: updatedProd, movement };
+
+      if (typeof options._beforeCommitHook === 'function') {
+        options._beforeCommitHook();
+      }
+
+      return { product: this.repos.products.findById(id), movement };
     });
 
     return {
