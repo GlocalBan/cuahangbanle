@@ -205,6 +205,10 @@ document.addEventListener('submit', async (event) => {
             phone: (v.phone || '').trim(),
             categoryGroup: (v.categoryGroup || '').trim(),
             areas: (v.areas || '').trim(),
+            paymentTermsDays:
+              v.paymentTermsDays !== undefined && String(v.paymentTermsDays).trim() !== ''
+                ? Number(v.paymentTermsDays)
+                : 30,
           };
           if (modalContext.id) {
             if (v.status) payload.status = v.status;

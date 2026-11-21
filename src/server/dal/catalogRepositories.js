@@ -198,7 +198,7 @@ class SupplierRepository {
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     return this.db
       .prepare(
-        `SELECT s.id, s.name, s.phone, s.category_group, s.areas, s.status, s.created_at,
+        `SELECT s.id, s.name, s.phone, s.category_group, s.areas, s.payment_terms_days, s.status, s.created_at,
                 (SELECT COUNT(*) FROM products p WHERE p.supplier_id = s.id) AS product_count,
                 (SELECT COUNT(*) FROM purchases pu WHERE pu.supplier_id = s.id) AS purchase_count
          FROM suppliers s
@@ -212,7 +212,7 @@ class SupplierRepository {
     return (
       this.db
         .prepare(
-          `SELECT s.id, s.name, s.phone, s.category_group, s.areas, s.status, s.created_at,
+          `SELECT s.id, s.name, s.phone, s.category_group, s.areas, s.payment_terms_days, s.status, s.created_at,
                   (SELECT COUNT(*) FROM products p WHERE p.supplier_id = s.id) AS product_count,
                   (SELECT COUNT(*) FROM purchases pu WHERE pu.supplier_id = s.id) AS purchase_count
            FROM suppliers s WHERE s.id = ?`,
@@ -235,15 +235,15 @@ class SupplierRepository {
     return `NCC${String(maxNum + 1).padStart(3, '0')}`;
   }
 
-  create({ id, name, phone = '', category_group = '', areas = '', status = 'HoatDong' }) {
+  create({ id, name, phone = '', category_group = '', areas = '', payment_terms_days = 30, status = 'HoatDong' }) {
     const nowIso = new Date().toISOString();
     const finalId = id || this.nextId();
     this.db
       .prepare(
-        `INSERT INTO suppliers (id, name, phone, category_group, areas, status, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO suppliers (id, name, phone, category_group, areas, payment_terms_days, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(finalId, name, phone, category_group, areas, status, nowIso);
+      .run(finalId, name, phone, category_group, areas, payment_terms_days, status, nowIso);
     this.db
       .prepare(`INSERT OR IGNORE INTO branch_suppliers (branch_id, supplier_id) VALUES ('CN001', ?)`)
       .run(finalId);
@@ -253,7 +253,7 @@ class SupplierRepository {
   update(id, fields) {
     const sets = [];
     const params = [];
-    for (const key of ['name', 'phone', 'category_group', 'areas', 'status']) {
+    for (const key of ['name', 'phone', 'category_group', 'areas', 'payment_terms_days', 'status']) {
       if (fields[key] !== undefined) {
         sets.push(`${key} = ?`);
         params.push(fields[key]);

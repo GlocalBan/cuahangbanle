@@ -159,14 +159,29 @@ function toUnitDto(row) {
   };
 }
 
+function parsePaymentTermsDays(raw, fallback = 30) {
+  if (raw === undefined || raw === null || raw === '') return fallback;
+  const num = typeof raw === 'number' ? raw : Number(String(raw).trim());
+  assertRule(
+    Number.isInteger(num) && num >= 0 && num <= 365,
+    'Hạn công nợ (ngày) phải là số nguyên từ 0 đến 365.',
+    400,
+    'INVALID_PAYMENT_TERMS_DAYS',
+  );
+  return num;
+}
+
 function toSupplierDto(row) {
   if (!row) return null;
+  const rawTerms = row.payment_terms_days;
+  const termsNum = rawTerms !== undefined && rawTerms !== null ? Number(rawTerms) : 30;
   return {
     id: row.id,
     name: row.name,
     phone: row.phone || '',
     categoryGroup: row.category_group || '',
     areas: row.areas || '',
+    paymentTermsDays: Number.isInteger(termsNum) && termsNum >= 0 && termsNum <= 365 ? termsNum : 30,
     status: row.status,
     active: row.status === 'HoatDong',
     productCount: Number(row.product_count || 0),
@@ -903,6 +918,7 @@ class CatalogService {
     const phone = String(input?.phone || '').trim();
     const categoryGroup = String(input?.categoryGroup ?? input?.category ?? '').trim();
     const areas = String(input?.areas || '').trim();
+    const paymentTermsDays = parsePaymentTermsDays(input?.paymentTermsDays ?? input?.payment_terms_days, 30);
 
     assertRule(name.length >= 2 && name.length <= 150, 'Tên nhà cung cấp phải từ 2 đến 150 ký tự.', 400);
     assertRule(phone.length >= 8 && phone.length <= 24, 'Số điện thoại nhà cung cấp phải từ 8 đến 24 ký tự.', 400);
@@ -919,6 +935,7 @@ class CatalogService {
         phone,
         category_group: categoryGroup,
         areas,
+        payment_terms_days: paymentTermsDays,
         status: 'HoatDong',
       });
       this.repos.auditLogs.append({
@@ -926,7 +943,7 @@ class CatalogService {
         action: 'SUPPLIER_CREATE',
         entityType: 'Supplier',
         entityId: sup.id,
-        detail: `Thêm nhà cung cấp ${sup.id} — ${sup.name} (${sup.phone})`,
+        detail: `Thêm nhà cung cấp ${sup.id} — ${sup.name} (${sup.phone}, hạn công nợ ${paymentTermsDays} ngày)`,
         after: sup,
       });
       return sup;
@@ -948,6 +965,14 @@ class CatalogService {
           : existing.category_group;
     const areas = input?.areas !== undefined ? String(input.areas).trim() : existing.areas;
     const status = input?.status !== undefined ? input.status : existing.status;
+    const existingTerms =
+      existing.payment_terms_days !== undefined && existing.payment_terms_days !== null
+        ? Number(existing.payment_terms_days)
+        : 30;
+    const hasTermsInput = input?.paymentTermsDays !== undefined || input?.payment_terms_days !== undefined;
+    const paymentTermsDays = hasTermsInput
+      ? parsePaymentTermsDays(input?.paymentTermsDays ?? input?.payment_terms_days, existingTerms)
+      : existingTerms;
 
     assertRule(name.length >= 2 && name.length <= 150, 'Tên nhà cung cấp phải từ 2 đến 150 ký tự.', 400);
     assertRule(phone.length >= 8 && phone.length <= 24, 'Số điện thoại nhà cung cấp không hợp lệ.', 400);
@@ -964,6 +989,7 @@ class CatalogService {
         phone,
         category_group: categoryGroup,
         areas,
+        payment_terms_days: paymentTermsDays,
         status,
       });
       this.repos.auditLogs.append({
@@ -971,9 +997,14 @@ class CatalogService {
         action: 'SUPPLIER_UPDATE',
         entityType: 'Supplier',
         entityId: id,
-        detail: `Cập nhật nhà cung cấp ${id} — ${name} (${status})`,
-        before: { name: existing.name, phone: existing.phone, status: existing.status },
-        after: { name, phone, status },
+        detail: `Cập nhật nhà cung cấp ${id} — ${name} (${status}, hạn công nợ ${paymentTermsDays} ngày)`,
+        before: {
+          name: existing.name,
+          phone: existing.phone,
+          payment_terms_days: existingTerms,
+          status: existing.status,
+        },
+        after: { name, phone, payment_terms_days: paymentTermsDays, status },
       });
       return next;
     });

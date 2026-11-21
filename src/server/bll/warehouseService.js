@@ -718,9 +718,10 @@ class WarehouseService {
         confirmed_at: nowIso,
       });
 
-      // Tự động ghi nhận công nợ phải trả NCC (AP) khi xác nhận nhập kho
+      // Tự động ghi nhận công nợ phải trả NCC (AP) khi xác nhận nhập kho (F-06D: hạn theo từng NCC)
       if (this.repos.supplierOps && Number(existing.total_amount) > 0) {
-        const dueDate = addDaysYmd(todayYmdVn(), 15);
+        const paymentTermsDays = this._resolveSupplierPaymentTermsDays(supplier);
+        const dueDate = addDaysYmd(todayYmdVn(), paymentTermsDays);
         this.repos.supplierOps.createPayable({
           supplierId: existing.supplier_id,
           purchaseId: id,
@@ -2117,14 +2118,16 @@ class WarehouseService {
         confirmed_at: nowIso,
       });
 
-      // Tự động tạo công nợ phải trả NCC cho đợt giao hàng này
+      // Tự động tạo công nợ phải trả NCC cho đợt giao hàng này (F-06D: hạn theo từng NCC, mặc định 30 ngày)
       if (Number(grn.total_received_amount) > 0) {
+        const grnSupplier = this.repos.suppliers.findById(grn.supplier_id);
+        const paymentTermsDays = this._resolveSupplierPaymentTermsDays(grnSupplier);
         this.repos.supplierOps.createPayable({
           supplierId: grn.supplier_id,
           purchaseId: grn.purchase_id,
           receiptId: id,
           totalAmount: Number(grn.total_received_amount),
-          dueDate: addDaysYmd(today, 15),
+          dueDate: addDaysYmd(today, paymentTermsDays),
           note: `Công nợ phát sinh từ GRN ${id} (PO ${grn.purchase_id})`,
         });
       }
@@ -2153,6 +2156,12 @@ class WarehouseService {
   }
 
   // ─── SUPPLIER PAYABLES (CÔNG NỢ NCC — AP) ──────────────────────────────────
+
+  _resolveSupplierPaymentTermsDays(supplier) {
+    const raw = supplier?.payment_terms_days;
+    const parsed = raw !== undefined && raw !== null ? Number(raw) : 30;
+    return Number.isInteger(parsed) && parsed >= 0 && parsed <= 365 ? parsed : 30;
+  }
 
   _toPayableDto(row) {
     const today = todayYmdVn();

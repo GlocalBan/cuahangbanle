@@ -861,3 +861,159 @@ test('P2-UAT-02: Frontend monetary HTML5 number inputs use step="1" (zero step >
   assert.match(paymentsUi, /id="cash-input" required min="0" step="1"/);
 });
 
+// ============================================================================
+// F-06D: PER-SUPPLIER CONFIGURABLE PAYMENT TERMS DAYS (0..365, DEFAULT 30)
+// ============================================================================
+
+test('P2-F06D-01: Per-supplier paymentTermsDays (+15d via GRN and +45d via PO confirm) controls supplier_payables.due_date', async () => {
+  const srv = await startTestServer();
+  try {
+    const managerToken = await srv.loginAs('quanly');
+    const warehouseToken = await srv.loginAs('kho');
+    const nccToken = await srv.loginAs('ncc01');
+
+    // Configure NCC003 (portal-linked to ncc01) -> 15 days, NCC001 -> 45 days
+    const u1 = await srv.reqJson('PUT', '/api/suppliers/NCC003', {
+      token: managerToken,
+      body: { paymentTermsDays: 15 },
+    });
+    assert.equal(u1.status, 200, JSON.stringify(u1.data));
+    assert.equal(u1.data.item.paymentTermsDays, 15);
+
+    const u2 = await srv.reqJson('PUT', '/api/suppliers/NCC001', {
+      token: managerToken,
+      body: { paymentTermsDays: 45 },
+    });
+    assert.equal(u2.status, 200, JSON.stringify(u2.data));
+    assert.equal(u2.data.item.paymentTermsDays, 45);
+
+    // Path A: Two-way PO -> ncc01 ACCEPT -> GRN -> confirmGoodsReceipt (NCC003, +15 days)
+    const poGrn = await srv.reqJson('POST', '/api/purchases', {
+      token: warehouseToken,
+      body: {
+        supplierId: 'NCC003',
+        note: 'PO F-06D GRN +15d',
+        items: [{ productId: 'SP006', qty: 5, unitCost: 45000, expiryDate: addDaysYmd(180) }],
+      },
+    });
+    assert.equal(poGrn.status, 201, JSON.stringify(poGrn.data));
+    const poGrnId = poGrn.data.item.id;
+    assert.equal(
+      (await srv.reqJson('POST', `/api/purchases/${poGrnId}/send`, { token: warehouseToken, body: {} })).status,
+      200,
+    );
+    assert.equal(
+      (await srv.reqJson('POST', `/api/purchases/${poGrnId}/respond`, { token: nccToken, body: { action: 'ACCEPT' } })).status,
+      200,
+    );
+    const grn = await srv.reqJson('POST', '/api/grns', {
+      token: warehouseToken,
+      body: {
+        purchaseId: poGrnId,
+        note: 'GRN F-06D +15d',
+        items: [
+          {
+            productId: 'SP006',
+            receivedQty: 5,
+            rejectedQty: 0,
+            unitCost: 45000,
+            batchCode: 'LOT-F06D-NCC003',
+            expiryDate: addDaysYmd(180),
+          },
+        ],
+      },
+    });
+    assert.equal(grn.status, 201, JSON.stringify(grn.data));
+    const grnId = grn.data.item.id;
+    const grnConf = await srv.reqJson('POST', `/api/grns/${grnId}/confirm`, { token: managerToken });
+    assert.equal(grnConf.status, 200, JSON.stringify(grnConf.data));
+    const ap15 = srv.db.prepare('SELECT * FROM supplier_payables WHERE receipt_id = ?').get(grnId);
+    assert.ok(ap15, 'Payable for NCC003 GRN must exist');
+    assert.equal(ap15.due_date, addDaysYmd(15), `Expected +15d (${addDaysYmd(15)}), got ${ap15.due_date}`);
+
+    // Path B: Direct PO confirmPurchase (NCC001, +45 days)
+    const poDirect = await srv.reqJson('POST', '/api/purchases', {
+      token: warehouseToken,
+      body: {
+        supplierId: 'NCC001',
+        note: 'PO F-06D Direct +45d',
+        items: [{ productId: 'SP001', qty: 5, unitCost: 22000, expiryDate: addDaysYmd(180) }],
+      },
+    });
+    assert.equal(poDirect.status, 201, JSON.stringify(poDirect.data));
+    const poDirectId = poDirect.data.item.id;
+    const poConf = await srv.reqJson('POST', `/api/purchases/${poDirectId}/confirm`, { token: managerToken });
+    assert.equal(poConf.status, 200, JSON.stringify(poConf.data));
+    const ap45 = srv.db.prepare('SELECT * FROM supplier_payables WHERE purchase_id = ?').get(poDirectId);
+    assert.ok(ap45, 'Payable for NCC001 PO must exist');
+    assert.equal(ap45.due_date, addDaysYmd(45), `Expected +45d (${addDaysYmd(45)}), got ${ap45.due_date}`);
+  } finally {
+    await srv.close();
+  }
+});
+
+test('P2-F06D-02: Invalid paymentTermsDays (-5, 500, 12.5) rejected with 400; legacy/default supplier uses 30 days', async () => {
+  const srv = await startTestServer();
+  try {
+    const managerToken = await srv.loginAs('quanly');
+    const warehouseToken = await srv.loginAs('kho');
+
+    // Reject out-of-range / non-integer values on update & create
+    for (const badVal of [-5, 500, 12.5, 'abc']) {
+      const badUpd = await srv.reqJson('PUT', '/api/suppliers/NCC001', {
+        token: managerToken,
+        body: { paymentTermsDays: badVal },
+      });
+      assert.equal(badUpd.status, 400, `Update with ${badVal} must fail 400`);
+
+      const badCre = await srv.reqJson('POST', '/api/suppliers', {
+        token: managerToken,
+        body: {
+          name: `NCC Invalid ${badVal}`,
+          phone: '0909123456',
+          categoryGroup: 'Đồ uống',
+          areas: 'TP. HCM',
+          paymentTermsDays: badVal,
+        },
+      });
+      assert.equal(badCre.status, 400, `Create with ${badVal} must fail 400`);
+    }
+
+    // Create supplier omitting paymentTermsDays -> defaults cleanly to 30
+    const created = await srv.reqJson('POST', '/api/suppliers', {
+      token: managerToken,
+      body: {
+        name: 'NCC Mặc Định 30 Ngày F06D',
+        phone: '0909888777',
+        categoryGroup: 'Thực phẩm khô',
+        areas: 'TP. HCM',
+      },
+    });
+    assert.equal(created.status, 201, JSON.stringify(created.data));
+    assert.equal(created.data.item.paymentTermsDays, 30);
+
+    // Create an isolated product owned by this new supplier, then confirm PO -> due_date = today (UTC+7) + 30 days
+    const supId = created.data.item.id;
+    const prod = await createIsolatedProduct(srv, managerToken, { supplierId: supId });
+    const po = await srv.reqJson('POST', '/api/purchases', {
+      token: warehouseToken,
+      body: {
+        supplierId: supId,
+        note: 'PO default 30d F-06D',
+        items: [{ productId: prod.id, qty: 4, unitCost: 11000, expiryDate: addDaysYmd(180) }],
+      },
+    });
+    assert.equal(po.status, 201, JSON.stringify(po.data));
+    const poId = po.data.item.id;
+    const conf = await srv.reqJson('POST', `/api/purchases/${poId}/confirm`, { token: managerToken });
+    assert.equal(conf.status, 200, JSON.stringify(conf.data));
+
+    const ap30 = srv.db.prepare('SELECT * FROM supplier_payables WHERE purchase_id = ?').get(poId);
+    assert.ok(ap30, 'Payable for default-30d PO must exist');
+    assert.equal(ap30.due_date, addDaysYmd(30), `Expected default +30d (${addDaysYmd(30)}), got ${ap30.due_date}`);
+  } finally {
+    await srv.close();
+  }
+});
+
+

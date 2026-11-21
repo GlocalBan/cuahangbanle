@@ -396,6 +396,7 @@ CREATE TABLE IF NOT EXISTS suppliers (
   phone TEXT NOT NULL DEFAULT '',
   category_group TEXT NOT NULL DEFAULT '',
   areas TEXT NOT NULL DEFAULT '',
+  payment_terms_days INTEGER NOT NULL DEFAULT 30 CHECK (payment_terms_days >= 0 AND payment_terms_days <= 365),
   status TEXT NOT NULL DEFAULT 'HoatDong' CHECK (status IN ('HoatDong', 'NgungHopTac')),
   created_at TEXT NOT NULL
 );
@@ -986,6 +987,7 @@ function runSafeMigrations(db) {
   ensureColumn('orders', 'idempotency_key', 'TEXT');
   ensureColumn('returns', 'refund_shift_id', 'TEXT');
   ensureColumn('supplier_payables', 'credit_amount', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('suppliers', 'payment_terms_days', 'INTEGER NOT NULL DEFAULT 30');
   db.exec('CREATE INDEX IF NOT EXISTS idx_returns_refund_shift ON returns(refund_shift_id)');
   db.exec(
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_orders_idempotency_key ON orders(idempotency_key) WHERE idempotency_key IS NOT NULL',

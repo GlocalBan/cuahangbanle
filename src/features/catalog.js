@@ -59,7 +59,7 @@ function suppliersApiView() {
       <td><code>${e(x.id)}</code></td>
       <td class="name">
         <div>${e(x.name)}</div>
-        <div class="sub">${number(x.productCount)} SP · ${number(x.purchaseCount)} phiếu nhập</div>
+        <div class="sub">${number(x.productCount)} SP · ${number(x.purchaseCount)} phiếu nhập · Hạn CN: ${number(x.paymentTermsDays ?? 30)} ngày</div>
       </td>
       <td>${e(x.categoryGroup || '—')}</td>
       <td>${e(x.phone || '—')}</td>
@@ -112,6 +112,7 @@ function supplierApiModal(recordId = '') {
     phone: '',
     categoryGroup: '',
     areas: 'TP. HCM',
+    paymentTermsDays: 30,
     status: 'HoatDong',
   };
   modalContext = { type: 'supplier-api', id: recordId };
@@ -122,6 +123,7 @@ function supplierApiModal(recordId = '') {
         ${field('Tên nhà cung cấp (*)', 'name', v.name, 'text', 'required minlength="2" maxlength="150"', true)}
         ${field('Số điện thoại (*)', 'phone', v.phone, 'tel', 'required minlength="8" maxlength="24"')}
         ${field('Nhóm hàng cung cấp (*)', 'categoryGroup', v.categoryGroup, 'text', 'required minlength="2" maxlength="120"')}
+        ${field('Hạn công nợ (ngày)', 'paymentTermsDays', v.paymentTermsDays ?? 30, 'number', 'required min="0" max="365" step="1"')}
         ${field('Vùng cung ứng (*) (phân tách bằng dấu phẩy)', 'areas', v.areas, 'text', 'required minlength="2" maxlength="250"', true)}
         ${
           recordId
@@ -162,6 +164,7 @@ async function supplierApiHistory(supplierId) {
       `<div class="modal-content stack">
         <div class="note">
           <strong>${e(sup.id)}</strong> · SĐT: ${e(sup.phone)} · Vùng: ${e(sup.areas)} ·
+          Hạn công nợ: <strong>${number(sup.paymentTermsDays ?? 30)} ngày</strong> ·
           Đang cung cấp <strong>${number(sup.productCount)}</strong> mặt hàng.
         </div>
         ${table(
