@@ -3,7 +3,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { withTransaction } = require('../dal/database.js');
 const {
-  NghiepVuException,
   NotFoundException,
   ConflictException,
   ForbiddenException,
